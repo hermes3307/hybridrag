@@ -3,3 +3,4 @@ indexer.log
 batch/
 vector/ 
 venv/
+.venv/
