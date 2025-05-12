@@ -41,7 +41,7 @@ class VectorLLMQuerySystem:
     
     def __init__(
         self,
-        vector_db_path: str = "./vector_database",
+        vector_db_path: str = "./vector",
         llm_provider: str = "claude",
         api_key: Optional[str] = None,
         model_name: str = "claude-3-sonnet-20240229",
@@ -430,7 +430,7 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description="Vector DB + LLM Query System")
     parser.add_argument("--api-key", help="Anthropic API key")
-    parser.add_argument("--vector-db", default="./vector_database", help="Path to vector database")
+    parser.add_argument("--vector-db", default="./vector", help="Path to vector database")
     parser.add_argument("--interactive", action="store_true", help="Start interactive mode")
     
     args = parser.parse_args()

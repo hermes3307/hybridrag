@@ -19,7 +19,7 @@ class RAGDatabaseMonitor:
     """Monitor RAG databases and display statistics"""
     
     def __init__(self,
-                 vector_db_path: str = "./vector_database",
+                 vector_db_path: str = "./vector",
                  neo4j_uri: str = "bolt://localhost:7687",
                  neo4j_user: str = "neo4j",
                  neo4j_password: str = "password"):
@@ -297,7 +297,7 @@ class RAGDatabaseMonitor:
 
 def main():
     parser = argparse.ArgumentParser(description="Monitor RAG Database Status")
-    parser.add_argument("--vector-db", default="./vector_database", help="Vector database path")
+    parser.add_argument("--vector-db", default="./vector", help="Vector database path")
     parser.add_argument("--neo4j-uri", default="bolt://localhost:7687", help="Neo4j URI")
     parser.add_argument("--neo4j-user", default="neo4j", help="Neo4j username")
     parser.add_argument("--neo4j-password", default="password", help="Neo4j password")
