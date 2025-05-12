@@ -10,7 +10,6 @@ from pathlib import Path
 from datetime import datetime
 import argparse
 
-from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 from neo4j import GraphDatabase
 
@@ -30,7 +29,6 @@ class RAGDatabaseMonitor:
         self.neo4j_password = neo4j_password
         
         # Initialize connections
-        self.embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
         self.driver = None
         self.vector_store = None
     
@@ -55,8 +53,7 @@ class RAGDatabaseMonitor:
         try:
             if (self.vector_db_path / "index.faiss").exists():
                 self.vector_store = FAISS.load_local(
-                    str(self.vector_db_path), 
-                    self.embeddings,
+                    str(self.vector_db_path),
                     allow_dangerous_deserialization=True  # Add this parameter
                 )
                 return True
