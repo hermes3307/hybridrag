@@ -16,6 +16,7 @@ import argparse
 import logging
 import re
 import tempfile
+import textract
 import traceback
 from pathlib import Path
 from typing import List, Dict, Tuple, Any, Optional, Set, Union
@@ -25,7 +26,7 @@ from collections import Counter
 # Document processing
 import docx
 import PyPDF2
-import textract
+
 import chardet
 
 # NLP libraries
@@ -499,21 +500,6 @@ class Neo4jManager:
         if self.driver:
             self.driver.close()
     
-    def create_indexes(self):
-        """Create indexes for better performance."""
-        if not self.driver:
-            logger.error("Neo4j connection not established")
-            return False
-            
-        try:
-            with self.driver.session() as session:
-                # Create constraint for Entity nodes
-                session.run("CREATE CONSTRAINT entity_name IF NOT EXISTS FOR (e:Entity) REQUIRE e.name IS UNIQUE")
-                return True
-        except Exception as e:
-            logger.error(f"Failed to create Neo4j indexes: {str(e)}")
-            return False
-    
     def create_entity(self, entity):
         """Create an entity node in Neo4j."""
         if not self.driver:
@@ -624,23 +610,23 @@ class Neo4jManager:
                 rel_result = session.run("MATCH ()-[r:RELATED]->() RETURN count(r) AS count")
                 rel_count = rel_result.single()["count"]
                 
-                # Get entity types
+                # Get entity types - modified query without explicit GROUP BY
                 entity_types_result = session.run(
                     """
                     MATCH (e:Entity)
-                    RETURN e.entityType AS type, count(*) AS count
-                    GROUP BY e.entityType
+                    WITH e.entityType AS type, count(*) AS count
+                    RETURN type, count
                     ORDER BY count DESC
                     """
                 )
                 entity_types = {record["type"]: record["count"] for record in entity_types_result}
                 
-                # Get relation types
+                # Get relation types - modified query without explicit GROUP BY
                 relation_types_result = session.run(
                     """
                     MATCH ()-[r:RELATED]->()
-                    RETURN r.type AS type, count(*) AS count
-                    GROUP BY r.type
+                    WITH r.type AS type, count(*) AS count
+                    RETURN type, count
                     ORDER BY count DESC
                     """
                 )
@@ -655,7 +641,7 @@ class Neo4jManager:
         except Exception as e:
             logger.error(f"Failed to get database statistics: {str(e)}")
             return {}
-
+        
 
 class KnowledgeGraphApp:
     """Main application class."""
@@ -696,8 +682,6 @@ class KnowledgeGraphApp:
             console.print("[red]Failed to connect to Neo4j database. Please check your configuration.[/red]")
             return
         
-        # Create indexes
-        self.neo4j_manager.create_indexes()
         
         # Initialize extractor if not already initialized
         if self.extractor is None:
@@ -770,22 +754,6 @@ class KnowledgeGraphApp:
         console.print(f"[blue]Extracted {total_entities} entities and {total_relations} relations from {len(files)} documents[/blue]")
         
         # Close Neo4j connection
-        self.neo4j_manager.close()
-    
-    def make_indexes(self):
-        """Create Neo4j indexes."""
-        # Connect to Neo4j
-        if not self.neo4j_manager.connect():
-            console.print("[red]Failed to connect to Neo4j database. Please check your configuration.[/red]")
-            return
-        
-        # Create indexes
-        if self.neo4j_manager.create_indexes():
-            console.print("[green]Neo4j indexes created successfully![/green]")
-        else:
-            console.print("[red]Failed to create Neo4j indexes.[/red]")
-        
-        # Close connection
         self.neo4j_manager.close()
     
     def show_results(self):
@@ -983,7 +951,7 @@ class KnowledgeGraphApp:
             
             console.print("\n[bold]Menu:[/bold]")
             console.print("1. Scan Directory")
-            console.print("2. Make Indexes on Neo4j")
+            console.print("2. ...")
             console.print("3. Show Results")
             console.print("4. Show Statistics")
             console.print("5. Configure Application")
@@ -1003,7 +971,6 @@ class KnowledgeGraphApp:
                     self.scan_directory()
                 Prompt.ask("Press Enter to continue")
             elif choice == "2":
-                self.make_indexes()
                 Prompt.ask("Press Enter to continue")
             elif choice == "3":
                 self.show_results()

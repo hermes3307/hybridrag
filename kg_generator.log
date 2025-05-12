@@ -1,0 +1,80 @@
+2025-05-12 16:17:33,068 - KG_Generator - ERROR - Error reading DOCX file E:\OneDrive\ALTIBASE\! 01 인사법무\! 01 저작권\! 소송_IP\Qcubic_증거자료_20230223.docx: Bad CRC-32 for file 'word/media/image5.png'
+2025-05-12 16:17:39,783 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\! 01 저작권\! 소송_IP\고객사공문\공문(ALTIBASE 복제품 주의) 250408.doc: name 'textract' is not defined
+2025-05-12 16:17:39,792 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\! 01 저작권\! 소송_IP\고객사공문\work\공문(불법저작물 주의 공문) 초안 250408.doc: name 'textract' is not defined
+2025-05-12 16:18:21,278 - KG_Generator - ERROR - Failed to get database statistics: {code: Neo.ClientError.Statement.SyntaxError} {message: Invalid input 'GROUP': expected 'FOREACH', ',', 'ORDER BY', 'CALL', 'CREATE', 'LOAD CSV', 'DELETE', 'DETACH', 'FINISH', 'INSERT', 'LIMIT', 'MATCH', 'MERGE', 'NODETACH', 'OFFSET', 'OPTIONAL', 'REMOVE', 'RETURN', 'SET', 'SKIP', 'UNION', 'UNWIND', 'USE', 'WITH' or <EOF> (line 4, column 21 (offset: 125))
+"                    GROUP BY e.entityType"
+                     ^}
+2025-05-12 16:18:24,338 - KG_Generator - ERROR - Failed to get database statistics: {code: Neo.ClientError.Statement.SyntaxError} {message: Invalid input 'GROUP': expected 'FOREACH', ',', 'ORDER BY', 'CALL', 'CREATE', 'LOAD CSV', 'DELETE', 'DETACH', 'FINISH', 'INSERT', 'LIMIT', 'MATCH', 'MERGE', 'NODETACH', 'OFFSET', 'OPTIONAL', 'REMOVE', 'RETURN', 'SET', 'SKIP', 'UNION', 'UNWIND', 'USE', 'WITH' or <EOF> (line 4, column 21 (offset: 125))
+"                    GROUP BY e.entityType"
+                     ^}
+2025-05-12 16:18:41,060 - KG_Generator - ERROR - Failed to get database statistics: {code: Neo.ClientError.Statement.SyntaxError} {message: Invalid input 'GROUP': expected 'FOREACH', ',', 'ORDER BY', 'CALL', 'CREATE', 'LOAD CSV', 'DELETE', 'DETACH', 'FINISH', 'INSERT', 'LIMIT', 'MATCH', 'MERGE', 'NODETACH', 'OFFSET', 'OPTIONAL', 'REMOVE', 'RETURN', 'SET', 'SKIP', 'UNION', 'UNWIND', 'USE', 'WITH' or <EOF> (line 4, column 21 (offset: 125))
+"                    GROUP BY e.entityType"
+                     ^}
+2025-05-12 16:18:44,710 - KG_Generator - ERROR - Failed to get database statistics: {code: Neo.ClientError.Statement.SyntaxError} {message: Invalid input 'GROUP': expected 'FOREACH', ',', 'ORDER BY', 'CALL', 'CREATE', 'LOAD CSV', 'DELETE', 'DETACH', 'FINISH', 'INSERT', 'LIMIT', 'MATCH', 'MERGE', 'NODETACH', 'OFFSET', 'OPTIONAL', 'REMOVE', 'RETURN', 'SET', 'SKIP', 'UNION', 'UNWIND', 'USE', 'WITH' or <EOF> (line 4, column 21 (offset: 125))
+"                    GROUP BY e.entityType"
+                     ^}
+2025-05-12 16:19:12,373 - KG_Generator - ERROR - Failed to get database statistics: {code: Neo.ClientError.Statement.SyntaxError} {message: Invalid input 'GROUP': expected 'FOREACH', ',', 'ORDER BY', 'CALL', 'CREATE', 'LOAD CSV', 'DELETE', 'DETACH', 'FINISH', 'INSERT', 'LIMIT', 'MATCH', 'MERGE', 'NODETACH', 'OFFSET', 'OPTIONAL', 'REMOVE', 'RETURN', 'SET', 'SKIP', 'UNION', 'UNWIND', 'USE', 'WITH' or <EOF> (line 4, column 21 (offset: 125))
+"                    GROUP BY e.entityType"
+                     ^}
+2025-05-12 16:19:56,056 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\! 01 저작권\공문\공문(불법저작물 주의 공문) 초안 250408.doc: name 'textract' is not defined
+2025-05-12 16:20:54,839 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\! 02 행정송송\240816준비서면 (알티베이스) 초안.doc: name 'textract' is not defined
+2025-05-12 16:20:59,147 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\! 03 채무부존재\이사회의사록_250429_강제조정의견서에 대한 가부 결정의 건.doc: name 'textract' is not defined
+2025-05-12 16:21:25,996 - KG_Generator - INFO - Initialized spaCy NLP model
+2025-05-12 16:21:28,050 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\! 우일\공문(영업대표변경의건) 241118.doc: name 'textract' is not defined
+2025-05-12 16:21:30,129 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\! 회사 인사자료\주주명부요청의건(20250109).doc: name 'textract' is not defined
+2025-05-12 16:21:39,351 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\성과평가\평가보상\수습사원 평가\업무평가표_수습사원.doc: name 'textract' is not defined
+2025-05-12 16:21:39,351 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\성과평가\평가보상\수습사원 평가\업무평가표_영업대표.doc: name 'textract' is not defined
+2025-05-12 16:21:39,713 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\성과평가\평가보상\인사평가\02 2012년 인사평가\4. 12년 인사평가 최종\2012년 인사평가 등급 확정 품의.doc: name 'textract' is not defined
+2025-05-12 16:21:39,714 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\성과평가\평가보상\인사평가\03 2013년 인사평가\13년 인사평가 최종\2013년 인사평가 등급 확정 품의.doc: name 'textract' is not defined
+2025-05-12 16:21:40,526 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\연말정산\2012년귀속\급상여품의서(진짜).doc: name 'textract' is not defined
+2025-05-12 16:21:49,711 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\EmploymentVetting.doc: name 'textract' is not defined
+2025-05-12 16:21:49,711 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\Welfare.doc: name 'textract' is not defined
+2025-05-12 16:21:49,711 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\부모초청장.doc: name 'textract' is not defined
+2025-05-12 16:21:49,711 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\외국인 근로자 지원 규정 (案).doc: name 'textract' is not defined
+2025-05-12 16:21:49,712 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\출입국관리사무소 업무 관련 서류(아래버젼).doc: name 'textract' is not defined
+2025-05-12 16:21:49,712 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\GOLD CARD 작성 서류\인력활용계획서.doc: name 'textract' is not defined
+2025-05-12 16:21:49,749 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\Irfan 자료\고용사유서(GBD-Irfan).doc: name 'textract' is not defined
+2025-05-12 16:21:49,749 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\IT벤처기업연합회\드리트리\이력서.doc: name 'textract' is not defined
+2025-05-12 16:21:49,750 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\IT벤처기업연합회\드리트리\학위, 결혼, 출생 자료등등\CV.doc: name 'textract' is not defined
+2025-05-12 16:21:49,750 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\IT벤처기업연합회\블라디미르\Volodymyr_Verovkin_applicant_for_Software_Engineer_position_2008.doc: name 'textract' is not defined
+2025-05-12 16:21:49,750 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\IT벤처기업연합회\샤닌 세르게이\(EMPLOYMENT CONTRACT-세르게이.doc: name 'textract' is not defined
+2025-05-12 16:21:49,750 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\IT벤처기업연합회\샤닌 세르게이\cv2[1].doc: name 'textract' is not defined
+2025-05-12 16:21:49,750 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\IT벤처기업연합회\샤닌 세르게이\대외공문(세르게이).doc: name 'textract' is not defined
+2025-05-12 16:21:49,766 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\IT벤처기업연합회\안나\고용사유서[1].doc: name 'textract' is not defined
+2025-05-12 16:21:49,804 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\IT벤처기업연합회\페도로브 세르게이 IT카드\(EMPLOYMENT CONTRACT-페도로브.doc: name 'textract' is not defined
+2025-05-12 16:21:49,804 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\IT벤처기업연합회\페도로브 세르게이 IT카드\diploma\diploma_en.doc: name 'textract' is not defined
+2025-05-12 16:21:49,804 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\각종신청서식\사증발급신청서.doc: name 'textract' is not defined
+2025-05-12 16:21:49,804 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\각종신청서식\사증발급인정신청서.doc: name 'textract' is not defined
+2025-05-12 16:21:49,804 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\각종신청서식\신원보증서.doc: name 'textract' is not defined
+2025-05-12 16:21:49,804 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\각종신청서식\종합.doc: name 'textract' is not defined
+2025-05-12 16:21:49,805 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\근로계약서\anna.doc: name 'textract' is not defined
+2025-05-12 16:21:49,805 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\근로계약서\dmitro.doc: name 'textract' is not defined
+2025-05-12 16:21:49,813 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\근로계약서\dmitry.doc: name 'textract' is not defined
+2025-05-12 16:21:49,813 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\근로계약서\Dmytro (final).doc: name 'textract' is not defined
+2025-05-12 16:21:49,813 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\근로계약서\Employee contract (alexander).doc: name 'textract' is not defined
+2025-05-12 16:21:49,813 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\근로계약서\Employee contract (denis-2).doc: name 'textract' is not defined
+2025-05-12 16:21:49,813 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\근로계약서\Employee contract (maxim-2).doc: name 'textract' is not defined
+2025-05-12 16:21:49,814 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\근로계약서\fedorov(2).doc: name 'textract' is not defined
+2025-05-12 16:21:49,814 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\근로계약서\fedorov.doc: name 'textract' is not defined
+2025-05-12 16:21:49,814 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\근로계약서\volodymyr.doc: name 'textract' is not defined
+2025-05-12 16:21:49,814 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\근로계약서\개정근로계약서(2).doc: name 'textract' is not defined
+2025-05-12 16:21:49,814 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\근로계약서\개정근로계약서.doc: name 'textract' is not defined
+2025-05-12 16:21:49,814 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\근로계약서\블라디미르(고용계약).doc: name 'textract' is not defined
+2025-05-12 16:21:49,814 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\근로계약서\싸샤(09년도).doc: name 'textract' is not defined
+2025-05-12 16:21:49,814 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\근로계약서\수정본\Dmytro (final).doc: name 'textract' is not defined
+2025-05-12 16:21:49,814 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\근로계약서\수정본\개정근로계약서(2)_수정.doc: name 'textract' is not defined
+2025-05-12 16:21:50,363 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\양식\외국인 위임장.doc: name 'textract' is not defined
+2025-05-12 16:21:50,424 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\외국인등록증\알렉스\신원보증서외국인보증서.doc: name 'textract' is not defined
+2025-05-12 16:21:50,424 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\외국인등록증\알렉스\알렉스비자신청자료.doc: name 'textract' is not defined
+2025-05-12 16:21:50,429 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\이력서\Denis_Berezhnoy.doc: name 'textract' is not defined
+2025-05-12 16:21:50,429 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\이력서\Sergey Drokin.doc: name 'textract' is not defined
+2025-05-12 16:21:50,429 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\이력서\Shafranovskyy_Dmytro.doc: name 'textract' is not defined
+2025-05-12 16:21:50,429 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\이력서\Vladimir Sebelev.doc: name 'textract' is not defined
+2025-05-12 16:21:50,436 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\초청장\가족초청장_맥심(부모초청).doc: name 'textract' is not defined
+2025-05-12 16:21:50,436 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\초청장\가족초청장_맥심(부모초청)_추가.doc: name 'textract' is not defined
+2025-05-12 16:21:50,436 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\초청장\부모초청장.doc: name 'textract' is not defined
+2025-05-12 16:21:50,437 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\초청장\인턴사원 초청장.doc: name 'textract' is not defined
+2025-05-12 16:21:50,437 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\회사 연혁 및 소개 모음\기업경영현황작성(알티베이스).doc: name 'textract' is not defined
+2025-05-12 16:21:50,437 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\외국인\회사 연혁 및 소개 모음\알티-Ⅳ.사업의 내용(김남일).doc: name 'textract' is not defined
+2025-05-12 16:21:50,453 - KG_Generator - ERROR - Error reading DOC file E:\OneDrive\ALTIBASE\! 01 인사법무\!!!인사인수인계\인사팀\우수사원포상\포상추천서.doc: name 'textract' is not defined
+2025-05-12 16:22:52,884 - KG_Generator - ERROR - Failed to create entity: Existing exports of data: object cannot be re-sized

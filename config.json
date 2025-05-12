@@ -1,0 +1,19 @@
+{
+    "batch_dir": "e:\\OneDrive",
+    "neo4j_uri": "bolt://localhost:7687",
+    "neo4j_user": "neo4j",
+    "neo4j_password": "password",
+    "anthropic_api_key": "",
+    "extraction_method": "spacy",
+    "local_llm_model": "TheBloke/Mistral-7B-Instruct-v0.1-GGUF",
+    "anthropic_calls": 0,
+    "anthropic_cost": 0.0,
+    "last_scan_time": "2025-05-12 15:38:06",
+    "scanned_files": [
+        "e:\\docs2\\(\uad6d\uc815\uc6d0) \uc54c\ud2f0\ubca0\uc774\uc2a4 \uae30\uc220 \ud574\uc678 \uc720\ucd9c \uc0ac\uac74 \u2013 \uc218\uc0ac \uc99d\uac70 250505.docx",
+        "e:\\docs2\\(\uad6d\uc815\uc6d0) \uc54c\ud2f0\ubca0\uc774\uc2a4 \uae30\uc220 \ud574\uc678 \uc720\ucd9c \uc0ac\uac74 \u2013 \uc218\uc0ac \uc99d\uac70 250505.pdf",
+        "e:\\docs2\\(\uae30\uc0ac) \uc21c\uc218 \uad6d\uc0b0 \uae30\uc220\ub85c \ube5b\ub098\ub294 DBMS \uae30\uc5c5, \uc54c\ud2f0\ubca0\uc774\uc2a4\uc758 \ub3c4\uc804\uacfc \uc800\uc791\uad8c \uce68\ud574 \uc2dc\ub828 250502.docx"
+    ],
+    "processed_entities": 3845,
+    "processed_relations": 11
+}
