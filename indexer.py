@@ -408,7 +408,8 @@ class DocumentIndexer:
         self._load_processed_files()
         
         # Supported extensions
-        self.supported_extensions = ['.pdf', '.docx', '.doc', '.txt', '.csv', '.xlsx', '.xls', '.pptx', '.ppt']
+        # self.supported_extensions = ['.pdf', '.docx', '.doc', '.txt', '.csv', '.xlsx', '.xls', '.pptx', '.ppt']
+        self.supported_extensions = ['.pdf', '.docx', '.doc']
         
         # Track processing status
         self.processing_stats = {
