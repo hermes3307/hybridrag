@@ -16,6 +16,7 @@ import argparse
 import logging
 import re
 import tempfile
+import textract
 import traceback
 from pathlib import Path
 from typing import List, Dict, Tuple, Any, Optional, Set, Union
@@ -83,8 +84,6 @@ class Config:
         self.scanned_files = []
         self.processed_entities = 0
         self.processed_relations = 0
-        self.excluded_files = []  # Track excluded files
-        self.failed_files = []    # Track failed files
         
     def save(self, filename="config.json"):
         """Save configuration to a file."""
@@ -134,31 +133,10 @@ class DocumentProcessor:
     
     @staticmethod
     def read_doc_file(file_path):
-        """Read content from a DOC file without using textract."""
+        """Read content from a DOC file using textract."""
         try:
-            # Since we're not using textract, try to use a binary approach
-            with open(file_path, 'rb') as file:
-                content = file.read()
-                
-                # Extract text using simple pattern matching
-                # This is a very basic approach that might extract some readable text
-                text = ""
-                # Look for strings in the binary data
-                i = 0
-                while i < len(content):
-                    if content[i] > 31 and content[i] < 127:  # Printable ASCII
-                        start = i
-                        while i < len(content) and content[i] > 31 and content[i] < 127:
-                            i += 1
-                        if i - start > 3:  # Only consider strings longer than 3 chars
-                            text += content[start:i].decode('ascii', errors='ignore') + " "
-                    i += 1
-                
-                if text:
-                    return text
-                else:
-                    logger.warning(f"Basic text extraction from .doc file {file_path} yielded no results")
-                    return f"[Could not extract text from {os.path.basename(file_path)}]"
+            text = textract.process(file_path).decode('utf-8')
+            return text
         except Exception as e:
             logger.error(f"Error reading DOC file {file_path}: {str(e)}")
             return ""
@@ -663,21 +641,6 @@ class Neo4jManager:
         except Exception as e:
             logger.error(f"Failed to get database statistics: {str(e)}")
             return {}
-    
-    def clear_database(self):
-        """Clear all data from the Neo4j database."""
-        if not self.driver:
-            logger.error("Neo4j connection not established")
-            return False
-            
-        try:
-            with self.driver.session() as session:
-                # Delete all nodes and relationships
-                result = session.run("MATCH (n) DETACH DELETE n")
-                return True
-        except Exception as e:
-            logger.error(f"Failed to clear database: {str(e)}")
-            return False
         
 
 class KnowledgeGraphApp:
@@ -704,51 +667,6 @@ class KnowledgeGraphApp:
         """Initialize the entity-relation extractor."""
         self.extractor = EntityRelationExtractor(self.config)
     
-    def reset_neo4j(self):
-        """Reset Neo4j database by deleting all nodes and relationships."""
-        # Connect to Neo4j
-        if not self.neo4j_manager.connect():
-            console.print("[red]Failed to connect to Neo4j database. Please check your configuration.[/red]")
-            return
-        
-        # Get database statistics
-        stats = self.neo4j_manager.get_stats()
-        
-        if stats:
-            entity_count = stats.get('entity_count', 0)
-            relationship_count = stats.get('relationship_count', 0)
-            
-            console.print(f"[bold]Current Database Statistics:[/bold]")
-            console.print(f"Total Entities: {entity_count}")
-            console.print(f"Total Relationships: {relationship_count}")
-            
-            # Confirm reset
-            if entity_count > 0 or relationship_count > 0:
-                confirm = Confirm.ask(
-                    "[bold red]Warning:[/bold red] This will delete all entities and relationships. Continue?",
-                    default=False
-                )
-                
-                if confirm:
-                    if self.neo4j_manager.clear_database():
-                        console.print("[green]Database cleared successfully![/green]")
-                        
-                        # Reset counters in configuration
-                        self.config.processed_entities = 0
-                        self.config.processed_relations = 0
-                        self.config.save()
-                    else:
-                        console.print("[red]Failed to clear database. Please check the logs for details.[/red]")
-                else:
-                    console.print("[yellow]Database reset cancelled.[/yellow]")
-            else:
-                console.print("[yellow]Database is already empty. No need to reset.[/yellow]")
-        else:
-            console.print("[yellow]Failed to get database statistics. Check your connection.[/yellow]")
-        
-        # Close connection
-        self.neo4j_manager.close()
-    
     def scan_directory(self, directory_path=None):
         """Scan directory for documents and extract entities and relations."""
         if directory_path is None:
@@ -764,59 +682,31 @@ class KnowledgeGraphApp:
             console.print("[red]Failed to connect to Neo4j database. Please check your configuration.[/red]")
             return
         
+        
         # Initialize extractor if not already initialized
         if self.extractor is None:
             self.initialize_extractor()
         
-        # Reset file tracking lists
-        self.config.excluded_files = []
-        self.config.failed_files = []
-        
         # Get list of supported files
-        supported_extensions = ['.txt', '.docx', '.pdf', '.doc']
+        supported_extensions = ['.txt', '.doc', '.docx', '.pdf']
         files = []
-        
-        # Count files by extension
-        extension_counts = Counter()
         
         for root, _, filenames in os.walk(directory_path):
             for filename in filenames:
-                file_path = os.path.join(root, filename)
-                file_extension = os.path.splitext(filename)[1].lower()
-                extension_counts[file_extension] += 1
-                
-                if file_extension in supported_extensions:
-                    files.append(file_path)
-                else:
-                    # Track excluded files
-                    self.config.excluded_files.append({
-                        'path': file_path,
-                        'filename': filename,
-                        'extension': file_extension,
-                        'reason': 'Unsupported file type'
-                    })
-        
-        # Display extension counts
-        console.print("\n[bold]Found Files by Extension:[/bold]")
-        for ext, count in sorted(extension_counts.items(), key=lambda x: x[1], reverse=True):
-            if ext in supported_extensions:
-                status = "[green]Supported"
-            else:
-                status = "[red]Excluded"
-            console.print(f"{ext}: {count} files ({status})")
+                if any(filename.lower().endswith(ext) for ext in supported_extensions):
+                    files.append(os.path.join(root, filename))
         
         if not files:
             console.print(f"[yellow]No supported documents found in {directory_path}[/yellow]")
             return
         
         # Process files with progress bar
-        console.print(f"\n[green]Found {len(files)} documents to process[/green]")
+        console.print(f"[green]Found {len(files)} documents to process[/green]")
         self.config.scanned_files = files
         self.config.last_scan_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
         total_entities = 0
         total_relations = 0
-        processed_files = 0
         
         with Progress(
             SpinnerColumn(),
@@ -828,20 +718,12 @@ class KnowledgeGraphApp:
             process_task = progress.add_task("[green]Processing documents...", total=len(files))
             
             for file_path in files:
-                file_extension = os.path.splitext(file_path)[1].lower()
                 progress.update(process_task, description=f"[cyan]Processing {os.path.basename(file_path)}[/cyan]")
                 
                 # Extract text from file
                 text = DocumentProcessor.extract_text(file_path)
                 
                 if not text:
-                    # Track failed files
-                    self.config.failed_files.append({
-                        'path': file_path,
-                        'filename': os.path.basename(file_path),
-                        'extension': file_extension,
-                        'reason': 'Failed to extract text'
-                    })
                     progress.advance(process_task)
                     continue
                 
@@ -858,92 +740,21 @@ class KnowledgeGraphApp:
                     if self.neo4j_manager.create_relationship(relation):
                         total_relations += 1
                 
-                processed_files += 1
                 progress.advance(process_task)
         
         # Update statistics
         self.config.processed_entities += total_entities
         self.config.processed_relations += total_relations
         
-        # Display summary for file issues
-        if self.config.failed_files:
-            failed_extensions = Counter([f['extension'] for f in self.config.failed_files])
-            console.print(f"\n[yellow]Warning: {len(self.config.failed_files)} files failed to process[/yellow]")
-            for ext, count in failed_extensions.items():
-                console.print(f"  - {ext}: {count} files failed")
-        
-        if self.config.excluded_files:
-            console.print(f"\n[yellow]Note: {len(self.config.excluded_files)} files were excluded (unsupported types)[/yellow]")
-        
         # Save configuration
         self.config.save()
         
         # Display summary
         console.print(f"[green]Processing complete![/green]")
-        console.print(f"[blue]Extracted {total_entities} entities and {total_relations} relations from {processed_files} documents[/blue]")
+        console.print(f"[blue]Extracted {total_entities} entities and {total_relations} relations from {len(files)} documents[/blue]")
         
         # Close Neo4j connection
         self.neo4j_manager.close()
-    
-    def show_file_issues(self):
-        """Show information about excluded and failed files."""
-        console.print("[bold blue]File Processing Issues[/bold blue]")
-        
-        # Show failed files
-        if self.config.failed_files:
-            failed_extensions = Counter([f['extension'] for f in self.config.failed_files])
-            console.print(f"\n[bold red]Failed Files: {len(self.config.failed_files)} total[/bold red]")
-            
-            for ext, count in failed_extensions.items():
-                console.print(f"  - {ext}: {count} files")
-            
-            if Confirm.ask("Show detailed failed files list?", default=False):
-                failed_table = Table(title="Failed Files")
-                failed_table.add_column("Filename", style="cyan")
-                failed_table.add_column("Extension", style="yellow")
-                failed_table.add_column("Reason", style="red")
-                
-                for file_info in self.config.failed_files[:100]:  # Limit to first 100
-                    failed_table.add_row(
-                        file_info['filename'],
-                        file_info['extension'],
-                        file_info['reason']
-                    )
-                
-                console.print(failed_table)
-                
-                if len(self.config.failed_files) > 100:
-                    console.print(f"... and {len(self.config.failed_files) - 100} more files")
-        else:
-            console.print("[green]No files failed processing.[/green]")
-        
-        # Show excluded files
-        if self.config.excluded_files:
-            excluded_extensions = Counter([f['extension'] for f in self.config.excluded_files])
-            console.print(f"\n[bold yellow]Excluded Files: {len(self.config.excluded_files)} total[/bold yellow]")
-            
-            for ext, count in excluded_extensions.most_common():
-                console.print(f"  - {ext}: {count} files")
-            
-            if Confirm.ask("Show detailed excluded files list?", default=False):
-                excluded_table = Table(title="Excluded Files")
-                excluded_table.add_column("Filename", style="cyan")
-                excluded_table.add_column("Extension", style="yellow")
-                excluded_table.add_column("Reason", style="red")
-                
-                for file_info in self.config.excluded_files[:100]:  # Limit to first 100
-                    excluded_table.add_row(
-                        file_info['filename'],
-                        file_info['extension'],
-                        file_info['reason']
-                    )
-                
-                console.print(excluded_table)
-                
-                if len(self.config.excluded_files) > 100:
-                    console.print(f"... and {len(self.config.excluded_files) - 100} more files")
-        else:
-            console.print("[green]No files were excluded.[/green]")
     
     def show_results(self):
         """Show entities and relations extracted from documents."""
@@ -1028,11 +839,6 @@ class KnowledgeGraphApp:
         console.print(f"Processed Files: {len(self.config.scanned_files)}")
         console.print(f"Processed Entities: {self.config.processed_entities}")
         console.print(f"Processed Relations: {self.config.processed_relations}")
-        
-        # File statistics
-        console.print(f"\n[bold]File Statistics:[/bold]")
-        console.print(f"Excluded Files: {len(self.config.excluded_files)}")
-        console.print(f"Failed Files: {len(self.config.failed_files)}")
         
         # Anthropic API statistics
         if self.config.extraction_method == "anthropic":
@@ -1145,15 +951,14 @@ class KnowledgeGraphApp:
             
             console.print("\n[bold]Menu:[/bold]")
             console.print("1. Scan Directory")
-            console.print("2. Reset Neo4j Database")
+            console.print("2. ...")
             console.print("3. Show Results")
             console.print("4. Show Statistics")
             console.print("5. Configure Application")
             console.print("6. Test Neo4j Connection")
-            console.print("7. Show File Issues")
             console.print("0. Exit")
             
-            choice = Prompt.ask("Select an option", choices=["0", "1", "2", "3", "4", "5", "6", "7"], default="1")
+            choice = Prompt.ask("Select an option", choices=["0", "1", "2", "3", "4", "5", "6"], default="1")
             
             if choice == "0":
                 break
@@ -1166,7 +971,6 @@ class KnowledgeGraphApp:
                     self.scan_directory()
                 Prompt.ask("Press Enter to continue")
             elif choice == "2":
-                self.reset_neo4j()
                 Prompt.ask("Press Enter to continue")
             elif choice == "3":
                 self.show_results()
@@ -1179,9 +983,6 @@ class KnowledgeGraphApp:
                 Prompt.ask("Press Enter to continue")
             elif choice == "6":
                 self.test_connection()
-                Prompt.ask("Press Enter to continue")
-            elif choice == "7":
-                self.show_file_issues()
                 Prompt.ask("Press Enter to continue")
         
         console.print("[green]Thank you for using Knowledge Graph Generator![/green]")
