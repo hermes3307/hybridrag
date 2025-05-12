@@ -352,8 +352,8 @@ class DocumentIndexer:
     """Unified Document Indexer for hybrid RAG system - Synchronous version"""
     
     def __init__(self, 
-                 input_directory: str = "./batch_documents",
-                 vector_db_path: str = "./vector_database",
+                 input_directory: str = "./batch",
+                 vector_db_path: str = "./vector",
                  neo4j_uri: str = "bolt://localhost:7687",
                  neo4j_user: str = "neo4j",
                  neo4j_password: str = "password",
@@ -877,7 +877,7 @@ class DocumentIndexer:
             self.processing_stats['failed'] += 1
             return False
     
-    def scan_and_copy_directory(self, source_directory: str, target_directory: str = "./batch_documents") -> List[Path]:
+    def scan_and_copy_directory(self, source_directory: str, target_directory: str = "./batch") -> List[Path]:
         """Scan source directory recursively and copy files to target directory"""
         source_path = Path(source_directory)
         target_path = Path(target_directory)
@@ -1043,7 +1043,7 @@ class DocumentIndexer:
         )
         self._log_stats()
     
-    def scan_copy_and_index(self, source_directory: str, target_directory: str = "./batch_documents", 
+    def scan_copy_and_index(self, source_directory: str, target_directory: str = "./batch", 
                            batch_size: int = 10):
         """Scan source directory, copy files to target, and index"""
         self.logger.info(f"Starting scan-copy-index from {source_directory} to {target_directory}")
@@ -1146,9 +1146,9 @@ def main():
     parser = argparse.ArgumentParser(description="Unified Hybrid RAG Document Indexer - Synchronous Version")
     parser.add_argument("--interactive", action="store_true", help="Run in interactive mode")
     parser.add_argument("--scan-dir", help="Source directory to scan and copy from")
-    parser.add_argument("--input-dir", default="./batch_documents", help="Input directory containing documents")
-    parser.add_argument("--target-dir", default="./batch_documents", help="Target directory for copied files")
-    parser.add_argument("--vector-db", default="./vector_database", help="Vector database output path")
+    parser.add_argument("--input-dir", default="./batch", help="Input directory containing documents")
+    parser.add_argument("--target-dir", default="./batch", help="Target directory for copied files")
+    parser.add_argument("--vector-db", default="./vector", help="Vector database output path")
     parser.add_argument("--neo4j-uri", default="bolt://localhost:7687", help="Neo4j URI")
     parser.add_argument("--neo4j-user", default="neo4j", help="Neo4j username")
     parser.add_argument("--neo4j-password", default="password", help="Neo4j password")
