@@ -13,6 +13,9 @@ neo4j>=5.0.0
 # LLM support
 torch>=2.0.0
 transformers>=4.30.0
+langchain-huggingface>=0.0.5
+openai>=1.0.0
+langchain-community>=0.0.10
 
 # Anthropic API
 anthropic>=0.2.0
@@ -32,3 +35,4 @@ pdfminer.six>=20200720
 tqdm>=4.66.0
 requests>=2.31.0
 pyyaml>=6.0.0
+pandas>=2.0.0

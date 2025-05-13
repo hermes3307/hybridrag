@@ -1,0 +1,6 @@
+2025-05-13 13:19:58,717 - WARNING - Configuration file vector_config.json not found
+2025-05-13 13:20:10,198 - INFO - Use pytorch device_name: cpu
+2025-05-13 13:20:10,198 - INFO - Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-05-13 13:20:13,568 - INFO - Initializing new vector store
+2025-05-13 13:20:13,569 - WARNING - English model not found. Run: python -m spacy download en_core_web_sm
+2025-05-13 13:20:13,569 - WARNING - Korean model not found. Run: python -m spacy download ko_core_news_sm
