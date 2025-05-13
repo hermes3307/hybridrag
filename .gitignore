@@ -8,3 +8,7 @@ vector_config.json
 vector_generator.log
 logs/
 __pycache__/
+chunk/
+batch/
+plain/
+vector/
