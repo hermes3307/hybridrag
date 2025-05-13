@@ -1,0 +1,24 @@
+2025-05-13 15:38:04,911 - WARNING - Configuration file vectorqry_config.json not found
+2025-05-13 15:38:12,001 - INFO - Use pytorch device_name: cpu
+2025-05-13 15:38:12,001 - INFO - Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-05-13 15:38:17,428 - INFO - Initialized embeddings with model: all-MiniLM-L6-v2
+2025-05-13 15:38:17,428 - INFO - Loading vector store from C:\Users\A\Documents\cursor\hybridrag\vector
+2025-05-13 15:38:17,468 - INFO - Loading faiss with AVX512 support.
+2025-05-13 15:38:17,468 - INFO - Could not load library with AVX512 support due to:
+ModuleNotFoundError("No module named 'faiss.swigfaiss_avx512'")
+2025-05-13 15:38:17,468 - INFO - Loading faiss with AVX2 support.
+2025-05-13 15:38:17,538 - INFO - Successfully loaded faiss with AVX2 support.
+2025-05-13 15:38:17,581 - INFO - Failed to load GPU Faiss: name 'GpuIndexIVFFlat' is not defined. Will not load constructor refs for GPU indexes. This is only an error if you're trying to use GPU Faiss.
+2025-05-13 15:38:20,756 - ERROR - Failed to load vector store: Ran out of input
+2025-05-13 15:38:20,770 - ERROR - Traceback (most recent call last):
+  File "c:\Users\A\Documents\cursor\hybridrag\gryvector.py", line 263, in _initialize_components
+    self.vector_store = FAISS.load_local(
+                        ^^^^^^^^^^^^^^^^^
+  File "C:\Users\A\Documents\cursor\hybridrag\.venv\Lib\site-packages\langchain_community\vectorstores\faiss.py", line 1212, in load_local
+    ) = pickle.load(  # ignore[pickle]: explicit-opt-in
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+EOFError: Ran out of input
+
+2025-05-13 15:38:20,770 - INFO - Attempting alternative loading method...
+2025-05-13 15:38:20,908 - ERROR - Alternative loading also failed: [Errno 2] No such file or directory: 'C:\\Users\\A\\Documents\\cursor\\hybridrag\\vector\\docstore.pkl'
+2025-05-13 15:38:20,928 - WARNING - No Anthropic API key provided
