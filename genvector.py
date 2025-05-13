@@ -247,6 +247,7 @@ class DocumentProcessor:
             logger.warning(f"Unsupported file type: {ext}")
             return ""
 
+
 class Config:
     """Configuration for the vector generator."""
     
@@ -281,7 +282,7 @@ class Config:
             'plain_documents': 0,
             'chunks': 0
         }
-         
+
     def save(self, filename="vector_config.json"):
         """Save configuration to a file."""
         # Extract only serializable data
@@ -317,7 +318,8 @@ class Config:
 
 class VectorStoreGenerator:
     """Generate vector store from documents for RAG."""
-        
+
+
     def __init__(self, config=None):
         self.config = config if config else Config()
         
@@ -331,6 +333,12 @@ class VectorStoreGenerator:
         self.vector_db_path.mkdir(parents=True, exist_ok=True)
         self.plain_text_path.mkdir(parents=True, exist_ok=True)
         self.chunk_path.mkdir(parents=True, exist_ok=True)
+        
+        # Ensure processing_stats has required keys
+        if 'plain_documents' not in self.config.processing_stats:
+            self.config.processing_stats['plain_documents'] = 0
+        if 'chunks' not in self.config.processing_stats:
+            self.config.processing_stats['chunks'] = 0
         
         # Configure chunker
         self.text_splitter = RecursiveCharacterTextSplitter(
@@ -359,7 +367,7 @@ class VectorStoreGenerator:
         # Try to load spaCy models
         self.nlp_models = {}
         self._load_language_models()
-
+        
     def _load_language_models(self):
         """Load spaCy language models for text processing."""
         try:
@@ -490,7 +498,7 @@ class VectorStoreGenerator:
                 return text
         
         return text
-        
+
     def process_file(self, file_path: Path) -> bool:
         """Process a single file and add it to the vector store."""
         try:
@@ -544,6 +552,10 @@ class VectorStoreGenerator:
             # Clean text
             text = self.clean_text(text, language)
             
+            # Ensure plain_documents key exists in processing_stats
+            if 'plain_documents' not in self.config.processing_stats:
+                self.config.processing_stats['plain_documents'] = 0
+            
             # Save plain text file
             plain_file_path = self.plain_text_path / f"{file_path.stem}_{file_hash[:8]}.txt"
             try:
@@ -562,14 +574,22 @@ class VectorStoreGenerator:
                 self.config.processing_stats['failed'] += 1
                 return False
             
-            # Save chunks to files
-            chunks_directory = self.chunk_path / f"{file_path.stem}_{file_hash[:8]}"
-            chunks_directory.mkdir(exist_ok=True)
+            # Ensure chunks key exists in processing_stats
+            if 'chunks' not in self.config.processing_stats:
+                self.config.processing_stats['chunks'] = 0
+                
+            # Create chunks directory with safer name (avoid special characters)
+            safe_stem = re.sub(r'[^\w\-.]', '_', file_path.stem)
+            chunks_directory = self.chunk_path / f"{safe_stem}_{file_hash[:8]}"
+            chunks_directory.mkdir(exist_ok=True, parents=True)
+            
+            # Log chunk creation
+            logger.info(f"Created chunk directory: {chunks_directory}")
             
             for i, chunk in enumerate(chunks):
                 # Log the first few lines of chunk for verification (line 3)
+                chunk_lines = chunk.split('\n')
                 if i < 3:  # Log only first 3 chunks
-                    chunk_lines = chunk.split('\n')
                     if len(chunk_lines) >= 3:
                         logger.info(f"Chunk {i} - Line 3: {chunk_lines[2][:50]}...")
                     elif len(chunk_lines) > 0:
@@ -584,6 +604,7 @@ class VectorStoreGenerator:
                     logger.error(f"Failed to save chunk {i} to file: {e}")
                     # Continue processing even if chunk save fails
             
+            # Update chunks count
             self.config.processing_stats['chunks'] += len(chunks)
             
             # Create document metadata
@@ -645,7 +666,8 @@ class VectorStoreGenerator:
             logger.error(traceback.format_exc())
             self.config.processing_stats['failed'] += 1
             return False
-            
+                
+
     def _save_vector_store(self):
         """Save vector store to disk"""
         try:
@@ -748,7 +770,7 @@ class VectorStoreGenerator:
             f"in {final_info['elapsed_time']}"
         )
         self._log_stats()
-        
+
     def get_statistics(self) -> Dict:
         """Get indexing statistics"""
         vector_files = list(self.vector_db_path.glob("*.faiss"))
@@ -757,6 +779,12 @@ class VectorStoreGenerator:
         # Count files in directories
         plain_files_count = len(list(self.plain_text_path.glob("*.txt")))
         chunk_dirs_count = len([d for d in self.chunk_path.iterdir() if d.is_dir()])
+        
+        # Ensure processing_stats has required keys
+        if 'plain_documents' not in self.config.processing_stats:
+            self.config.processing_stats['plain_documents'] = 0
+        if 'chunks' not in self.config.processing_stats:
+            self.config.processing_stats['chunks'] = 0
         
         stats = {
             'total_processed': len(self.config.processed_files),
@@ -793,7 +821,7 @@ class VectorStoreGenerator:
         stats['total_chunks'] = total_chunks
         
         return stats
-    
+
     def _log_stats(self):
         """Log current processing statistics"""
         logger.info(f"Processing stats - Success: {self.config.processing_stats['success']}, "
@@ -1144,7 +1172,7 @@ class VectorStoreApp:
         except Exception as e:
             console.print(f"[red]Error clearing vector store: {str(e)}[/red]")
             logger.error(f"Error clearing vector store: {e}")
-            
+
     def run(self):
         """Run the CLI application."""
         while True:

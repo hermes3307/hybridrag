@@ -4,4 +4,7 @@ batch/
 vector/ 
 venv/
 .venv/
+vector_config.json
+vector_generator.log
+logs/
 __pycache__/
