@@ -4,3 +4,4 @@ batch/
 vector/ 
 venv/
 .venv/
+__pycache__/
