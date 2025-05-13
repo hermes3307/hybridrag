@@ -4,3 +4,61 @@
 2025-05-13 13:20:13,568 - INFO - Initializing new vector store
 2025-05-13 13:20:13,569 - WARNING - English model not found. Run: python -m spacy download en_core_web_sm
 2025-05-13 13:20:13,569 - WARNING - Korean model not found. Run: python -m spacy download ko_core_news_sm
+2025-05-13 13:23:19,902 - WARNING - Configuration file vector_config.json not found
+2025-05-13 13:23:21,457 - INFO - Use pytorch device_name: cpu
+2025-05-13 13:23:21,457 - INFO - Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-05-13 13:23:23,924 - INFO - Initializing new vector store
+2025-05-13 13:23:23,924 - WARNING - English model not found. Run: python -m spacy download en_core_web_sm
+2025-05-13 13:23:23,925 - WARNING - Korean model not found. Run: python -m spacy download ko_core_news_sm
+2025-05-13 13:25:53,591 - INFO - Configuration saved to vector_config.json
+2025-05-13 13:25:55,062 - INFO - Use pytorch device_name: cpu
+2025-05-13 13:25:55,062 - INFO - Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-05-13 13:25:57,075 - INFO - Initializing new vector store
+2025-05-13 13:25:57,075 - WARNING - English model not found. Run: python -m spacy download en_core_web_sm
+2025-05-13 13:25:57,076 - WARNING - Korean model not found. Run: python -m spacy download ko_core_news_sm
+2025-05-13 13:27:20,565 - INFO - Found 3 files to process in e:\docs2
+2025-05-13 13:27:20,584 - INFO - Processing: (기사) 순수 국산 기술로 빛나는 DBMS 기업, 알티베이스의 도전과 저작권 침해 시련 250502.docx (0.023 MB)
+2025-05-13 13:27:20,611 - INFO - Detected language for (기사) 순수 국산 기술로 빛나는 DBMS 기업, 알티베이스의 도전과 저작권 침해 시련 250502.docx: ko
+2025-05-13 13:27:20,612 - INFO - Saved plain text to C:\Users\A\Documents\cursor\hybridrag\plain\(기사) 순수 국산 기술로 빛나는 DBMS 기업, 알티베이스의 도전과 저작권 침해 시련 250502_c1bf8f8c.txt
+2025-05-13 13:27:20,612 - ERROR - Failed to save plain text file: 'plain_documents'
+2025-05-13 13:27:20,613 - INFO - Chunk 0 - First line: <제목> 순수 국산 기술로 빛나는 DBMS 기업, 알티베이스의 도전과 저작권 침해 시련 <...
+2025-05-13 13:27:20,613 - INFO - Chunk 1 - First line: 안정성과 성능을 인정받아 왔습니다. 특히 대규모 데이터 처리와 고가용성이 요구되는 미션 크...
+2025-05-13 13:27:20,614 - INFO - Chunk 2 - First line: 발전시켜온 첨단 국산 DBMS 기술이 중국 기업으로 흘러들어가는 심각한 상황으로 전개되고 ...
+2025-05-13 13:27:20,625 - ERROR - Error processing e:\docs2\(기사) 순수 국산 기술로 빛나는 DBMS 기업, 알티베이스의 도전과 저작권 침해 시련 250502.docx: 'chunks'
+2025-05-13 13:27:20,625 - ERROR - Traceback (most recent call last):
+  File "c:\Users\A\Documents\cursor\hybridrag\genvector.py", line 587, in process_file
+    self.config.processing_stats['chunks'] += len(chunks)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+KeyError: 'chunks'
+
+2025-05-13 13:27:20,638 - INFO - Processing: (국정원) 알티베이스 기술 해외 유출 사건 – 수사 증거 250505.pdf (1.164 MB)
+2025-05-13 13:27:21,379 - INFO - Detected language for (국정원) 알티베이스 기술 해외 유출 사건 – 수사 증거 250505.pdf: ko
+2025-05-13 13:27:21,380 - INFO - Saved plain text to C:\Users\A\Documents\cursor\hybridrag\plain\(국정원) 알티베이스 기술 해외 유출 사건 – 수사 증거 250505_a8a9995b.txt
+2025-05-13 13:27:21,380 - ERROR - Failed to save plain text file: 'plain_documents'
+2025-05-13 13:27:21,384 - INFO - Chunk 0 - First line: 1 / 30 알티베이스 기술 해외 유출 사건 – 수사 증거 - 알티베이스 기술이 파트너사와...
+2025-05-13 13:27:21,385 - INFO - Chunk 1 - First line: 않은 채 알티베이스의 소스 코드와 기술 정보를 획득했다 . 이 사건의 핵심 경과는 다음과 ...
+2025-05-13 13:27:21,385 - INFO - Chunk 2 - First line: 견적서를 작성  이찬중의 노트북에서 알티베이스 고객인 다나와를 위한 VADO 견적서 (2...
+2025-05-13 13:27:21,402 - ERROR - Error processing e:\docs2\(국정원) 알티베이스 기술 해외 유출 사건 – 수사 증거 250505.pdf: 'chunks'
+2025-05-13 13:27:21,402 - ERROR - Traceback (most recent call last):
+  File "c:\Users\A\Documents\cursor\hybridrag\genvector.py", line 587, in process_file
+    self.config.processing_stats['chunks'] += len(chunks)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+KeyError: 'chunks'
+
+2025-05-13 13:27:21,539 - INFO - Processing: (국정원) 알티베이스 기술 해외 유출 사건 – 수사 증거 250505.docx (5.015 MB)
+2025-05-13 13:27:21,619 - INFO - Detected language for (국정원) 알티베이스 기술 해외 유출 사건 – 수사 증거 250505.docx: ko
+2025-05-13 13:27:21,632 - INFO - Saved plain text to C:\Users\A\Documents\cursor\hybridrag\plain\(국정원) 알티베이스 기술 해외 유출 사건 – 수사 증거 250505_2358c6b2.txt
+2025-05-13 13:27:21,632 - ERROR - Failed to save plain text file: 'plain_documents'
+2025-05-13 13:27:21,636 - INFO - Chunk 0 - First line: 알티베이스 기술 해외 유출 사건 – 수사 증거 - 알티베이스 기술이 파트너사와 전직 직원을...
+2025-05-13 13:27:21,636 - INFO - Chunk 1 - First line: 기술 정보를 획득했다. 이 사건의 핵심 경과는 다음과 같다: 큐큐빅이 긴급한 고객 프레젠테...
+2025-05-13 13:27:21,636 - INFO - Chunk 2 - First line: 지식 보유 2024년 10월 퇴사 직후, 이찬중은 시스피어를 설립(그의 어머니 임정옥이 대...
+2025-05-13 13:27:21,642 - ERROR - Error processing e:\docs2\(국정원) 알티베이스 기술 해외 유출 사건 – 수사 증거 250505.docx: 'chunks'
+2025-05-13 13:27:21,642 - ERROR - Traceback (most recent call last):
+  File "c:\Users\A\Documents\cursor\hybridrag\genvector.py", line 587, in process_file
+    self.config.processing_stats['chunks'] += len(chunks)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+KeyError: 'chunks'
+
+2025-05-13 13:27:21,642 - INFO - Progress: 3/3 files (100.0%) | Success: 0, Failed: 3, Skipped: 0
+2025-05-13 13:27:21,643 - INFO - Indexing completed: 3/3 files in 1.1s
+2025-05-13 13:27:21,643 - INFO - Processing stats - Success: 0, Failed: 3, Skipped: 0
