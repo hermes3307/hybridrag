@@ -17,6 +17,11 @@ langchain-huggingface>=0.0.5
 openai>=1.0.0
 langchain-community>=0.0.10
 
+# Vector Database
+faiss-cpu>=1.7.4
+# Uncomment the line below if you have CUDA-compatible GPU
+# faiss-gpu>=1.7.4
+
 # Anthropic API
 anthropic>=0.2.0
 
