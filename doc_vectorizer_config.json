@@ -1,0 +1,21 @@
+{
+    "source_file": "C:\\Users\\A\\Documents\\cursor\\hybridrag\\sample.pdf",
+    "vector_db_path": "e:\\docs\\vector",
+    "plain_text_path": "e:\\docs",
+    "chunk_path": "e:\\docs\\chunk",
+    "chunk_size": 1000,
+    "chunk_overlap": 200,
+    "languages": [
+        "en",
+        "ko"
+    ],
+    "embedding_model": "all-mpnet-base-v2",
+    "current_file_info": {
+        "hash": null,
+        "language": "en",
+        "processed_date": null,
+        "chunks": 0,
+        "plain_text_path": null,
+        "chunks_directory": null
+    }
+}
