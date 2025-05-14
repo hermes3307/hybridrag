@@ -3,9 +3,25 @@ python-docx>=1.0.0
 PyPDF2>=3.0.0
 chardet>=5.0.0
 
+# Document Processing
+python-pptx>=0.6.21
+openpyxl>=3.1.2
+docx2txt>=0.8
+pdfminer.six>=20200720
+
+# OCR and Image Processing
+pytesseract>=0.3.10
+pdf2image>=1.16.3
+# Note: Tesseract OCR engine must be installed separately on your system
+# Windows: https://github.com/UB-Mannheim/tesseract/wiki
+# Linux: sudo apt-get install tesseract-ocr
+# macOS: brew install tesseract
+
 # NLP libraries
 spacy>=3.7.0
-# After installing, run: python -m spacy download en_core_web_sm
+# Required spaCy models (run after installing spacy):
+# python -m spacy download en_core_web_sm  # English model
+# python -m spacy download ko_core_news_sm  # Korean model
 
 # Neo4j connection
 neo4j>=5.0.0
@@ -30,10 +46,6 @@ anthropic>=0.2.0
 
 # Terminal UI
 rich>=13.0.0
-
-# Document processing alternatives to textract
-docx2txt>=0.8
-pdfminer.six>=20200720
 
 # Optional: If you want to use textract (has dependency issues)
 # textract>=1.6.3
