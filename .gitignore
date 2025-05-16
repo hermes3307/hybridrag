@@ -20,4 +20,5 @@ case_study_output.txt
 vector_db/
 *.log
 *.json
+altibase_rag/
 
