@@ -4,95 +4,59 @@ import json
 import sys
 import time
 from typing import List, Dict, Any, Optional, Tuple
-
-# LLM 라이브러리 임포트
-from llama_cpp import Llama
-from transformers import AutoTokenizer, AutoModelForCausalLM
-import torch
+import anthropic
+import requests
 
 # VectorQuery 클래스 임포트
 from vectorquery import VectorQuery
 
 class CaseStudyLLM:
-    def __init__(self, model_type: str = "llama", model_path: Optional[str] = None):
+    def __init__(self, model_type: str = "claude"):
         """
-        로컬 LLM을 사용하여 케이스 스터디 생성을 위한 클래스 초기화
+        Claude API를 사용하여 케이스 스터디 생성을 위한 클래스 초기화
         
         Args:
-            model_type (str): 사용할 모델 유형 ("llama" 또는 "gemma")
-            model_path (str, optional): 모델 파일 경로. 지정하지 않으면 기본 경로 사용
+            model_type (str): 사용할 모델 유형 (기본값: "claude")
         """
         self.model_type = model_type.lower()
-        self.model_path = model_path
-        self.model = None
-        self.tokenizer = None
+        self.client = None
         self.vector_query = VectorQuery()
         
-        # 모델 경로가 지정되지 않은 경우 기본 경로 사용
-        if self.model_path is None:
-            if self.model_type == "llama":
-                self.model_path = "models/llama-3-8b-instruct.gguf"  # 기본 Llama 3 경로
-            elif self.model_type == "gemma":
-                self.model_path = "models/gemma-7b-it"  # 기본 Gemma 경로
-        
-        print(f"LLM 모델 유형: {self.model_type}")
-        print(f"모델 경로: {self.model_path}")
+        # 클라우드 서비스 설정
+        if self.model_type == "claude":
+            print(f"LLM 모델 유형: {self.model_type}")
+            
+            # API 키 가져오기
+            self.api_key = os.environ.get("ANTHROPIC_API_KEY")
+            if not self.api_key:
+                raise ValueError("환경 변수 'ANTHROPIC_API_KEY'가 설정되어 있지 않습니다.")
+        else:
+            raise ValueError(f"지원되지 않는 모델 유형: {self.model_type}")
     
     def load_model(self):
-        """모델 로드"""
+        """모델 로드 (API 클라이언트 설정)"""
         try:
-            if self.model_type == "llama":
-                print("Llama 모델 로드 중...")
+            if self.model_type == "claude":
+                print("Claude API 클라이언트 설정 중...")
+                self.client = anthropic.Anthropic(api_key=self.api_key)
+                print("Claude API 클라이언트 설정 완료!")
                 
-                # 모델 경로가 디렉토리인 경우, 디렉토리 내 .gguf 파일 찾기
-                if os.path.isdir(self.model_path):
-                    gguf_files = [f for f in os.listdir(self.model_path) if f.endswith('.gguf')]
-                    if not gguf_files:
-                        raise ValueError(f"지정된 디렉토리 '{self.model_path}'에서 .gguf 파일을 찾을 수 없습니다.")
-                    
-                    # 첫 번째 .gguf 파일 사용
-                    model_file = os.path.join(self.model_path, gguf_files[0])
-                    print(f"발견된 모델 파일: {model_file}")
-                else:
-                    model_file = self.model_path
-                
-                self.model = Llama(
-                    model_path=model_file,
-                    n_ctx=4096,  # 컨텍스트 크기
-                    n_gpu_layers=-1,  # GPU 사용 최대화
-                    verbose=False
-                )
-                print("Llama 모델 로드 완료!")
-                
-            elif self.model_type == "gemma":
-                print("Gemma 모델 로드 중...")
-                
-                # 모델 경로가 디렉토리인지 확인
-                if os.path.isdir(self.model_path):
-                    model_dir = self.model_path
-                else:
-                    # 상위 디렉토리가 존재하는지 확인
-                    model_dir = self.model_path
-                
-                # Gemma 모델 및 토크나이저 로드
+                # 사용 가능한 모델 목록 가져오기
                 try:
-                    self.tokenizer = AutoTokenizer.from_pretrained(model_dir)
-                    self.model = AutoModelForCausalLM.from_pretrained(
-                        model_dir,
-                        device_map="auto",
-                        torch_dtype=torch.float16
-                    )
-                    print("Gemma 모델 로드 완료!")
+                    print("사용 가능한 Claude 모델:")
+                    # 최신 Claude 모델 목록
+                    models = ["claude-3-5-sonnet-20240620", "claude-3-opus-20240229", "claude-3-sonnet-20240229", "claude-3-haiku-20240307"]
+                    for i, model in enumerate(models, 1):
+                        print(f"{i}. {model}")
                 except Exception as e:
-                    raise ValueError(f"Gemma 모델 로드 실패: {str(e)}")
+                    print(f"모델 목록 가져오기 실패: {str(e)}")
                 
+                return True
             else:
                 raise ValueError(f"지원되지 않는 모델 유형: {self.model_type}")
             
-            return True
-            
         except Exception as e:
-            print(f"모델 로드 중 오류 발생: {str(e)}")
+            print(f"API 클라이언트 설정 중 오류 발생: {str(e)}")
             return False
     
     def load_vector_db(self, vector_db_dir: str = "vector_db"):
@@ -195,114 +159,94 @@ class CaseStudyLLM:
     
     def generate_prompt(self, 
                         user_case: Dict[str, str], 
-                        similar_cases: List[Dict[str, Any]]) -> str:
+                        similar_cases: List[Dict[str, Any]], 
+                        max_similar_cases: int = 3,
+                        model_id: str = "claude-3-5-sonnet-20240620") -> str:
         """
-        LLM에 전달할 프롬프트 생성
+        Claude API에 전달할 프롬프트 생성
         
         Args:
             user_case: 사용자가 입력한 케이스 스터디
             similar_cases: 유사한 케이스 스터디 목록
+            max_similar_cases: 포함할 최대 유사 케이스 수
+            model_id: 사용할 Claude 모델 ID
             
         Returns:
             str: 생성된 프롬프트
         """
-        # 프롬프트 템플릿
-        if self.model_type == "llama":
-            prompt = "<|system|>\n"
-            prompt += "당신은 비즈니스 케이스 스터디 작성 전문가입니다. 고객이 제공한 정보와 유사한 케이스 스터디를 참고하여 완성도 높은 케이스 스터디를 작성해주세요.\n"
-            prompt += "제공된 정보를 기반으로 비즈니스 문제와 솔루션을 명확하게 설명하고, 결과를 구체적으로 서술해야 합니다.\n"
-            prompt += "제공된 유사 케이스 스터디의 형식과 깊이를 참고하되, 내용을 그대로 복사하지 말고 새로운 케이스 스터디를 작성하세요.\n"
-            prompt += "</|system|>\n\n"
-            
-            prompt += "<|user|>\n"
-            
-        elif self.model_type == "gemma":
-            prompt = "<start_of_turn>system\n"
-            prompt += "당신은 비즈니스 케이스 스터디 작성 전문가입니다. 고객이 제공한 정보와 유사한 케이스 스터디를 참고하여 완성도 높은 케이스 스터디를 작성해주세요.\n"
-            prompt += "제공된 정보를 기반으로 비즈니스 문제와 솔루션을 명확하게 설명하고, 결과를 구체적으로 서술해야 합니다.\n"
-            prompt += "제공된 유사 케이스 스터디의 형식과 깊이를 참고하되, 내용을 그대로 복사하지 말고 새로운 케이스 스터디를 작성하세요.\n"
-            prompt += "<end_of_turn>\n\n"
-            
-            prompt += "<start_of_turn>user\n"
+        # 시스템 프롬프트
+        system_prompt = """당신은 비즈니스 케이스 스터디 작성 전문가입니다. 고객이 제공한 정보와 유사한 케이스 스터디를 참고하여 완성도 높은 케이스 스터디를 작성해주세요.
+제공된 정보를 기반으로 비즈니스 문제와 솔루션을 명확하게 설명하고, 결과를 구체적으로 서술해야 합니다.
+제공된 유사 케이스 스터디의 형식과 깊이를 참고하되, 내용을 그대로 복사하지 말고 새로운 케이스 스터디를 작성하세요."""
         
-        # 사용자 입력 케이스 스터디
-        prompt += "다음은 내가 작성 중인 케이스 스터디입니다:\n\n"
-        prompt += f"제목: {user_case.get('title', '')}\n\n"
-        prompt += f"Who: {user_case.get('who', '')}\n\n"
-        prompt += f"Problem: {user_case.get('problem', '')}\n\n"
-        prompt += f"Solution: {user_case.get('solution', '')}\n\n"
-        prompt += f"Results: {user_case.get('results', '')}\n\n"
+        # 사용자 프롬프트
+        user_prompt = "다음은 내가 작성 중인 케이스 스터디입니다:\n\n"
+        user_prompt += f"제목: {user_case.get('title', '')}\n\n"
+        user_prompt += f"Who: {user_case.get('who', '')}\n\n"
+        user_prompt += f"Problem: {user_case.get('problem', '')}\n\n"
+        user_prompt += f"Solution: {user_case.get('solution', '')}\n\n"
+        user_prompt += f"Results: {user_case.get('results', '')}\n\n"
+        
+        # 제한된 수의 유사 케이스만 포함
+        limited_cases = similar_cases[:max_similar_cases]
         
         # 유사 케이스 스터디
-        prompt += "다음은 참고할 수 있는 유사한 케이스 스터디들입니다:\n\n"
-        
-        for i, case in enumerate(similar_cases, 1):
-            case_study = case['case_study']
-            score = case['score'] * 100  # 백분율로 변환
+        if limited_cases:
+            user_prompt += f"다음은 참고할 수 있는 유사한 케이스 스터디들입니다 (상위 {len(limited_cases)}개):\n\n"
             
-            prompt += f"유사 케이스 {i} (유사도: {score:.1f}%):\n"
-            prompt += f"제목: {case_study.get('title', '')}\n"
-            prompt += f"Who: {case_study.get('who', '')}\n"
-            prompt += f"Problem: {case_study.get('problem', '')}\n"
-            prompt += f"Solution: {case_study.get('solution', '')}\n"
-            prompt += f"Results: {case_study.get('results', '')}\n\n"
+            for i, case in enumerate(limited_cases, 1):
+                case_study = case['case_study']
+                score = case['score'] * 100  # 백분율로 변환
+                
+                user_prompt += f"유사 케이스 {i} (유사도: {score:.1f}%):\n"
+                user_prompt += f"제목: {case_study.get('title', '')}\n"
+                user_prompt += f"Who: {case_study.get('who', '')}\n"
+                user_prompt += f"Problem: {case_study.get('problem', '')}\n"
+                user_prompt += f"Solution: {case_study.get('solution', '')}\n"
+                user_prompt += f"Results: {case_study.get('results', '')}\n\n"
         
-        prompt += "위의 내용을 참고하여 내 케이스 스터디를 개선하고 완성해주세요. 제목, Who, Problem, Solution, Results 섹션으로 구분하여 작성해주세요.\n"
+        user_prompt += "위의 내용을 참고하여 내 케이스 스터디를 개선하고 완성해주세요. 제목, Who, Problem, Solution, Results 섹션으로 구분하여 작성해주세요."
         
-        if self.model_type == "llama":
-            prompt += "</|user|>\n\n<|assistant|>\n"
-        elif self.model_type == "gemma":
-            prompt += "<end_of_turn>\n\n<start_of_turn>model\n"
+        # 최종 프롬프트 정보 (디버깅 및 표시용)
+        prompt_info = {
+            "system_prompt": system_prompt,
+            "user_prompt": user_prompt,
+            "model": model_id
+        }
         
-        return prompt
+        return prompt_info
     
-    def generate_response(self, prompt: str, max_tokens: int = 2048) -> str:
+    def generate_response(self, prompt_info: Dict[str, str], max_tokens: int = 4000) -> str:
         """
-        LLM으로 응답 생성
+        Claude API로 응답 생성
         
         Args:
-            prompt: 입력 프롬프트
+            prompt_info: 프롬프트 정보 (시스템 프롬프트, 사용자 프롬프트, 모델 ID)
             max_tokens: 생성할 최대 토큰 수
             
         Returns:
             str: 생성된 응답
         """
         try:
-            if self.model_type == "llama":
-                print("Llama 모델로 응답 생성 중...")
-                response = self.model(
-                    prompt,
-                    max_tokens=max_tokens,
-                    temperature=0.7,
-                    top_p=0.9,
-                    repeat_penalty=1.1
-                )
-                
-                # 응답 텍스트 추출
-                result = response["choices"][0]["text"]
-                
-            elif self.model_type == "gemma":
-                print("Gemma 모델로 응답 생성 중...")
-                inputs = self.tokenizer(prompt, return_tensors="pt").to(self.model.device)
-                
-                # 모델 생성
-                with torch.no_grad():
-                    outputs = self.model.generate(
-                        **inputs,
-                        max_new_tokens=max_tokens,
-                        temperature=0.7,
-                        top_p=0.9,
-                        repetition_penalty=1.1,
-                        do_sample=True
-                    )
-                
-                # 응답 텍스트 추출
-                result = self.tokenizer.decode(outputs[0][inputs.input_ids.shape[1]:], skip_special_tokens=True)
-                
-                # Gemma 응답에서 필요한 부분만 추출
-                end_marker = "<end_of_turn>"
-                if end_marker in result:
-                    result = result.split(end_marker)[0].strip()
+            system_prompt = prompt_info["system_prompt"]
+            user_prompt = prompt_info["user_prompt"]
+            model = prompt_info.get("model", "claude-3-5-sonnet-20240620")
+            
+            print(f"Claude API ({model})로 응답 생성 중...")
+            
+            # Claude API 호출
+            message = self.client.messages.create(
+                model=model,
+                max_tokens=max_tokens,
+                temperature=0.7,
+                system=system_prompt,
+                messages=[
+                    {"role": "user", "content": user_prompt}
+                ]
+            )
+            
+            # 응답 추출
+            result = message.content[0].text
             
             return result
             
@@ -428,119 +372,74 @@ def get_text_input() -> Dict[str, str]:
     text = "\n".join(lines)
     return parse_case_study_text(text)
 
-def list_model_files(model_dir):
-    """
-    지정된 디렉토리에서 모델 파일 목록 표시
-    
-    Args:
-        model_dir: 모델 디렉토리 경로
-    """
-    if not os.path.isdir(model_dir):
-        print(f"경고: '{model_dir}'는 디렉토리가 아닙니다.")
-        return
-    
-    print(f"\n'{model_dir}' 디렉토리의 모델 파일:")
-    print("-" * 60)
-    
-    # Llama 모델 파일 (.gguf)
-    llama_files = [f for f in os.listdir(model_dir) if f.endswith('.gguf')]
-    if llama_files:
-        print("Llama 모델 파일 (.gguf):")
-        for i, file in enumerate(llama_files, 1):
-            file_path = os.path.join(model_dir, file)
-            file_size = os.path.getsize(file_path) / (1024 * 1024 * 1024)  # GB 단위
-            print(f"  {i}. {file} ({file_size:.2f} GB)")
-    
-    # Gemma 모델 디렉토리
-    gemma_dirs = [d for d in os.listdir(model_dir) 
-                 if os.path.isdir(os.path.join(model_dir, d)) and 
-                 (d.startswith('gemma') or 
-                  any(os.path.exists(os.path.join(model_dir, d, f)) for f in ['config.json', 'tokenizer.json']))]
-    
-    if gemma_dirs:
-        print("\nGemma 모델 디렉토리:")
-        for i, dir_name in enumerate(gemma_dirs, 1):
-            print(f"  {i}. {dir_name}")
-    
-    if not llama_files and not gemma_dirs:
-        print("  발견된 모델 파일 없음")
-    
-    print("-" * 60)
+def check_api_key():
+    """API 키 확인"""
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        print("\n오류: 환경 변수 'ANTHROPIC_API_KEY'가 설정되어 있지 않습니다.")
+        print("다음과 같이 설정할 수 있습니다:")
+        if sys.platform.startswith('win'):
+            print("  명령 프롬프트에서: set ANTHROPIC_API_KEY=your_api_key")
+            print("  PowerShell에서: $env:ANTHROPIC_API_KEY = 'your_api_key'")
+        else:
+            print("  Bash에서: export ANTHROPIC_API_KEY=your_api_key")
+        
+        # API 키 직접 입력 옵션
+        use_input = input("\nAPI 키를 직접 입력하시겠습니까? (y/n, 기본값: y): ").lower() or "y"
+        if use_input == "y":
+            api_key = input("Anthropic API 키를 입력하세요: ").strip()
+            if api_key:
+                os.environ["ANTHROPIC_API_KEY"] = api_key
+                print("API 키가 설정되었습니다. (이 세션에서만 유효)")
+                return True
+        
+        return False
+    return True
 
 def interactive_mode():
     """대화형 모드 실행"""
     print("\n" + "=" * 80)
-    print("🤖 케이스 스터디 생성 시스템 - 대화형 모드")
+    print("🤖 케이스 스터디 생성 시스템 - 대화형 모드 (Claude API)")
     print("=" * 80)
     
-    # 모델 선택
-    print("\n사용할 LLM 모델을 선택하세요:")
-    print("1. Llama 3")
-    print("2. Gemma")
-    
-    model_choice = input("\n모델 번호를 입력하세요 (기본값: 1): ") or "1"
-    model_type = "llama" if model_choice == "1" else "gemma"
-    
-    # 모델 경로 입력
-    model_path = input(f"\n{model_type.capitalize()} 모델 경로를 입력하세요 (기본값 사용: 엔터): ")
-    if not model_path:
-        model_path = None
-    elif os.path.isdir(model_path):
-        # 디렉토리 내 모델 파일 목록 표시
-        list_model_files(model_path)
-        
-        if model_type == "llama":
-            # Llama 모델 파일 선택
-            llama_files = [f for f in os.listdir(model_path) if f.endswith('.gguf')]
-            if llama_files:
-                print("\nLlama 모델 파일을 선택하세요:")
-                for i, file in enumerate(llama_files, 1):
-                    print(f"{i}. {file}")
-                
-                file_choice = input("\n파일 번호를 입력하세요 (기본값: 1): ") or "1"
-                try:
-                    file_idx = int(file_choice) - 1
-                    if 0 <= file_idx < len(llama_files):
-                        model_path = os.path.join(model_path, llama_files[file_idx])
-                        print(f"선택된 모델 파일: {model_path}")
-                    else:
-                        print("유효하지 않은 선택입니다. 첫 번째 파일을 사용합니다.")
-                        model_path = os.path.join(model_path, llama_files[0])
-                except ValueError:
-                    print("유효하지 않은 입력입니다. 첫 번째 파일을 사용합니다.")
-                    model_path = os.path.join(model_path, llama_files[0])
-        elif model_type == "gemma":
-            # Gemma 모델 디렉토리 선택
-            gemma_dirs = [d for d in os.listdir(model_path) 
-                         if os.path.isdir(os.path.join(model_path, d)) and 
-                         (d.startswith('gemma') or 
-                          any(os.path.exists(os.path.join(model_path, d, f)) for f in ['config.json', 'tokenizer.json']))]
-            
-            if gemma_dirs:
-                print("\nGemma 모델 디렉토리를 선택하세요:")
-                for i, dir_name in enumerate(gemma_dirs, 1):
-                    print(f"{i}. {dir_name}")
-                
-                dir_choice = input("\n디렉토리 번호를 입력하세요 (기본값: 1): ") or "1"
-                try:
-                    dir_idx = int(dir_choice) - 1
-                    if 0 <= dir_idx < len(gemma_dirs):
-                        model_path = os.path.join(model_path, gemma_dirs[dir_idx])
-                        print(f"선택된 모델 디렉토리: {model_path}")
-                    else:
-                        print("유효하지 않은 선택입니다. 첫 번째 디렉토리를 사용합니다.")
-                        model_path = os.path.join(model_path, gemma_dirs[0])
-                except ValueError:
-                    print("유효하지 않은 입력입니다. 첫 번째 디렉토리를 사용합니다.")
-                    model_path = os.path.join(model_path, gemma_dirs[0])
+    # API 키 확인
+    if not check_api_key():
+        print("API 키가 설정되지 않았습니다. 프로그램을 종료합니다.")
+        return
     
     # LLM 객체 생성
-    llm = CaseStudyLLM(model_type, model_path)
+    llm = CaseStudyLLM(model_type="claude")
     
     # 모델 로드
     if not llm.load_model():
-        print("모델 로드 실패. 프로그램을 종료합니다.")
+        print("API 클라이언트 설정 실패. 프로그램을 종료합니다.")
         return
+    
+    # Claude 모델 선택
+    print("\nClaude 모델을 선택하세요:")
+    models = [
+        "claude-3-5-sonnet-20240620",
+        "claude-3-opus-20240229",
+        "claude-3-sonnet-20240229",
+        "claude-3-haiku-20240307"
+    ]
+    
+    for i, model in enumerate(models, 1):
+        print(f"{i}. {model}")
+    
+    model_choice = input("\n모델 번호를 입력하세요 (기본값: 1): ") or "1"
+    try:
+        model_idx = int(model_choice) - 1
+        if 0 <= model_idx < len(models):
+            selected_model = models[model_idx]
+        else:
+            print("유효하지 않은 선택입니다. 첫 번째 모델을 사용합니다.")
+            selected_model = models[0]
+    except ValueError:
+        print("유효하지 않은 입력입니다. 첫 번째 모델을 사용합니다.")
+        selected_model = models[0]
+    
+    print(f"\n선택된 모델: {selected_model}")
     
     # 벡터 데이터베이스 로드
     vector_db_dir = input("\n벡터 데이터베이스 경로를 입력하세요 (기본값: vector_db): ") or "vector_db"
@@ -602,40 +501,88 @@ def interactive_mode():
         print(f"   산업: {case_study.get('industry', '기타')}")
         print(f"   매칭 섹션: {', '.join(matched_sections)}")
     
+    # 프롬프트에 포함할 유사 케이스 수 설정
+    try:
+        max_similar_cases = int(input(f"\n프롬프트에 포함할 유사 케이스 수를 입력하세요 (기본값: 3, 최대: {len(similar_cases)}): ") or "3")
+        max_similar_cases = min(max_similar_cases, len(similar_cases))
+    except ValueError:
+        max_similar_cases = min(3, len(similar_cases))
+    
     # 프롬프트 생성
-    prompt = llm.generate_prompt(user_case, similar_cases)
+    prompt_info = llm.generate_prompt(
+        user_case, 
+        similar_cases, 
+        max_similar_cases=max_similar_cases,
+        model_id=selected_model
+    )
     
     # 프롬프트 출력 및 편집
     while True:
         print("\n" + "=" * 80)
-        print("생성된 프롬프트 (LLM에 전달됨):")
+        print("생성된 프롬프트 (Claude API에 전달됨):")
         print("=" * 80)
-        print(prompt)
+        print("시스템 프롬프트:")
+        print(prompt_info["system_prompt"])
+        print("\n사용자 프롬프트:")
+        print(prompt_info["user_prompt"])
         
         edit_choice = input("\n프롬프트를 수정하시겠습니까? (y/n, 기본값: n): ").lower() or "n"
         
         if edit_choice == "y":
-            print("\n프롬프트를 수정하세요. 입력을 마치면 빈 줄에서 Ctrl+D (Unix) 또는 Ctrl+Z (Windows)를 누르세요.")
+            print("\n어떤 부분을 수정하시겠습니까?")
+            print("1. 시스템 프롬프트")
+            print("2. 사용자 프롬프트")
+            edit_part = input("번호를 입력하세요 (기본값: 2): ") or "2"
             
-            # 여러 줄 입력 받기
-            lines = []
-            try:
-                while True:
-                    line = input()
-                    lines.append(line)
-            except EOFError:
-                # 입력 종료
-                pass
-            
-            prompt = "\n".join(lines)
+            if edit_part == "1":
+                print("\n시스템 프롬프트를 수정하세요. 입력을 마치면 빈 줄에서 Ctrl+D (Unix) 또는 Ctrl+Z (Windows)를 누르세요.")
+                lines = []
+                try:
+                    while True:
+                        line = input()
+                        lines.append(line)
+                except EOFError:
+                    pass
+                prompt_info["system_prompt"] = "\n".join(lines)
+            else:
+                print("\n사용자 프롬프트를 수정하세요. 입력을 마치면 빈 줄에서 Ctrl+D (Unix) 또는 Ctrl+Z (Windows)를 누르세요.")
+                lines = []
+                try:
+                    while True:
+                        line = input()
+                        lines.append(line)
+                except EOFError:
+                    pass
+                prompt_info["user_prompt"] = "\n".join(lines)
         else:
             break
     
-    # LLM으로 응답 생성
-    print("\nLLM으로 응답 생성 중... (시간이 다소 걸릴 수 있습니다)")
+    # 최종 프롬프트 확인
+    print("\n" + "=" * 80)
+    print("최종 프롬프트:")
+    print("=" * 80)
+    print("시스템 프롬프트:")
+    print(prompt_info["system_prompt"])
+    print("\n사용자 프롬프트:")
+    print(prompt_info["user_prompt"])
+    
+    # 실행 확인
+    run_choice = input("\n이 프롬프트로 Claude API를 호출하시겠습니까? (y/n, 기본값: y): ").lower() or "y"
+    if run_choice != "y":
+        print("프로그램을 종료합니다.")
+        return
+    
+    # 응답 생성 토큰 설정
+    try:
+        max_tokens = int(input("\n생성할 최대 토큰 수를 입력하세요 (기본값: 4000): ") or "4000")
+    except ValueError:
+        max_tokens = 4000
+    
+    # Claude API로 응답 생성
+    print("\nClaude API로 응답 생성 중... (시간이 다소 걸릴 수 있습니다)")
     
     start_time = time.time()
-    response = llm.generate_response(prompt)
+    response = llm.generate_response(prompt_info, max_tokens=max_tokens)
     end_time = time.time()
     
     # 응답 출력
@@ -657,16 +604,26 @@ def interactive_mode():
 
 def main():
     """메인 함수"""
-    parser = argparse.ArgumentParser(description='로컬 LLM을 사용한 케이스 스터디 생성')
-    parser.add_argument('--model', type=str, choices=['llama', 'gemma'], default='llama', help='사용할 모델 유형 (llama 또는 gemma)')
-    parser.add_argument('--model-path', type=str, help='모델 파일 경로')
-    parser.add_argument('--list-models', '-l', action='store_true', help='지정된 디렉토리에서 사용 가능한 모델 목록 표시')
+    parser = argparse.ArgumentParser(description='Claude API를 사용한 케이스 스터디 생성')
+    parser.add_argument('--check-key', action='store_true', help='Anthropic API 키 확인')
+    parser.add_argument('--set-key', type=str, help='Anthropic API 키 설정')
     
     args = parser.parse_args()
     
-    # 모델 목록 표시 모드
-    if args.list_models and args.model_path:
-        list_model_files(args.model_path)
+    # API 키 설정
+    if args.set_key:
+        os.environ["ANTHROPIC_API_KEY"] = args.set_key
+        print(f"Anthropic API 키가 설정되었습니다.")
+        return
+    
+    # API 키 확인 모드
+    if args.check_key:
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        if api_key:
+            masked_key = api_key[:4] + "*" * (len(api_key) - 8) + api_key[-4:]
+            print(f"Anthropic API 키가 설정되어 있습니다: {masked_key}")
+        else:
+            print("Anthropic API 키가 설정되어 있지 않습니다.")
         return
     
     # 대화형 모드 실행
