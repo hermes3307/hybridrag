@@ -15,4 +15,7 @@ vector/
 plane_single/
 chunk_single/
 vector_single/
+case_studies/
+case_study_output.txt
+vector_db/
 
