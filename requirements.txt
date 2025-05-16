@@ -62,3 +62,17 @@ pyyaml>=6.0.0
 
 # Google API
 google>=3.0.0
+
+# Web Scraping and Parsing
+beautifulsoup4>=4.0.0
+
+# Math and Array Processing
+numpy>=1.24.0
+
+# Hugging Face Model Support
+bitsandbytes>=0.41.0
+sentencepiece>=0.1.99
+accelerate>=0.21.0
+
+# Sentence Transformers (Korean S-RoBERTa, etc.)
+sentence-transformers>=2.2.2
