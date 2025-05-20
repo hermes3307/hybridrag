@@ -329,7 +329,6 @@ def format_search_results(results, highlight_query=None):
     
     return output
 
-
 def interactive_search():
     """
     대화형 검색 인터페이스 실행
@@ -375,22 +374,381 @@ def interactive_search():
         print("3. '문제' - Problem 섹션에서만 검색")
         print("4. '솔루션' - Solution 섹션에서만 검색")
         print("5. '결과' - Results 섹션에서만 검색")
-        print("6. '나가기' - 프로그램 종료")
+        print("6. '벡터 데이터 분석' - 벡터 데이터베이스 통계 및 시각화")
         print("7. '벡터데이터 재구축' - 벡터 데이터베이스 재구축")
         print("8. '소스 디렉토리 설정' - 케이스 스터디 소스 디렉토리 설정")
         print("9. '타겟 벡터스토어 설정' - 벡터 데이터베이스 저장 위치 설정")
+        print("10. '나가기' - 프로그램 종료")
         print("현재 설정:")
         print(f"- 소스 디렉토리: {source_dir}")
         print(f"- 벡터스토어 위치: {vector_db_dir}")
         print("=" * 50)
-    
+        
+
+    def analyze_vector_data():
+        if db is None or vectorizer is None:
+            print("벡터 데이터베이스가 로드되지 않았습니다.")
+            print("옵션 7을 사용하여 먼저 데이터베이스를 구축하세요.")
+            return
+        
+        print("\n========== 벡터 데이터베이스 분석 ==========")
+        
+        # 기본 통계 정보 표시
+        total_cases = len(db.case_studies)
+        print(f"총 케이스 스터디 수: {total_cases}")
+        print(f"벡터 차원: {vectorizer.vector_size}")
+        
+        # 섹션별 인덱스 정보
+        print("\n섹션별 벡터 데이터:")
+        for section, index in db.indices.items():
+            vector_count = index.ntotal
+            print(f"- {section}: {vector_count}개 벡터")
+        
+        # 카테고리별 통계
+        industry_counts = {}
+        category_counts = {}
+        for case in db.case_studies:
+            industry = case.get('industry', '미분류')
+            industry_counts[industry] = industry_counts.get(industry, 0) + 1
+            
+            cate = case.get('cate', '미분류')
+            category_counts[cate] = category_counts.get(cate, 0) + 1
+        
+        print("\n산업별 케이스 수:")
+        for industry, count in industry_counts.items():
+            print(f"- {industry}: {count}개 ({count/total_cases*100:.1f}%)")
+        
+        print("\n카테고리별 케이스 수:")
+        for cate, count in category_counts.items():
+            print(f"- 카테고리 {cate}: {count}개 ({count/total_cases*100:.1f}%)")
+        
+        # 상세 분석 옵션 표시
+        print("\n데이터 시각화 옵션:")
+        print("1. 벡터 분포 시각화 (2D)")
+        print("2. 산업별 케이스 분포")
+        print("3. 카테고리별 케이스 분포")
+        print("4. 섹션별 데이터 길이 분석")
+        print("5. 돌아가기")
+        
+        viz_option = input("\n시각화 옵션을 선택하세요 (1-5): ")
+        
+        try:
+            import matplotlib
+            import matplotlib.pyplot as plt
+            import numpy as np
+            
+            # 한글 폰트 설정 시도
+            try:
+                # 윈도우의 경우
+                if os.name == 'nt':
+                    font_options = [
+                        'Malgun Gothic',  # 맑은 고딕
+                        'Gulim',          # 굴림
+                        'Batang',         # 바탕
+                        'Arial Unicode MS'
+                    ]
+                    
+                    for font in font_options:
+                        try:
+                            plt.rcParams['font.family'] = font
+                            test_text = '테스트'
+                            fig, ax = plt.subplots()
+                            ax.text(0.5, 0.5, test_text)
+                            fig.savefig('test_font.png')
+                            plt.close(fig)
+                            print(f"한글 폰트 '{font}' 설정 성공")
+                            break
+                        except Exception:
+                            continue
+                
+                # macOS의 경우
+                elif sys.platform == 'darwin':
+                    plt.rcParams['font.family'] = 'AppleGothic'
+                    print("macOS 한글 폰트 설정")
+                
+                # 리눅스의 경우
+                else:
+                    plt.rcParams['font.family'] = 'NanumGothic'
+                    print("Linux 한글 폰트 설정")
+                    
+            except Exception as e:
+                print(f"한글 폰트 설정 실패: {str(e)}")
+                print("영문으로 시각화를 진행합니다.")
+            
+            # 시각화 옵션 처리
+            if viz_option == '1':  # 벡터 분포 시각화
+                print("\n벡터 분포를 시각화합니다.")
+                
+                # 섹션 선택
+                print("시각화할 섹션을 선택하세요:")
+                sections = list(db.indices.keys())
+                for i, section in enumerate(sections):
+                    print(f"{i+1}. {section}")
+                
+                section_idx = int(input("선택 (번호): ")) - 1
+                if 0 <= section_idx < len(sections):
+                    selected_section = sections[section_idx]
+                    print(f"\n{selected_section} 섹션의 벡터를 시각화합니다.")
+                    
+                    # 원본 텍스트에서 벡터 생성 (FAISS 인덱스 대신)
+                    print("원본 텍스트에서 벡터를 재생성합니다.")
+                    
+                    # 섹션별 텍스트 수집
+                    section_texts = []
+                    for case in db.case_studies:
+                        if selected_section == 'full_text':
+                            # 전체 텍스트는 모든 섹션 결합
+                            text = " ".join([case.get(s, "") for s in ['title', 'who', 'problem', 'solution', 'results']])
+                        else:
+                            text = case.get(selected_section, "")
+                        section_texts.append(text)
+                    
+                    # 벡터 생성
+                    print(f"{len(section_texts)}개 텍스트의 벡터를 생성 중...")
+                    vectors = vectorizer.model.encode(section_texts, show_progress_bar=True)
+                    
+                    # PCA로 차원 축소
+                    from sklearn.decomposition import PCA
+                    pca = PCA(n_components=2)
+                    vectors_2d = pca.fit_transform(vectors)
+                    
+                    explained_variance = pca.explained_variance_ratio_
+                    print(f"PCA 설명된 분산: {explained_variance[0]*100:.1f}%, {explained_variance[1]*100:.1f}%")
+                    
+                    # 그래프 생성
+                    plt.figure(figsize=(12, 10))
+                    
+                    # 산업별 색상 및 마커 정의
+                    industry_colors = {
+                        "통신": ("blue", "o"),      # 원형
+                        "금융": ("green", "s"),     # 사각형
+                        "제조": ("red", "^"),       # 삼각형
+                        "공공": ("purple", "d"),    # 다이아몬드
+                        "서비스": ("orange", "v"),  # 역삼각형
+                        "기타": ("gray", "p")       # 오각형
+                    }
+                    
+                    # 산업별 벡터 그룹화 및 그리기
+                    industry_groups = {}
+                    for i, (x, y) in enumerate(vectors_2d):
+                        if i < len(db.case_studies):
+                            industry = db.case_studies[i].get('industry', '기타')
+                            if industry not in industry_groups:
+                                industry_groups[industry] = []
+                            industry_groups[industry].append((x, y))
+                    
+                    # 산업별 그룹 그리기
+                    for industry, points in industry_groups.items():
+                        if points:
+                            points = np.array(points)
+                            color, marker = industry_colors.get(industry, ("black", "o"))
+                            plt.scatter(
+                                points[:, 0], 
+                                points[:, 1], 
+                                label=f"{industry} ({len(points)}개)",
+                                color=color,
+                                marker=marker,
+                                alpha=0.7,
+                                s=100  # 점 크기
+                            )
+                    
+                    # 영문 제목 사용 (한글 폰트 문제 방지)
+                    section_names_en = {
+                        'title': 'Title',
+                        'who': 'Who',
+                        'problem': 'Problem',
+                        'solution': 'Solution',
+                        'results': 'Results',
+                        'full_text': 'Full Text'
+                    }
+                    
+                    section_en = section_names_en.get(selected_section, selected_section)
+                    plt.title(f"Vector Distribution of {section_en} Section (PCA 2D)")
+                    plt.xlabel(f"Principal Component 1 ({explained_variance[0]*100:.1f}%)")
+                    plt.ylabel(f"Principal Component 2 ({explained_variance[1]*100:.1f}%)")
+                    plt.legend()
+                    plt.grid(True, linestyle='--', alpha=0.7)
+                    
+                    # 저장 및 표시
+                    viz_path = f"vector_visualization_{selected_section}.png"
+                    plt.savefig(viz_path, dpi=300)
+                    plt.close()
+                    
+                    print(f"벡터 시각화 이미지가 '{viz_path}'에 저장되었습니다.")
+                
+            elif viz_option == '2':  # 산업별 케이스 분포
+                print("\n산업별 케이스 분포를 시각화합니다.")
+                
+                # 파이 차트 생성
+                plt.figure(figsize=(10, 8))
+                
+                # 산업별 색상 정의
+                industry_colors = {
+                    "통신": "blue",
+                    "금융": "green",
+                    "제조": "red",
+                    "공공": "purple",
+                    "서비스": "orange",
+                    "기타": "gray"
+                }
+                
+                # 데이터 준비
+                industries = list(industry_counts.keys())
+                counts = [industry_counts[industry] for industry in industries]
+                colors = [industry_colors.get(industry, "black") for industry in industries]
+                
+                # 파이 차트 그리기
+                plt.pie(
+                    counts, 
+                    labels=[f"{ind} ({cnt})" for ind, cnt in zip(industries, counts)],
+                    colors=colors,
+                    autopct='%1.1f%%',
+                    startangle=90,
+                    shadow=True,
+                    explode=[0.05] * len(industries)  # 약간 분리
+                )
+                
+                plt.title("Distribution of Case Studies by Industry")
+                plt.axis('equal')  # 원형 유지
+                
+                # 저장
+                viz_path = "industry_distribution.png"
+                plt.savefig(viz_path, dpi=300)
+                plt.close()
+                
+                print(f"산업별 분포 시각화 이미지가 '{viz_path}'에 저장되었습니다.")
+                
+            elif viz_option == '3':  # 카테고리별 케이스 분포
+                print("\n카테고리별 케이스 분포를 시각화합니다.")
+                
+                # 막대 그래프 생성
+                plt.figure(figsize=(12, 8))
+                
+                # 데이터 준비
+                categories = sorted(category_counts.keys())
+                counts = [category_counts[cat] for cat in categories]
+                
+                # 막대 그래프 그리기
+                bars = plt.bar(
+                    categories, 
+                    counts,
+                    color='skyblue',
+                    edgecolor='navy'
+                )
+                
+                # 수치 표시
+                for bar in bars:
+                    height = bar.get_height()
+                    plt.text(
+                        bar.get_x() + bar.get_width()/2.,
+                        height + 0.5,
+                        f'{int(height)}',
+                        ha='center', 
+                        va='bottom'
+                    )
+                
+                plt.title("Distribution of Case Studies by Category")
+                plt.xlabel("Category")
+                plt.ylabel("Number of Cases")
+                plt.xticks(rotation=45)
+                plt.grid(axis='y', linestyle='--', alpha=0.7)
+                
+                # 저장
+                viz_path = "category_distribution.png"
+                plt.savefig(viz_path, dpi=300)
+                plt.close()
+                
+                print(f"카테고리별 분포 시각화 이미지가 '{viz_path}'에 저장되었습니다.")
+                
+            elif viz_option == '4':  # 섹션별 데이터 길이 분석
+                print("\n섹션별 데이터 길이를 분석합니다.")
+                
+                # 섹션별 텍스트 길이 계산
+                sections = ['title', 'who', 'problem', 'solution', 'results']
+                section_lengths = {section: [] for section in sections}
+                
+                for case in db.case_studies:
+                    for section in sections:
+                        text = case.get(section, "")
+                        section_lengths[section].append(len(text))
+                
+                # 박스 플롯 생성
+                plt.figure(figsize=(14, 8))
+                
+                # 데이터 준비
+                data = [section_lengths[section] for section in sections]
+                
+                # 영문 섹션 이름 (한글 폰트 문제 방지)
+                section_names_en = ['Title', 'Who', 'Problem', 'Solution', 'Results']
+                
+                # 박스 플롯 그리기
+                box = plt.boxplot(
+                    data,
+                    patch_artist=True,
+                    labels=section_names_en,
+                    notch=True,
+                    whis=1.5
+                )
+                
+                # 박스 색상 설정
+                colors = ['lightblue', 'lightgreen', 'salmon', 'violet', 'wheat']
+                for patch, color in zip(box['boxes'], colors):
+                    patch.set_facecolor(color)
+                
+                # 통계 정보 표시
+                for i, section in enumerate(sections):
+                    lengths = section_lengths[section]
+                    avg_len = sum(lengths) / len(lengths)
+                    max_len = max(lengths)
+                    min_len = min(lengths)
+                    
+                    plt.text(
+                        i + 1,
+                        max(lengths) + 5,
+                        f'Avg: {avg_len:.1f}\nMax: {max_len}\nMin: {min_len}',
+                        ha='center',
+                        va='bottom',
+                        fontsize=9,
+                        bbox=dict(boxstyle='round,pad=0.5', facecolor='white', alpha=0.8)
+                    )
+                
+                plt.title("Length Distribution of Text by Section")
+                plt.xlabel("Section")
+                plt.ylabel("Character Count")
+                plt.grid(axis='y', linestyle='--', alpha=0.7)
+                
+                # 저장
+                viz_path = "section_length_analysis.png"
+                plt.savefig(viz_path, dpi=300)
+                plt.close()
+                
+                print(f"섹션별 길이 분석 시각화 이미지가 '{viz_path}'에 저장되었습니다.")
+                
+            elif viz_option == '5':  # 돌아가기
+                return
+            else:
+                print("올바른 옵션을 선택하세요 (1-5)")
+                
+        except ImportError as e:
+            print(f"시각화에 필요한 패키지가 설치되지 않았습니다: {str(e)}")
+            print("필요한 패키지를 설치하세요: pip install matplotlib scikit-learn numpy")
+        except Exception as e:
+            print(f"시각화 중 오류 발생: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            
+
     while True:
         display_menu()
-        search_option = input("검색 옵션을 선택하세요 (1-9): ")
+        search_option = input("검색 옵션을 선택하세요 (1-10): ")
         
-        if search_option == '6':
+        if search_option == '10':
             print("검색을 종료합니다.")
             break
+        
+        elif search_option == '6':
+            analyze_vector_data()
+            continue
         
         elif search_option == '7':
             print("\n벡터 데이터베이스를 재구축합니다...")
@@ -436,7 +794,7 @@ def interactive_search():
         }
         
         if search_option not in section_map:
-            print("올바른 옵션을 선택하세요 (1-9)")
+            print("올바른 옵션을 선택하세요 (1-10)")
             continue
         
         # 벡터 DB가 로드되었는지 확인
@@ -493,6 +851,7 @@ def interactive_search():
                         print(f"   {case[section_name]}")
         except Exception as e:
             print(f"검색 중 오류 발생: {str(e)}")
+
 
 # 메인 함수: 벡터 데이터베이스 구축
 def build_vector_db(case_studies_dir="case_studies", vector_db_dir="vector_db"):
