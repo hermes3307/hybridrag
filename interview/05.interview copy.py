@@ -1583,8 +1583,8 @@ def show_interview_progress_page():
                 st.session_state.current_question_index = 0
                 st.session_state.interview_answers = []
                 st.session_state.selected_questions = []
-                st.session_state.page = "결과 분석"  # Redirect to Result Analysis
-                st.rerun()
+                
+                st.info("📋 '결과 분석' 페이지에서 상세한 분석을 확인하세요.")
             else:
                 st.error(f"❌ 면접 완료 처리 실패: {completion_result['error']}")
         
@@ -1612,6 +1612,7 @@ def show_interview_progress_page():
     
     # RAG 컨텍스트 검색
     if st.session_state.interview_manager.rag_service.is_available():
+        # 컨텍스트 검색을 세션 상태에 캐시
         context_key = f"contexts_{current_session}_{current_index}"
         
         if context_key not in st.session_state:
@@ -1635,6 +1636,7 @@ def show_interview_progress_page():
     # 답변 입력
     st.markdown("### 📝 답변을 입력하세요")
     
+    # 답변 입력 키를 현재 질문에 고유하게 만들기
     answer_key = f"answer_{current_session}_{current_index}"
     
     answer = st.text_area(
@@ -1670,45 +1672,61 @@ def show_interview_progress_page():
                 st.error("답변을 입력해주세요.")
                 return
             
+            # 로딩 상태 표시
             with st.spinner("📊 답변 분석 중..."):
+                # 답변 저장 및 평가
                 evaluation = st.session_state.interview_manager.save_answer(
                     current_session, current_question, answer, contexts
                 )
             
             if 'error' not in evaluation:
+                # 평가 결과를 세션에 저장 (다음 화면에서 표시하기 위해)
                 st.session_state.last_evaluation = evaluation
+                
+                # 답변 기록 저장
                 st.session_state.interview_answers.append({
                     'question': current_question,
                     'answer': answer,
                     'evaluation': evaluation,
                     'contexts': contexts
                 })
+                
+                # 다음 질문을 위해 컨텍스트 캐시 삭제
                 next_context_key = f"contexts_{current_session}_{current_index + 1}"
                 if next_context_key in st.session_state:
                     del st.session_state[next_context_key]
+                
+                # 질문 인덱스 증가
+                st.session_state.current_question_index += 1
+                
+                # 답변 성공 플래그 설정
                 st.session_state.answer_submitted = True
-                st.session_state.confirm_abort = False  # Reset abort confirmation
+                
+                # 페이지 새로고침
                 st.rerun()
             else:
                 st.error(f"❌ 답변 저장 실패: {evaluation['error']}")
     
     with col2:
         if st.button("⏭️ 건너뛰기", use_container_width=True, key=f"skip_{current_index}"):
+            # 컨텍스트 캐시 삭제
             next_context_key = f"contexts_{current_session}_{current_index + 1}"
             if next_context_key in st.session_state:
                 del st.session_state[next_context_key]
+            
             st.session_state.current_question_index += 1
-            st.session_state.confirm_abort = False  # Reset abort confirmation
             st.rerun()
     
     with col3:
         if st.button("❌ 면접 중단", use_container_width=True, key=f"abort_{current_index}"):
             if st.session_state.get('confirm_abort', False):
+                # 세션 상태 초기화
                 st.session_state.current_session_id = None
                 st.session_state.current_question_index = 0
                 st.session_state.interview_answers = []
                 st.session_state.selected_questions = []
                 st.session_state.confirm_abort = False
+                
                 st.warning("면접이 중단되었습니다.")
                 st.rerun()
             else:
@@ -1717,12 +1735,14 @@ def show_interview_progress_page():
     
     # 답변 제출 직후 피드백 표시
     if st.session_state.get('answer_submitted', False) and st.session_state.get('last_evaluation'):
-        st.session_state.answer_submitted = False
+        st.session_state.answer_submitted = False  # 플래그 리셋
         
         evaluation = st.session_state.last_evaluation
         
+        # 성공 메시지
         st.success("✅ 답변이 저장되었습니다!")
         
+        # 점수 표시
         score = evaluation['overall_score']
         if score >= 0.8:
             score_class = "score-good"
@@ -1736,9 +1756,11 @@ def show_interview_progress_page():
         
         st.markdown(f'<div class="{score_class}">종합 점수: {score:.2f}/1.00 {score_emoji}</div>', unsafe_allow_html=True)
         
+        # 피드백 표시
         st.markdown("#### 📝 즉시 피드백")
         st.info(evaluation['feedback'])
         
+        # 강점과 개선점
         col1, col2 = st.columns(2)
         
         with col1:
@@ -1753,8 +1775,10 @@ def show_interview_progress_page():
                 for improvement in evaluation['improvements']:
                     st.markdown(f"• {improvement}")
         
+        # 상세 점수 차트
         with st.expander("📊 상세 점수 보기"):
             detailed_scores = evaluation['detailed_scores']
+            
             score_data = {
                 '평가 항목': ['키워드 매칭', '감정 분석', '일관성', '길이 적절성', '내용 관련성'],
                 '점수': [
@@ -1765,7 +1789,9 @@ def show_interview_progress_page():
                     detailed_scores.get('content_relevance', 0)
                 ]
             }
+            
             df_scores = pd.DataFrame(score_data)
+            
             fig = px.bar(
                 df_scores, 
                 x='평가 항목', 
@@ -1777,28 +1803,17 @@ def show_interview_progress_page():
             fig.update_layout(height=300)
             st.plotly_chart(fig, use_container_width=True)
         
+        # 다음 질문으로 이동 버튼
         if current_index + 1 < len(questions):
             if st.button("➡️ 다음 질문으로", use_container_width=True, key="next_question"):
-                st.session_state.last_evaluation = None
-                st.session_state.current_question_index += 1
-                st.session_state.confirm_abort = False  # Reset abort confirmation
+                st.session_state.last_evaluation = None  # 평가 결과 초기화
                 st.rerun()
-        else:
-            if st.button("📊 면접 완료 및 결과 확인", use_container_width=True):
-                completion_result = st.session_state.interview_manager.complete_session(current_session)
-                if 'error' not in completion_result:
-                    st.success("✅ 면접이 성공적으로 완료되었습니다!")
-                    st.balloons()
-                    st.session_state.current_session_id = None
-                    st.session_state.current_question_index = 0
-                    st.session_state.interview_answers = []
-                    st.session_state.selected_questions = []
-                    st.session_state.last_evaluation = None
-                    st.session_state.page = "결과 분석"
-                    st.rerun()
-                else:
-                    st.error(f"❌ 면접 완료 처리 실패: {completion_result['error']}")
-
+        
+        # 평가 결과 초기화 (3초 후 자동)
+        if 'last_evaluation' in st.session_state:
+            time.sleep(2)  # 2초 대기
+            st.session_state.last_evaluation = None
+            st.rerun()
 
 def show_result_analysis_page():
     """결과 분석 페이지"""
@@ -2039,15 +2054,20 @@ def initialize_session_state():
         logger.error(f"Session state initialization error: {e}")
 
 def main():
+    """메인 애플리케이션"""
+    # Header
     st.markdown('<h1 class="main-header">🛡️ LIGNEX1 RAG 기반 조직적합도 인성면접 시스템</h1>', unsafe_allow_html=True)
+
+    # 세션 상태 초기화를 가장 먼저 실행
     initialize_session_state()
     
+    # Sidebar
     with st.sidebar:
         st.markdown('<h2 class="sub-header">📋 메뉴</h2>', unsafe_allow_html=True)
+        
         page = st.selectbox(
             "페이지 선택",
-            ["새 면접 시작", "면접 진행", "결과 분석", "면접 기록", "시스템 상태"],
-            index=["새 면접 시작", "면접 진행", "결과 분석", "면접 기록", "시스템 상태"].index(st.session_state.get('page', "새 면접 시작"))
+            ["새 면접 시작", "면접 진행", "결과 분석", "면접 기록", "시스템 상태"]
         )
 
         # RAG system status
@@ -2100,11 +2120,13 @@ def main():
     if st.session_state.get('auto_navigate_to_interview', False):
         st.session_state.auto_navigate_to_interview = False
         page = "면접 진행"
-    
+
+    # Page routing
     if page == "새 면접 시작":
         show_new_interview_page()
     elif page == "면접 진행":
         show_interview_progress_page()
+
     elif page == "결과 분석":
         show_result_analysis_page()
     elif page == "면접 기록":
