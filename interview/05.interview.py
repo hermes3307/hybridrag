@@ -1612,8 +1612,14 @@ def show_interview_progress_page():
     
     # RAG 컨텍스트 검색
     if st.session_state.interview_manager.rag_service.is_available():
-        with st.spinner("🔍 관련 컨텍스트 검색 중..."):
-            contexts = st.session_state.interview_manager.rag_service.get_enhanced_context(current_question)
+        # 컨텍스트 검색을 세션 상태에 캐시
+        context_key = f"contexts_{current_session}_{current_index}"
+        
+        if context_key not in st.session_state:
+            with st.spinner("🔍 관련 컨텍스트 검색 중..."):
+                st.session_state[context_key] = st.session_state.interview_manager.rag_service.get_enhanced_context(current_question)
+        
+        contexts = st.session_state[context_key]
         
         if contexts:
             with st.expander("💡 참고 정보 (AI가 찾은 관련 자료)", expanded=False):
@@ -1630,11 +1636,14 @@ def show_interview_progress_page():
     # 답변 입력
     st.markdown("### 📝 답변을 입력하세요")
     
+    # 답변 입력 키를 현재 질문에 고유하게 만들기
+    answer_key = f"answer_{current_session}_{current_index}"
+    
     answer = st.text_area(
         "답변",
         height=200,
         placeholder="구체적인 경험과 사례를 포함하여 답변해 주세요...",
-        key=f"answer_{current_index}"
+        key=answer_key
     )
     
     # 답변 길이 정보
@@ -1651,21 +1660,19 @@ def show_interview_progress_page():
         
         st.caption(f"📏 권장 길이: {optimal_range}")
     
-    # 답변 유효성 검사 (버튼 밖에서 미리 정의)
-    answer_valid = answer and answer.strip() and len(answer.strip()) > 0
-
-    # 답변 제출
-    col1, col2 = st.columns([3, 1])
-
-
+    # 답변 유효성 검사
+    answer_valid = answer and answer.strip() and len(answer.strip()) > 10
+    
+    # 답변 제출 버튼들
+    col1, col2, col3 = st.columns([2, 1, 1])
+    
     with col1:
-        if st.button("📤 답변 제출", disabled=not answer_valid, use_container_width=True):
-            # 추가 검증
+        if st.button("📤 답변 제출", disabled=not answer_valid, use_container_width=True, key=f"submit_{current_index}"):
             if not answer or not answer.strip():
                 st.error("답변을 입력해주세요.")
                 return
             
-
+            # 로딩 상태 표시
             with st.spinner("📊 답변 분석 중..."):
                 # 답변 저장 및 평가
                 evaluation = st.session_state.interview_manager.save_answer(
@@ -1673,91 +1680,139 @@ def show_interview_progress_page():
                 )
             
             if 'error' not in evaluation:
-                # 평가 결과 표시
-                st.success("✅ 답변이 저장되었습니다!")
+                # 평가 결과를 세션에 저장 (다음 화면에서 표시하기 위해)
+                st.session_state.last_evaluation = evaluation
                 
-                # 점수 표시
-                score = evaluation['overall_score']
-                if score >= 0.8:
-                    score_class = "score-good"
-                    score_emoji = "🎉"
-                elif score >= 0.6:
-                    score_class = "score-average"
-                    score_emoji = "👍"
-                else:
-                    score_class = "score-poor"
-                    score_emoji = "💪"
-                
-                st.markdown(f'<div class="{score_class}">종합 점수: {score:.2f}/1.00 {score_emoji}</div>', unsafe_allow_html=True)
-                
-                # 피드백 표시
-                st.markdown("#### 📝 즉시 피드백")
-                st.info(evaluation['feedback'])
-                
-                # 강점과 개선점
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    if evaluation['strengths']:
-                        st.markdown("**✅ 강점**")
-                        for strength in evaluation['strengths']:
-                            st.markdown(f"• {strength}")
-                
-                with col2:
-                    if evaluation['improvements']:
-                        st.markdown("**💡 개선점**")
-                        for improvement in evaluation['improvements']:
-                            st.markdown(f"• {improvement}")
-                
-                # 상세 점수
-                with st.expander("📊 상세 점수 보기"):
-                    detailed_scores = evaluation['detailed_scores']
-                    
-                    score_data = {
-                        '평가 항목': ['키워드 매칭', '감정 분석', '일관성', '길이 적절성', '내용 관련성'],
-                        '점수': [
-                            detailed_scores.get('keyword_match', 0),
-                            detailed_scores.get('sentiment', 0),
-                            detailed_scores.get('coherence', 0),
-                            detailed_scores.get('length_appropriateness', 0),
-                            detailed_scores.get('content_relevance', 0)
-                        ]
-                    }
-                    
-                    df_scores = pd.DataFrame(score_data)
-                    
-                    fig = px.bar(
-                        df_scores, 
-                        x='평가 항목', 
-                        y='점수',
-                        color='점수',
-                        color_continuous_scale='RdYlGn',
-                        range_color=[0, 1]
-                    )
-                    fig.update_layout(height=300)
-                    st.plotly_chart(fig, use_container_width=True)
-                
-                # 답변 기록 저장 
+                # 답변 기록 저장
                 st.session_state.interview_answers.append({
                     'question': current_question,
                     'answer': answer,
                     'evaluation': evaluation,
                     'contexts': contexts
                 })
-
+                
+                # 다음 질문을 위해 컨텍스트 캐시 삭제
+                next_context_key = f"contexts_{current_session}_{current_index + 1}"
+                if next_context_key in st.session_state:
+                    del st.session_state[next_context_key]
+                
                 # 질문 인덱스 증가
                 st.session_state.current_question_index += 1
-
-                # 성공 메시지와 페이지 새로고침
-                st.success("✅ 답변이 저장되었습니다! 다음 질문으로 이동합니다.")
+                
+                # 답변 성공 플래그 설정
+                st.session_state.answer_submitted = True
+                
+                # 페이지 새로고침
                 st.rerun()
-
             else:
                 st.error(f"❌ 답변 저장 실패: {evaluation['error']}")
     
     with col2:
-        if st.button("⏭️ 건너뛰기", use_container_width=True):
+        if st.button("⏭️ 건너뛰기", use_container_width=True, key=f"skip_{current_index}"):
+            # 컨텍스트 캐시 삭제
+            next_context_key = f"contexts_{current_session}_{current_index + 1}"
+            if next_context_key in st.session_state:
+                del st.session_state[next_context_key]
+            
             st.session_state.current_question_index += 1
+            st.rerun()
+    
+    with col3:
+        if st.button("❌ 면접 중단", use_container_width=True, key=f"abort_{current_index}"):
+            if st.session_state.get('confirm_abort', False):
+                # 세션 상태 초기화
+                st.session_state.current_session_id = None
+                st.session_state.current_question_index = 0
+                st.session_state.interview_answers = []
+                st.session_state.selected_questions = []
+                st.session_state.confirm_abort = False
+                
+                st.warning("면접이 중단되었습니다.")
+                st.rerun()
+            else:
+                st.session_state.confirm_abort = True
+                st.warning("⚠️ 정말로 면접을 중단하시겠습니까? 다시 한 번 클릭하면 중단됩니다.")
+    
+    # 답변 제출 직후 피드백 표시
+    if st.session_state.get('answer_submitted', False) and st.session_state.get('last_evaluation'):
+        st.session_state.answer_submitted = False  # 플래그 리셋
+        
+        evaluation = st.session_state.last_evaluation
+        
+        # 성공 메시지
+        st.success("✅ 답변이 저장되었습니다!")
+        
+        # 점수 표시
+        score = evaluation['overall_score']
+        if score >= 0.8:
+            score_class = "score-good"
+            score_emoji = "🎉"
+        elif score >= 0.6:
+            score_class = "score-average"
+            score_emoji = "👍"
+        else:
+            score_class = "score-poor"
+            score_emoji = "💪"
+        
+        st.markdown(f'<div class="{score_class}">종합 점수: {score:.2f}/1.00 {score_emoji}</div>', unsafe_allow_html=True)
+        
+        # 피드백 표시
+        st.markdown("#### 📝 즉시 피드백")
+        st.info(evaluation['feedback'])
+        
+        # 강점과 개선점
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if evaluation['strengths']:
+                st.markdown("**✅ 강점**")
+                for strength in evaluation['strengths']:
+                    st.markdown(f"• {strength}")
+        
+        with col2:
+            if evaluation['improvements']:
+                st.markdown("**💡 개선점**")
+                for improvement in evaluation['improvements']:
+                    st.markdown(f"• {improvement}")
+        
+        # 상세 점수 차트
+        with st.expander("📊 상세 점수 보기"):
+            detailed_scores = evaluation['detailed_scores']
+            
+            score_data = {
+                '평가 항목': ['키워드 매칭', '감정 분석', '일관성', '길이 적절성', '내용 관련성'],
+                '점수': [
+                    detailed_scores.get('keyword_match', 0),
+                    detailed_scores.get('sentiment', 0),
+                    detailed_scores.get('coherence', 0),
+                    detailed_scores.get('length_appropriateness', 0),
+                    detailed_scores.get('content_relevance', 0)
+                ]
+            }
+            
+            df_scores = pd.DataFrame(score_data)
+            
+            fig = px.bar(
+                df_scores, 
+                x='평가 항목', 
+                y='점수',
+                color='점수',
+                color_continuous_scale='RdYlGn',
+                range_color=[0, 1]
+            )
+            fig.update_layout(height=300)
+            st.plotly_chart(fig, use_container_width=True)
+        
+        # 다음 질문으로 이동 버튼
+        if current_index + 1 < len(questions):
+            if st.button("➡️ 다음 질문으로", use_container_width=True, key="next_question"):
+                st.session_state.last_evaluation = None  # 평가 결과 초기화
+                st.rerun()
+        
+        # 평가 결과 초기화 (3초 후 자동)
+        if 'last_evaluation' in st.session_state:
+            time.sleep(2)  # 2초 대기
+            st.session_state.last_evaluation = None
             st.rerun()
 
 def show_result_analysis_page():
