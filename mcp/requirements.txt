@@ -1,0 +1,91 @@
+# Core MCP (Model Context Protocol) dependencies
+modelcontextprotocol>=0.1.0
+
+# Async HTTP client for web requests
+httpx>=0.25.0
+
+# JSON handling (built into Python, but listing for completeness)
+# json - built-in module
+
+# Path handling (built into Python)
+# pathlib - built-in module
+
+# Async support (built into Python 3.7+)
+# asyncio - built-in module
+
+# Optional: For enhanced async operations
+aiofiles>=23.0.0
+
+# Optional: For better error handling and logging
+loguru>=0.7.0
+
+# Optional: For progress bars during downloads
+tqdm>=4.65.0
+
+# Optional: For file type detection
+python-magic>=0.4.27
+
+# Optional: For PDF validation and processing
+PyPDF2>=3.0.1
+
+# Node.js packages (install via npm/npx - not Python packages):
+# @modelcontextprotocol/server-filesystem
+# @modelcontextprotocol/server-google-maps  
+# @modelcontextprotocol/server-brave-search
+# @modelcontextprotocol/server-slack
+# @modelcontextprotocol/server-everything
+# @modelcontextprotocol/server-memory
+# @modelcontextprotocol/server-puppeteer
+# @modelcontextprotocol/server-sequential-thinking
+# mcp-server-sqlite-npx
+# @anaisbetts/mcp-installer
+# @anaisbetts/mcp-youtube
+# @modelcontextprotocol/server-postgres
+
+# UV packages (install via uvx - not Python packages):
+# chroma-mcp
+# mcp-server-altibase
+# mcp-server-fetch
+# mcp-neo4j-cypher
+
+# FastMCP related (for Naver API server)
+fastmcp>=0.1.0
+xmltodict>=0.13.0
+# Optional: For enhanced async operations
+aiofiles>=23.0.0
+
+# Optional: For better error handling and logging
+loguru>=0.7.0
+
+# Optional: For progress bars during downloads
+tqdm>=4.65.0
+
+# Optional: For file type detection
+python-magic>=0.4.27
+
+# Optional: For PDF validation and processing
+PyPDF2>=3.0.1
+
+# Node.js packages (install via npm/npx - not Python packages):
+# @modelcontextprotocol/server-filesystem
+# @modelcontextprotocol/server-google-maps  
+# @modelcontextprotocol/server-brave-search
+# @modelcontextprotocol/server-slack
+# @modelcontextprotocol/server-everything
+# @modelcontextprotocol/server-memory
+# @modelcontextprotocol/server-puppeteer
+# @modelcontextprotocol/server-sequential-thinking
+# mcp-server-sqlite-npx
+# @anaisbetts/mcp-installer
+# @anaisbetts/mcp-youtube
+# @modelcontextprotocol/server-postgres
+
+# UV packages (install via uvx - not Python packages):
+# chroma-mcp
+# mcp-server-altibase
+# mcp-server-fetch
+# mcp-neo4j-cypher
+
+# FastMCP related (for Naver API server)
+fastmcp>=0.1.0
+xmltodict>=0.13.0
