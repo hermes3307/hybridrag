@@ -10,6 +10,12 @@ logs/
 __pycache__/
 chunk/
 batch/
+data/
+data/sqlite
+data/chroma
+data/files
+logs/
+config/
 venv/
 plain/
 vector/
