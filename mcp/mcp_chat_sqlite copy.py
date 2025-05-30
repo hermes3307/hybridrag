@@ -75,81 +75,21 @@ class SQLChatBot:
                         schema_info += f"  - {col_name}: {col_type}{pk_str}{not_null_str}{default_str}\n"
                     
                     # 샘플 데이터 조회 (처음 3개 행)
-                    try:
-                        cursor.execute(f"SELECT * FROM {table_name} LIMIT 3")
-                        sample_rows = cursor.fetchall()
-                        
-                        if sample_rows:
-                            schema_info += f"  Sample data:\n"
-                            for i, row in enumerate(sample_rows, 1):
-                                schema_info += f"    {i}. {row}\n"
-                    except:
-                        pass
+                    cursor.execute(f"SELECT * FROM {table_name} LIMIT 3")
+                    sample_rows = cursor.fetchall()
+                    
+                    if sample_rows:
+                        schema_info += f"  Sample data:\n"
+                        for i, row in enumerate(sample_rows, 1):
+                            schema_info += f"    {i}. {row}\n"
                 
                 return schema_info
                 
         except Exception as e:
             return f"Error getting schema: {str(e)}"
     
-    def _split_sql_statements(self, sql_text: str) -> List[str]:
-        """여러 SQL 문을 개별 문으로 분리"""
-        # 기본적인 정리
-        sql_text = sql_text.strip()
-        if not sql_text:
-            return []
-        
-        # 주석 제거 (-- 스타일)
-        lines = sql_text.split('\n')
-        cleaned_lines = []
-        for line in lines:
-            if '--' in line:
-                line = line[:line.find('--')]
-            cleaned_lines.append(line)
-        sql_text = '\n'.join(cleaned_lines)
-        
-        # /* */ 스타일 주석 제거
-        sql_text = re.sub(r'/\*.*?\*/', '', sql_text, flags=re.DOTALL)
-        
-        # 간단한 세미콜론 분리 (문자열 내부 고려하지 않는 간단한 버전)
-        statements = []
-        current_statement = ""
-        
-        for char in sql_text:
-            if char == ';':
-                current_statement = current_statement.strip()
-                if current_statement:
-                    statements.append(current_statement)
-                current_statement = ""
-            else:
-                current_statement += char
-        
-        # 마지막 문 추가 (세미콜론이 없는 경우)
-        current_statement = current_statement.strip()
-        if current_statement:
-            statements.append(current_statement)
-        
-        return [stmt for stmt in statements if stmt.strip()]
-    
     def execute_sql(self, sql: str, params: List = None) -> Dict[str, Any]:
-        """SQL 실행 (다중 문 지원)"""
-        try:
-            sql = sql.strip()
-            if not sql:
-                return {"success": False, "error": "Empty SQL statement"}
-            
-            # SQL 문이 여러 개인지 확인
-            statements = self._split_sql_statements(sql)
-            
-            if len(statements) > 1:
-                return self._execute_multiple_statements(statements)
-            else:
-                return self._execute_single_statement(sql, params)
-                
-        except Exception as e:
-            return {"success": False, "error": str(e)}
-    
-    def _execute_single_statement(self, sql: str, params: List = None) -> Dict[str, Any]:
-        """단일 SQL 문 실행"""
+        """SQL 실행 (DDL 지원 추가)"""
         try:
             with sqlite3.connect(self.db_path) as conn:
                 conn.row_factory = sqlite3.Row
@@ -163,7 +103,7 @@ class SQLChatBot:
                 sql_upper = sql.strip().upper()
                 
                 # SELECT 쿼리인지 확인
-                if sql_upper.startswith("SELECT") or sql_upper.startswith("PRAGMA"):
+                if sql_upper.startswith("SELECT"):
                     rows = cursor.fetchall()
                     results = [dict(row) for row in rows]
                     return {
@@ -192,90 +132,8 @@ class SQLChatBot:
         except Exception as e:
             return {"success": False, "error": str(e)}
     
-    def _execute_multiple_statements(self, statements: List[str]) -> Dict[str, Any]:
-        """여러 SQL 문 실행"""
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                cursor = conn.cursor()
-                
-                results = []
-                total_affected_rows = 0
-                last_select_results = None
-                successful_count = 0
-                
-                for i, statement in enumerate(statements):
-                    statement = statement.strip()
-                    if not statement:
-                        continue
-                    
-                    try:
-                        cursor.execute(statement)
-                        statement_upper = statement.upper()
-                        
-                        if statement_upper.startswith("SELECT") or statement_upper.startswith("PRAGMA"):
-                            rows = cursor.fetchall()
-                            last_select_results = [dict(row) for row in rows]
-                            results.append({
-                                "statement": statement,
-                                "type": "SELECT",
-                                "results": last_select_results,
-                                "row_count": len(last_select_results),
-                                "success": True
-                            })
-                            successful_count += 1
-                        elif any(statement_upper.startswith(cmd) for cmd in ["CREATE", "DROP", "ALTER"]):
-                            results.append({
-                                "statement": statement,
-                                "type": "DDL",
-                                "message": "DDL operation completed successfully",
-                                "success": True
-                            })
-                            successful_count += 1
-                        else:  # DML
-                            affected = cursor.rowcount
-                            total_affected_rows += affected
-                            results.append({
-                                "statement": statement,
-                                "type": "DML",
-                                "affected_rows": affected,
-                                "success": True
-                            })
-                            successful_count += 1
-                    
-                    except Exception as e:
-                        results.append({
-                            "statement": statement,
-                            "type": "ERROR",
-                            "error": str(e),
-                            "success": False
-                        })
-                        # 에러가 발생하면 롤백하고 중단
-                        conn.rollback()
-                        break
-                
-                # 성공한 경우에만 커밋
-                if successful_count > 0 and all(r.get("success", False) for r in results):
-                    conn.commit()
-                
-                failed_count = len([r for r in results if not r.get("success", True)])
-                
-                return {
-                    "success": True,
-                    "query_type": "MULTIPLE",
-                    "total_statements": len(statements),
-                    "successful_statements": successful_count,
-                    "failed_statements": failed_count,
-                    "results": results,
-                    "last_select_results": last_select_results,
-                    "total_affected_rows": total_affected_rows
-                }
-                
-        except Exception as e:
-            return {"success": False, "error": str(e)}
-    
     def natural_language_to_sql(self, user_question: str) -> Dict[str, Any]:
-        """자연어를 SQL로 변환"""
+        """자연어를 SQL로 변환 (DDL 지원 추가)"""
         try:
             system_prompt = f"""You are a SQL expert assistant. Convert natural language questions to SQL queries.
 
@@ -291,13 +149,26 @@ Rules:
 7. Support DQL operations (SELECT)
 8. If the question is ambiguous, make reasonable assumptions
 9. For aggregations, use proper GROUP BY clauses
-10. You can return multiple SQL statements separated by semicolons if needed
-11. Return only the SQL query/queries, no explanations unless asked
+10. Return only the SQL query, no explanations unless asked
 
-Examples:
-- "모든 직원을 보여줘" → "SELECT * FROM employees;"
-- "새 테이블을 만들어줘" → "CREATE TABLE new_table (id INTEGER PRIMARY KEY, name TEXT);"
-- "여러 테이블을 만들어줘" → "CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT); CREATE TABLE orders (id INTEGER PRIMARY KEY, product_id INTEGER);"
+DDL Examples:
+- "새 테이블을 만들어줘" → "CREATE TABLE new_table (id INTEGER PRIMARY KEY, name TEXT)"
+- "products 테이블을 만들어줘" → "CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT NOT NULL, price REAL, category TEXT)"
+- "employees 테이블을 삭제해줘" → "DROP TABLE employees"
+- "employees 테이블에 phone 컬럼을 추가해줘" → "ALTER TABLE employees ADD COLUMN phone TEXT"
+
+DML Examples:
+- "새 직원을 추가해줘" → "INSERT INTO employees (name, email, department, salary, hire_date) VALUES ('New Employee', 'new@company.com', 'IT팀', 70000000, '2024-01-01')"
+- "김철수의 연봉을 8천만원으로 변경해줘" → "UPDATE employees SET salary = 80000000 WHERE name = '김철수'"
+- "개발팀 직원들의 연봉을 10% 인상해줘" → "UPDATE employees SET salary = salary * 1.1 WHERE department = '개발팀'"
+- "ID가 1인 직원을 삭제해줘" → "DELETE FROM employees WHERE id = 1"
+
+DQL Examples:
+- "모든 직원을 보여줘" → "SELECT * FROM employees"
+- "개발팀 직원들의 평균 연봉은?" → "SELECT AVG(salary) FROM employees WHERE department = '개발팀'"
+- "연봉이 가장 높은 직원은?" → "SELECT * FROM employees ORDER BY salary DESC LIMIT 1"
+- "부서별 직원 수는?" → "SELECT department, COUNT(*) as count FROM employees GROUP BY department"
+- "모든 테이블 목록을 보여줘" → "SELECT name FROM sqlite_master WHERE type='table'"
 """
             
             # 새 OpenAI API 사용
@@ -312,6 +183,10 @@ Examples:
             )
             
             sql_query = response.choices[0].message.content.strip()
+            
+            # SQL 쿼리 정리 (주석 제거, 여러 줄을 한 줄로)
+            sql_query = re.sub(r'--.*\n', '', sql_query)  # 주석 제거
+            sql_query = ' '.join(sql_query.split())  # 여러 공백을 하나로
             
             # 코드 블록 제거 (```sql로 감싸진 경우)
             sql_query = re.sub(r'```sql\s*', '', sql_query)
@@ -373,60 +248,9 @@ Examples:
         
         return output
     
-    def format_multiple_results(self, exec_result: Dict[str, Any]) -> str:
-        """다중 SQL 문 실행 결과 포맷팅"""
-        results = exec_result["results"]
-        output = f"📊 **다중 SQL 문 실행 결과**\n"
-        output += f"총 {exec_result['total_statements']}개 문 중 {exec_result['successful_statements']}개 성공"
-        if exec_result['failed_statements'] > 0:
-            output += f", {exec_result['failed_statements']}개 실패"
-        output += "\n\n"
-        
-        for i, result in enumerate(results, 1):
-            status = "✅" if result.get("success", True) else "❌"
-            output += f"**{i}. {status} {result['type']} 문:**\n"
-            output += f"```sql\n{result['statement']}\n```\n"
-            
-            if result["type"] == "SELECT":
-                if result.get("results"):
-                    output += self.format_results(result["results"])
-                else:
-                    output += "📋 No results found.\n"
-            elif result["type"] == "DDL":
-                if result.get("success", True):
-                    output += f"✅ {result.get('message', 'DDL 작업 완료')}\n"
-                else:
-                    output += f"❌ 오류: {result.get('error', 'Unknown error')}\n"
-            elif result["type"] == "DML":
-                if result.get("success", True):
-                    output += f"✅ {result.get('affected_rows', 0)}개 행이 영향받았습니다.\n"
-                else:
-                    output += f"❌ 오류: {result.get('error', 'Unknown error')}\n"
-            elif result["type"] == "ERROR":
-                output += f"❌ 오류: {result.get('error', 'Unknown error')}\n"
-            
-            output += "\n"
-        
-        # 요약 정보
-        if exec_result.get("last_select_results"):
-            output += f"💡 **마지막 SELECT 결과**: {len(exec_result['last_select_results'])}개 행\n"
-        
-        if exec_result.get("total_affected_rows", 0) > 0:
-            output += f"💡 **총 영향받은 행**: {exec_result['total_affected_rows']}개\n"
-        
-        return output
-    
     def get_sql_explanation(self, sql: str) -> str:
-        """SQL 쿼리 설명 생성"""
+        """SQL 쿼리 설명 생성 (새 OpenAI API 사용)"""
         try:
-            # 다중 문인지 확인
-            statements = self._split_sql_statements(sql)
-            
-            if len(statements) > 1:
-                explanation_prompt = f"이 여러 개의 SQL 쿼리들이 무엇을 하는지 간단히 설명해주세요:\n{sql}"
-            else:
-                explanation_prompt = f"이 SQL 쿼리가 무엇을 하는지 간단히 설명해주세요:\n{sql}"
-            
             response = self.openai_client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
@@ -436,7 +260,7 @@ Examples:
                     },
                     {
                         "role": "user", 
-                        "content": explanation_prompt
+                        "content": f"이 SQL 쿼리가 무엇을 하는지 간단히 설명해주세요:\n{sql}"
                     }
                 ],
                 max_tokens=200,
@@ -473,7 +297,7 @@ Examples:
             return await self._execute_direct_sql(sql)
         
         # 위험한 작업 확인
-        dangerous_keywords = ['drop table', 'delete from', 'truncate']
+        dangerous_keywords = ['drop table', 'delete from', 'truncate', 'alter table']
         if any(keyword in user_input.lower() for keyword in dangerous_keywords):
             return await self._handle_dangerous_operation(user_input)
         
@@ -517,13 +341,6 @@ Examples:
                 self.schema_info = self._get_schema_info()
                 response += "\n📝 **스키마 정보가 업데이트되었습니다.**"
                 
-            elif exec_result.get("query_type") == "MULTIPLE":
-                response += self.format_multiple_results(exec_result)
-                # 스키마 정보 업데이트 (DDL이 포함된 경우)
-                if any(r.get("type") == "DDL" for r in exec_result["results"]):
-                    self.schema_info = self._get_schema_info()
-                    response += "\n📝 **스키마 정보가 업데이트되었습니다.**"
-                
             else:  # DML
                 affected = exec_result.get("affected_rows", 0)
                 response += f"✅ **DML 실행 성공**: {affected}개 행이 영향받았습니다."
@@ -542,13 +359,6 @@ Examples:
             if result.get("query_type") == "SELECT":
                 results = result["results"]
                 response += self.format_results(results)
-            elif result.get("query_type") == "MULTIPLE":
-                response += self.format_multiple_results(result)
-            elif result.get("query_type") == "DDL":
-                response += f"✅ **DDL 실행 성공**: {result.get('message', 'DDL 작업이 완료되었습니다.')}"
-                # 스키마 정보 업데이트
-                self.schema_info = self._get_schema_info()
-                response += "\n📝 **스키마 정보가 업데이트되었습니다.**"
             else:
                 affected = result.get("affected_rows", 0)
                 response += f"✅ **실행 성공**: {affected}개 행이 영향받았습니다."
@@ -630,8 +440,6 @@ Examples:
         response += "💡 **팁**: 중요한 데이터는 백업 후 작업하세요!"
         
         return response
-    
-    def _get_help_message(self) -> str:
         """도움말 메시지"""
         return """🤖 **SQL 챗봇 도움말**
 
@@ -643,22 +451,14 @@ Examples:
 • "2023년에 입사한 직원들은?"
 • "김철수의 정보를 보여줘"
 
-**다중 SQL 문 지원:**
-• "여러 테이블을 만들어줘"
-• "데이터를 삽입하고 조회해줘"
-• 세미콜론으로 구분된 여러 SQL 문을 한 번에 실행 가능
-
 **특수 명령어:**
 • `help` 또는 `도움말` - 이 도움말 표시
 • `schema` 또는 `스키마` - 데이터베이스 구조 보기
-• `tables` 또는 `테이블목록` - 모든 테이블 목록 보기
-• `describe 테이블명` - 특정 테이블 구조 보기
 • `sql: SELECT * FROM employees` - 직접 SQL 실행
 
 **팁:**
 • 한국어와 영어 모두 지원합니다
 • 복잡한 질문도 가능합니다
-• 여러 SQL 문을 한 번에 실행할 수 있습니다
 • SQL을 모르셔도 자연스럽게 질문하세요!
 """
 
@@ -735,7 +535,7 @@ def test_openai_connection(api_key: str) -> bool:
 
 async def main():
     """메인 함수"""
-    print("🤖 자연어 SQL 변환 챗봇 (다중 SQL 문 지원)")
+    print("🤖 자연어 SQL 변환 챗봇 (OpenAI 1.0+)")
     print("="*60)
     
     # OpenAI API 키 확인
@@ -772,7 +572,6 @@ async def main():
         
         print("\n🚀 챗봇이 준비되었습니다!")
         print("💬 자연어로 질문하거나 'help'를 입력하세요")
-        print("🔧 여러 SQL 문도 한 번에 실행 가능합니다")
         print("🚪 종료하려면 'quit' 또는 'exit'를 입력하세요")
         print("-" * 60)
         
@@ -783,9 +582,7 @@ async def main():
             "개발팀 직원들만 보여줘", 
             "연봉이 가장 높은 직원 3명은?",
             "부서별 평균 연봉은?",
-            "2023년에 입사한 직원들은?",
-            "새 테이블을 만들고 데이터를 넣어줘",
-            "여러 테이블을 한 번에 만들어줘"
+            "2023년에 입사한 직원들은?"
         ]
         
         for i, question in enumerate(sample_questions, 1):
