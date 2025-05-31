@@ -22,4 +22,5 @@ vector_db/
 *.json
 altibase_rag/
 qdrant_vector/
+qdrant_vector/*
 
