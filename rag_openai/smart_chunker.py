@@ -98,68 +98,142 @@ class SmartDocumentChunker:
         print(f"✅ Processing complete! Created {len(self.processed_chunks)} chunks")
         return self.processed_chunks
 
+
     async def _process_single_file(self, file_path: str, chunk_size: int, 
-                                 overlap: int, use_semantic: bool, preserve_structure: bool):
+                                overlap: int, use_semantic: bool, preserve_structure: bool):
         """Process a single file"""
         print(f"📄 Processing {os.path.basename(file_path)}...")
         
-        # Extract text
-        text_content, metadata = await self._extract_text(file_path)
-        
-        if not text_content.strip():
-            print(f"⚠️  No text extracted from {file_path}")
-            return
-        
-        # Clean and preprocess
-        cleaned_text = self._clean_text(text_content)
-        
-        # Create chunks
-        if use_semantic:
-            chunks = self._create_semantic_chunks(
-                cleaned_text, chunk_size, overlap, preserve_structure
-            )
-        else:
-            chunks = self._create_simple_chunks(cleaned_text, chunk_size, overlap)
-        
-        # Convert to DocumentChunk objects
-        for i, chunk_text in enumerate(chunks):
-            if len(chunk_text.strip()) < 50:  # Skip very small chunks
-                continue
+        try:
+            # Extract text
+            text_content, metadata = await self._extract_text(file_path)
+            
+            if not text_content or not text_content.strip():
+                print(f"⚠️  No text extracted from {file_path}")
+                return
+            
+            # For placeholder text (failed extractions), create a minimal chunk
+            if text_content.startswith('[PDF Document:') and 'extraction failed' in text_content:
+                # Create a single informational chunk
+                chunk_metadata = metadata.copy()
+                chunk_metadata.update({
+                    'chunk_index': 0,
+                    'chunk_size': len(text_content),
+                    'word_count': len(text_content.split()),
+                    'extraction_status': 'failed'
+                })
                 
-            chunk_metadata = metadata.copy()
-            chunk_metadata.update({
-                'chunk_index': i,
-                'chunk_size': len(chunk_text),
-                'word_count': len(chunk_text.split()),
-                'processing_params': {
-                    'chunk_size': chunk_size,
-                    'overlap': overlap,
-                    'semantic': use_semantic,
-                    'preserve_structure': preserve_structure
-                }
-            })
+                chunk = DocumentChunk(
+                    text=text_content,
+                    metadata=chunk_metadata,
+                    chunk_id="",
+                    source_file=file_path,
+                    chunk_index=0
+                )
+                
+                self.processed_chunks.append(chunk)
+                return
             
-            chunk = DocumentChunk(
-                text=chunk_text,
-                metadata=chunk_metadata,
-                chunk_id="",  # Will be auto-generated
-                source_file=file_path,
-                chunk_index=i
-            )
+            # Clean and preprocess
+            cleaned_text = self._clean_text(text_content)
             
-            self.processed_chunks.append(chunk)
+            # Create chunks
+            if use_semantic:
+                chunks = self._create_semantic_chunks(
+                    cleaned_text, chunk_size, overlap, preserve_structure
+                )
+            else:
+                chunks = self._create_simple_chunks(cleaned_text, chunk_size, overlap)
+            
+            # Convert to DocumentChunk objects
+            for i, chunk_text in enumerate(chunks):
+                if len(chunk_text.strip()) < 50:  # Skip very small chunks
+                    continue
+                    
+                chunk_metadata = metadata.copy()
+                chunk_metadata.update({
+                    'chunk_index': i,
+                    'chunk_size': len(chunk_text),
+                    'word_count': len(chunk_text.split()),
+                    'processing_params': {
+                        'chunk_size': chunk_size,
+                        'overlap': overlap,
+                        'semantic': use_semantic,
+                        'preserve_structure': preserve_structure
+                    }
+                })
+                
+                chunk = DocumentChunk(
+                    text=chunk_text,
+                    metadata=chunk_metadata,
+                    chunk_id="",  # Will be auto-generated
+                    source_file=file_path,
+                    chunk_index=i
+                )
+                
+                self.processed_chunks.append(chunk)
+                
+        except Exception as e:
+            error_msg = f"Error processing {file_path}: {str(e)}"
+            self.processing_stats['errors'].append(error_msg)
+            logger.error(error_msg)
+            
 
     async def _extract_text(self, file_path: str) -> Tuple[str, Dict]:
         """🔍 Extract text from various file formats"""
         file_ext = Path(file_path).suffix.lower()
         
-        if file_ext in self.extractors:
+        if file_ext == '.pdf':
+            try:
+                return await self._extract_pdf_text(file_path)
+            except Exception as e:
+                logger.warning(f"Primary PDF extraction failed for {file_path}, trying fallback: {e}")
+                return await self._extract_pdf_text_fallback(file_path)
+        
+        elif file_ext in self.extractors:
             extractor = self.extractors[file_ext]
             return await extractor(file_path)
         else:
             # Fallback to text file reading
             return await self._extract_text_file(file_path)
 
+    async def _extract_pdf_text_fallback(self, file_path: str) -> Tuple[str, Dict]:
+        """Fallback PDF extraction for problematic files"""
+        try:
+            # Try alternative approach with different settings
+            doc = fitz.open(file_path)
+            text_content = ""
+            
+            for page_num in range(min(len(doc), 10)):  # Limit to first 10 pages for testing
+                try:
+                    page = doc[page_num]
+                    text = page.get_text("text")  # Explicit text mode
+                    if text.strip():
+                        text_content += f"\n\nPage {page_num + 1}:\n{text}"
+                except:
+                    continue
+            
+            doc.close()
+            
+            metadata = {
+                'source_type': 'PDF (Fallback)',
+                'source_file': os.path.basename(file_path),
+                'extraction_method': 'fallback'
+            }
+            
+            return text_content, metadata
+            
+        except Exception as e:
+            # Last resort - create a placeholder
+            metadata = {
+                'source_type': 'PDF (Failed)',
+                'source_file': os.path.basename(file_path),
+                'extraction_error': str(e)
+            }
+            
+            placeholder_text = f"[PDF Document: {os.path.basename(file_path)} - Could not extract text]"
+            return placeholder_text, metadata
+        
     async def _extract_pdf_text(self, file_path: str) -> Tuple[str, Dict]:
         """Extract text from PDF files"""
         if not fitz:
@@ -172,25 +246,49 @@ class SmartDocumentChunker:
             'pages': []
         }
         
+        doc = None
         try:
+            # Open the document
             doc = fitz.open(file_path)
+            total_pages = len(doc)
             
-            for page_num in range(len(doc)):
-                page = doc.load_page(page_num)
-                page_text = page.get_text()
+            for page_num in range(total_pages):
+                try:
+                    page = doc.load_page(page_num)
+                    page_text = page.get_text()
+                    
+                    if page_text.strip():
+                        text_content += f"\n\n--- Page {page_num + 1} ---\n\n{page_text}"
+                        metadata['pages'].append({
+                            'page_number': page_num + 1,
+                            'char_count': len(page_text)
+                        })
+                    
+                    # Clean up the page object
+                    page = None
+                    
+                except Exception as page_error:
+                    logger.warning(f"Error processing page {page_num + 1} in {file_path}: {page_error}")
+                    continue
+            
+            metadata['total_pages'] = total_pages
+            
+            # If no text was extracted, the PDF might be image-based
+            if not text_content.strip():
+                text_content = f"[PDF Document: {os.path.basename(file_path)} - {total_pages} pages - Text extraction returned empty, possibly image-based PDF]"
                 
-                if page_text.strip():
-                    text_content += f"\n\n--- Page {page_num + 1} ---\n\n{page_text}"
-                    metadata['pages'].append({
-                        'page_number': page_num + 1,
-                        'char_count': len(page_text)
-                    })
-            
-            doc.close()
-            metadata['total_pages'] = len(doc)
-            
         except Exception as e:
-            raise Exception(f"PDF extraction failed: {e}")
+            # If PDF opening fails, create a placeholder
+            text_content = f"[PDF Document: {os.path.basename(file_path)} - PDF extraction failed: {str(e)}]"
+            metadata['extraction_error'] = str(e)
+            
+        finally:
+            # Ensure the document is properly closed
+            if doc is not None:
+                try:
+                    doc.close()
+                except:
+                    pass  # Ignore closing errors
         
         return text_content, metadata
 
