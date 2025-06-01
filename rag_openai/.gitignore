@@ -2,6 +2,7 @@
 indexer.log
 batch/
 vector/ 
+downloaded_docs\
 venv/
 .venv/
 vector_config.json

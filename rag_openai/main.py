@@ -20,21 +20,25 @@ from vector_manager import VectorStoreManager
 from query_engine import ConversationalQueryEngine
 
 @dataclass
+@dataclass
 class ConversationState:
     """Tracks the current conversation state"""
     current_url: Optional[str] = None
     downloaded_files: List[str] = None
+    discovered_documents: List = None  # Add this line
     processed_chunks: int = 0
     vector_store_ready: bool = False
     user_preferences: Dict = None
-    
+        
     def __post_init__(self):
         if self.downloaded_files is None:
             self.downloaded_files = []
+        if self.discovered_documents is None:
+            self.discovered_documents = []
         if self.user_preferences is None:
             self.user_preferences = {
                 'chunk_size': 1000,
-                'chunk_overlap': 200,
+                'overlap': 200,  # Changed from 'chunk_overlap' to 'overlap'
                 'preferred_formats': ['pdf', 'doc', 'docx', 'txt'],
                 'language': 'auto'
             }
@@ -56,6 +60,7 @@ class ConversationalAssistant:
         self.conversation_history = []
         
         # Intent patterns for natural language understanding
+        
         self.intent_patterns = {
             'download': [
                 r'download.*from\s+(.+)',
@@ -64,6 +69,25 @@ class ConversationalAssistant:
                 r'process.*url\s+(.+)',
                 r'scan\s+(.+)',
             ],
+            'download_all': [
+                r'download.*all',
+                r'get.*all.*files',
+                r'download.*everything',
+                r'fetch.*all',
+            ],
+            'download_pdfs': [
+                r'download.*pdf',
+                r'get.*pdf.*files',
+                r'fetch.*pdf',
+                r'only.*pdf',
+                r'download.*all.*pdf',
+            ],
+            'download_english': [
+                r'download.*english',
+                r'get.*english.*documents',
+                r'only.*english',
+            ],
+        
             'chunk': [
                 r'chunk.*documents?',
                 r'process.*files?',
@@ -105,17 +129,24 @@ class ConversationalAssistant:
 
     def parse_intent(self, user_input: str) -> Dict[str, Any]:
         """🧠 Parse user intent from natural language"""
-        user_input = user_input.lower().strip()
+        original_input = user_input.strip()  # Keep original case
+        user_input_lower = user_input.lower().strip()  # Lowercase only for pattern matching
         
         for intent, patterns in self.intent_patterns.items():
             for pattern in patterns:
-                match = re.search(pattern, user_input, re.IGNORECASE)
+                match = re.search(pattern, user_input_lower, re.IGNORECASE)
                 if match:
-                    extracted_data = match.groups()[0] if match.groups() else None
+                    # Extract data from original input to preserve case
+                    if match.groups():
+                        # Find the matched portion in original input
+                        original_match = re.search(pattern, original_input, re.IGNORECASE)
+                        extracted_data = original_match.groups()[0] if original_match and original_match.groups() else None
+                    else:
+                        extracted_data = None
                     return {
                         'intent': intent,
-                        'data': extracted_data,
-                        'raw_input': user_input,
+                        'data': extracted_data or original_input,  # Use original case
+                        'raw_input': original_input,  # Original case preserved
                         'confidence': 0.9
                     }
         
@@ -129,18 +160,18 @@ class ConversationalAssistant:
         }
         
         for intent, words in keywords.items():
-            if any(word in user_input for word in words):
+            if any(word in user_input_lower for word in words):
                 return {
                     'intent': intent,
-                    'data': user_input,
-                    'raw_input': user_input,
+                    'data': original_input,  # Return original case
+                    'raw_input': original_input,
                     'confidence': 0.6
                 }
         
         return {
             'intent': 'unknown',
-            'data': user_input,
-            'raw_input': user_input,
+            'data': original_input,  # Return original case
+            'raw_input': original_input,
             'confidence': 0.3
         }
 
@@ -148,7 +179,7 @@ class ConversationalAssistant:
         """📥 Handle document download requests"""
         if not data:
             return ("🤖 I'd love to help you download documents! Please provide a URL. "
-                   "For example: 'Download documents from https://example.com/docs'")
+                "For example: 'Download documents from https://example.com/docs'")
         
         # Extract URL if it's in the text
         url_match = re.search(r'https?://[^\s]+', data)
@@ -164,6 +195,9 @@ class ConversationalAssistant:
             
             # Scan for documents
             documents = await self.downloader.scan_documents(url)
+            
+            # Store discovered documents in state
+            self.state.discovered_documents = documents
             
             if not documents:
                 return f"🤖 I couldn't find any documents at {url}. Could you check the URL?"
@@ -182,12 +216,93 @@ class ConversationalAssistant:
             
         except Exception as e:
             return f"❌ Oops! I had trouble accessing {url}. Error: {str(e)}"
+       
+    async def handle_download_all_intent(self, data: str) -> str:
+        """📥 Handle download all requests"""
+        if not self.state.discovered_documents:  # Check state instead of downloader
+            return ("🤖 I don't see any discovered documents to download! "
+                "Please scan a URL first.")
+        
+        try:
+            downloaded_files = await self.downloader.download_documents()
+            self.state.downloaded_files.extend(downloaded_files)
+            
+            stats = self.downloader.get_download_stats()
+            
+            response = f"✅ Download complete!\n\n"
+            response += f"📥 Downloaded: {stats['downloaded']} files\n"
+            response += f"❌ Failed: {stats['failed']} files\n"
+            if stats['bytes_downloaded'] > 0:
+                mb_downloaded = stats['bytes_downloaded'] / (1024 * 1024)
+                response += f"💾 Total size: {mb_downloaded:.1f} MB\n"
+            
+            response += f"📁 Files saved to: {self.downloader.download_dir}\n\n"
+            response += "💡 You can now ask me to 'list files' or check 'status'!"
+            
+            return response
+            
+        except Exception as e:
+            return f"❌ Download failed. Error: {str(e)}"
+
+    async def handle_download_pdfs_intent(self, data: str) -> str:
+        """📄 Handle PDF-only download requests"""
+        if not self.state.discovered_documents:  # Check state instead of downloader
+            return ("🤖 I don't see any discovered documents to download! "
+                "Please scan a URL first.")
+        
+        try:
+            downloaded_files = await self.downloader.download_documents({'extensions': ['.pdf']})
+            self.state.downloaded_files.extend(downloaded_files)
+            
+            stats = self.downloader.get_download_stats()
+            
+            response = f"✅ PDF download complete!\n\n"
+            response += f"📄 Downloaded: {stats['downloaded']} PDF files\n"
+            response += f"❌ Failed: {stats['failed']} files\n"
+            if stats['bytes_downloaded'] > 0:
+                mb_downloaded = stats['bytes_downloaded'] / (1024 * 1024)
+                response += f"💾 Total size: {mb_downloaded:.1f} MB\n"
+            
+            response += f"📁 Files saved to: {self.downloader.download_dir}\n\n"
+            response += "💡 You can now ask me to 'list files' or check 'status'!"
+            
+            return response
+            
+        except Exception as e:
+            return f"❌ PDF download failed. Error: {str(e)}"
+       
+    async def handle_download_english_intent(self, data: str) -> str:
+        """🌍 Handle English-only download requests"""
+        if not hasattr(self.downloader, 'discovered_documents') or not self.downloader.discovered_documents:
+            return ("🤖 I don't see any discovered documents to download! "
+                "Please scan a URL first.")
+        
+        try:
+            downloaded_files = await self.downloader.download_documents({'language': 'English'})
+            self.state.downloaded_files.extend(downloaded_files)
+            
+            stats = self.downloader.get_download_stats()
+            
+            response = f"✅ English documents download complete!\n\n"
+            response += f"📄 Downloaded: {stats['downloaded']} English files\n"
+            response += f"❌ Failed: {stats['failed']} files\n"
+            if stats['bytes_downloaded'] > 0:
+                mb_downloaded = stats['bytes_downloaded'] / (1024 * 1024)
+                response += f"💾 Total size: {mb_downloaded:.1f} MB\n"
+            
+            response += f"📁 Files saved to: {self.downloader.download_dir}\n\n"
+            response += "💡 You can now ask me to 'list files' or check 'status'!"
+            
+            return response
+            
+        except Exception as e:
+            return f"❌ English download failed. Error: {str(e)}"
 
     async def handle_chunk_intent(self, data: str) -> str:
         """🧩 Handle document chunking requests"""
         if not self.state.downloaded_files:
             return ("🤖 I don't see any downloaded files to chunk yet! "
-                   "Would you like me to download some documents first?")
+                "Would you like me to download some documents first?")
         
         try:
             print(f"🧩 Chunking {len(self.state.downloaded_files)} files...")
@@ -195,10 +310,13 @@ class ConversationalAssistant:
             # Extract preferences from user input
             chunk_prefs = self._extract_chunk_preferences(data)
             
-            # Process the files
+            # Process the files - use the correct parameter names
             chunks = await self.chunker.process_files(
                 self.state.downloaded_files,
-                **chunk_prefs
+                chunk_size=chunk_prefs['chunk_size'],
+                overlap=chunk_prefs['overlap'],  # Use 'overlap' not 'chunk_overlap'
+                use_semantic_splitting=chunk_prefs.get('use_semantic_splitting', True),
+                preserve_structure=True
             )
             
             self.state.processed_chunks = len(chunks)
@@ -214,6 +332,8 @@ class ConversationalAssistant:
             
         except Exception as e:
             return f"❌ I had trouble chunking the documents. Error: {str(e)}"
+
+
 
     async def handle_index_intent(self, data: str) -> str:
         """🗄️ Handle vector indexing requests"""
@@ -340,7 +460,6 @@ class ConversationalAssistant:
    • "Show progress"
 
 💡 **Just talk naturally!** I understand conversational language, so feel free to ask however feels natural to you!"""
-
     def _extract_chunk_preferences(self, data: str) -> Dict:
         """Extract chunking preferences from user input"""
         prefs = self.state.user_preferences.copy()
@@ -353,7 +472,7 @@ class ConversationalAssistant:
         # Look for overlap mentions  
         overlap_match = re.search(r'overlap.*?(\d+)', data, re.IGNORECASE)
         if overlap_match:
-            prefs['overlap'] = int(overlap_match.group(1))
+            prefs['overlap'] = int(overlap_match.group(1))  # Changed from 'chunk_overlap' to 'overlap'
         
         # Look for semantic preferences
         if any(word in data.lower() for word in ['semantic', 'smart', 'intelligent', 'paragraph']):
@@ -381,6 +500,12 @@ class ConversationalAssistant:
         # Route to appropriate handler
         if intent == 'download':
             response = await self.handle_download_intent(data)
+        elif intent == 'download_all':
+            response = await self.handle_download_all_intent(data)
+        elif intent == 'download_pdfs':
+            response = await self.handle_download_pdfs_intent(data)
+        elif intent == 'download_english':
+            response = await self.handle_download_english_intent(data)
         elif intent == 'chunk':
             response = await self.handle_chunk_intent(data)
         elif intent == 'index':
@@ -393,8 +518,8 @@ class ConversationalAssistant:
             response = self.handle_help_intent(data)
         else:
             response = ("🤖 I'm not quite sure what you want me to do. "
-                       "Try asking me to download, chunk, index, or search documents. "
-                       "Or just ask for 'help' to see what I can do!")
+                    "Try asking me to download, chunk, index, or search documents. "
+                    "Or just ask for 'help' to see what I can do!")
         
         # Store response
         self.conversation_history[-1]['assistant'] = response
