@@ -12,7 +12,6 @@ import json
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass
 import re
-import nltk
 from collections import Counter
 
 # Import our modules
@@ -22,32 +21,70 @@ from vector_manager import VectorStoreManager
 from query_engine import ConversationalQueryEngine
 from status import StatusManager
 
-# Download required NLTK data
-try:
-    nltk.data.find('tokenizers/punkt')
-except LookupError:
-    nltk.download('punkt')
+# Download required NLTK data with better compatibility
+import nltk
+
+def download_nltk_data():
+    """Download required NLTK data with fallback for different versions"""
+    required_data = [
+        ('tokenizers/punkt', 'punkt'),
+        ('tokenizers/punkt_tab', 'punkt_tab'),  # New format
+        ('corpora/stopwords', 'stopwords'),
+        ('taggers/averaged_perceptron_tagger', 'averaged_perceptron_tagger')
+    ]
+    
+    for data_path, download_name in required_data:
+        try:
+            nltk.data.find(data_path)
+            print(f"✅ {download_name} already available")
+        except LookupError:
+            try:
+                print(f"📥 Downloading {download_name}...")
+                nltk.download(download_name, quiet=True)
+                print(f"✅ {download_name} downloaded successfully")
+            except Exception as e:
+                print(f"⚠️ Could not download {download_name}: {e}")
+                if download_name == 'punkt_tab':
+                    print("   Falling back to punkt tokenizer")
+
+# Download NLTK data at startup
+download_nltk_data()
 
 try:
-    nltk.data.find('corpora/stopwords')
-except LookupError:
-    nltk.download('stopwords')
-
-try:
-    nltk.data.find('taggers/averaged_perceptron_tagger')
-except LookupError:
-    nltk.download('averaged_perceptron_tagger')
-
-from nltk.corpus import stopwords
-from nltk.tokenize import word_tokenize, sent_tokenize
-from nltk.tag import pos_tag
+    from nltk.corpus import stopwords
+    from nltk.tokenize import word_tokenize, sent_tokenize
+    from nltk.tag import pos_tag
+    print("✅ NLTK components loaded successfully")
+except ImportError as e:
+    print(f"⚠️ NLTK import error: {e}")
+    # Provide fallback implementations
+    def word_tokenize(text):
+        return text.lower().split()
+    
+    def sent_tokenize(text):
+        import re
+        return re.split(r'[.!?]+', text)
+    
+    def pos_tag(tokens):
+        return [(token, 'NN') for token in tokens]  # Default to noun
+    
+    class MockStopwords:
+        def words(self, lang):
+            return {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'are', 'was', 'were', 'be', 'been', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'can', 'must', 'shall', 'this', 'that', 'these', 'those'}
+    
+    stopwords = MockStopwords()
+    print("⚠️ Using fallback NLTK implementations")
 
 
 class TopicKeywordExtractor:
     """🧠 Intelligent topic and keyword extraction from user questions"""
     
     def __init__(self):
-        self.stop_words = set(stopwords.words('english'))
+        try:
+            self.stop_words = set(stopwords.words('english'))
+        except Exception:
+            # Fallback stopwords
+            self.stop_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'are', 'was', 'were', 'be', 'been', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'can', 'must', 'shall', 'this', 'that', 'these', 'those'}
         
         # Technical domain keywords for better extraction
         self.domain_keywords = {
@@ -117,21 +154,28 @@ class TopicKeywordExtractor:
         return 'general'
 
     def _extract_keywords_nlp(self, text: str) -> List[str]:
-        """Extract keywords using NLP techniques"""
-        # Tokenize and POS tag
-        tokens = word_tokenize(text.lower())
-        pos_tags = pos_tag(tokens)
-        
-        # Extract meaningful words (nouns, adjectives, verbs)
-        meaningful_words = []
-        for word, pos in pos_tags:
-            if (pos.startswith('NN') or pos.startswith('JJ') or pos.startswith('VB')) and \
-               word not in self.stop_words and len(word) > 2 and word.isalpha():
-                meaningful_words.append(word)
-        
-        # Count frequency and return top keywords
-        word_freq = Counter(meaningful_words)
-        return [word for word, freq in word_freq.most_common(10)]
+        """Extract keywords using NLP techniques with fallback"""
+        try:
+            # Tokenize and POS tag
+            tokens = word_tokenize(text.lower())
+            pos_tags = pos_tag(tokens)
+            
+            # Extract meaningful words (nouns, adjectives, verbs)
+            meaningful_words = []
+            for word, pos in pos_tags:
+                if (pos.startswith('NN') or pos.startswith('JJ') or pos.startswith('VB')) and \
+                   word not in self.stop_words and len(word) > 2 and word.isalpha():
+                    meaningful_words.append(word)
+            
+            # Count frequency and return top keywords
+            word_freq = Counter(meaningful_words)
+            return [word for word, freq in word_freq.most_common(10)]
+            
+        except Exception as e:
+            print(f"⚠️ NLP extraction failed, using simple fallback: {e}")
+            # Simple fallback: just split and filter
+            words = text.lower().split()
+            return [word for word in words if word not in self.stop_words and len(word) > 2 and word.isalpha()][:10]
 
     def _identify_domains(self, text: str, keywords: List[str]) -> List[str]:
         """Identify technical domains mentioned in the text"""
@@ -283,48 +327,53 @@ Answer:"""
     async def generate_rag_response(self, question: str, max_context_length: int = 4000) -> str:
         """🎯 Generate RAG response for complex questions"""
         
-        # Extract topics and keywords
-        extraction_result = self.topic_extractor.extract_topics_and_keywords(question)
-        
-        if not extraction_result['is_complex_question']:
-            return None  # Let normal search handle simple questions
-        
-        print(f"🧠 RAG Analysis: {extraction_result['question_type']} question about {extraction_result['domains']}")
-        print(f"🔍 Keywords: {extraction_result['keywords']}")
-        print(f"⚙️ Technical terms: {extraction_result['technical_terms']}")
-        
-        # Perform multiple searches for comprehensive context
-        all_results = []
-        
-        for query in extraction_result['search_queries']:
-            if query.strip():
-                try:
-                    results = await self.vector_manager.search(query, k=5)
-                    all_results.extend(results)
-                    print(f"📊 Found {len(results)} results for query: '{query}'")
-                except Exception as e:
-                    print(f"⚠️ Search failed for query '{query}': {e}")
-                    continue
-        
-        if not all_results:
-            return f"🤖 I understand you're asking about {', '.join(extraction_result['keywords'])}, but I couldn't find relevant information in the indexed documents. Could you try rephrasing your question or check if the documents have been properly indexed?"
-        
-        # Deduplicate and rank results
-        unique_results = self._deduplicate_results(all_results)
-        top_results = sorted(unique_results, key=lambda x: x['score'], reverse=True)[:8]
-        
-        # Build context from top results
-        context = self._build_context(top_results, max_context_length)
-        
-        # Generate RAG response
-        rag_response = self._generate_response_with_context(
-            question, 
-            context, 
-            extraction_result,
-            top_results
-        )
-        
-        return rag_response
+        try:
+            # Extract topics and keywords
+            extraction_result = self.topic_extractor.extract_topics_and_keywords(question)
+            
+            if not extraction_result['is_complex_question']:
+                return None  # Let normal search handle simple questions
+            
+            print(f"🧠 RAG Analysis: {extraction_result['question_type']} question about {extraction_result['domains']}")
+            print(f"🔍 Keywords: {extraction_result['keywords']}")
+            print(f"⚙️ Technical terms: {extraction_result['technical_terms']}")
+            
+            # Perform multiple searches for comprehensive context
+            all_results = []
+            
+            for query in extraction_result['search_queries']:
+                if query.strip():
+                    try:
+                        results = await self.vector_manager.search(query, k=5)
+                        all_results.extend(results)
+                        print(f"📊 Found {len(results)} results for query: '{query}'")
+                    except Exception as e:
+                        print(f"⚠️ Search failed for query '{query}': {e}")
+                        continue
+            
+            if not all_results:
+                return f"🤖 I understand you're asking about {', '.join(extraction_result['keywords'])}, but I couldn't find relevant information in the indexed documents. Could you try rephrasing your question or check if the documents have been properly indexed?"
+            
+            # Deduplicate and rank results
+            unique_results = self._deduplicate_results(all_results)
+            top_results = sorted(unique_results, key=lambda x: x['score'], reverse=True)[:8]
+            
+            # Build context from top results
+            context = self._build_context(top_results, max_context_length)
+            
+            # Generate RAG response
+            rag_response = self._generate_response_with_context(
+                question, 
+                context, 
+                extraction_result,
+                top_results
+            )
+            
+            return rag_response
+            
+        except Exception as e:
+            print(f"⚠️ RAG processing failed: {e}")
+            return f"🤖 I encountered an issue processing your question. Let me try a simpler search approach. Error: {str(e)}"
 
     def _deduplicate_results(self, results: List[Dict]) -> List[Dict]:
         """Remove duplicate results based on content similarity"""
@@ -436,91 +485,119 @@ Answer:"""
 
     def _extract_definitions(self, context: str) -> str:
         """Extract definition-like content"""
-        sentences = sent_tokenize(context)
-        definitions = []
-        
-        for sentence in sentences[:5]:  # First 5 sentences
-            if any(word in sentence.lower() for word in ['is', 'are', 'means', 'refers', 'defines']):
-                definitions.append(f"• {sentence.strip()}")
-        
-        return '\n'.join(definitions) if definitions else "• Based on the documentation context provided above."
+        try:
+            sentences = sent_tokenize(context)
+            definitions = []
+            
+            for sentence in sentences[:5]:  # First 5 sentences
+                if any(word in sentence.lower() for word in ['is', 'are', 'means', 'refers', 'defines']):
+                    definitions.append(f"• {sentence.strip()}")
+            
+            return '\n'.join(definitions) if definitions else "• Based on the documentation context provided above."
+        except Exception as e:
+            print(f"⚠️ Definition extraction failed: {e}")
+            return "• Based on the documentation context provided above."
 
     def _extract_features(self, context: str) -> str:
         """Extract feature-like content"""
-        sentences = sent_tokenize(context)
-        features = []
-        
-        for sentence in sentences:
-            if any(word in sentence.lower() for word in ['feature', 'capability', 'function', 'support', 'provide']):
-                features.append(f"• {sentence.strip()}")
-                if len(features) >= 3:
-                    break
-        
-        return '\n'.join(features) if features else "• Detailed features are available in the source documentation."
+        try:
+            sentences = sent_tokenize(context)
+            features = []
+            
+            for sentence in sentences:
+                if any(word in sentence.lower() for word in ['feature', 'capability', 'function', 'support', 'provide']):
+                    features.append(f"• {sentence.strip()}")
+                    if len(features) >= 3:
+                        break
+            
+            return '\n'.join(features) if features else "• Detailed features are available in the source documentation."
+        except Exception as e:
+            print(f"⚠️ Feature extraction failed: {e}")
+            return "• Detailed features are available in the source documentation."
 
     def _extract_procedures(self, context: str) -> str:
         """Extract procedural content"""
-        sentences = sent_tokenize(context)
-        procedures = []
-        
-        for sentence in sentences:
-            if any(word in sentence.lower() for word in ['step', 'first', 'then', 'next', 'configure', 'set', 'execute']):
-                procedures.append(f"• {sentence.strip()}")
-                if len(procedures) >= 5:
-                    break
-        
-        return '\n'.join(procedures) if procedures else "• Please refer to the detailed procedures in the source documentation."
+        try:
+            sentences = sent_tokenize(context)
+            procedures = []
+            
+            for sentence in sentences:
+                if any(word in sentence.lower() for word in ['step', 'first', 'then', 'next', 'configure', 'set', 'execute']):
+                    procedures.append(f"• {sentence.strip()}")
+                    if len(procedures) >= 5:
+                        break
+            
+            return '\n'.join(procedures) if procedures else "• Please refer to the detailed procedures in the source documentation."
+        except Exception as e:
+            print(f"⚠️ Procedure extraction failed: {e}")
+            return "• Please refer to the detailed procedures in the source documentation."
 
     def _extract_warnings(self, context: str) -> str:
         """Extract warning or important note content"""
-        sentences = sent_tokenize(context)
-        warnings = []
-        
-        for sentence in sentences:
-            if any(word in sentence.lower() for word in ['warning', 'caution', 'important', 'note', 'careful', 'ensure']):
-                warnings.append(f"• {sentence.strip()}")
-                if len(warnings) >= 3:
-                    break
-        
-        return '\n'.join(warnings) if warnings else "• Follow standard best practices as outlined in the documentation."
+        try:
+            sentences = sent_tokenize(context)
+            warnings = []
+            
+            for sentence in sentences:
+                if any(word in sentence.lower() for word in ['warning', 'caution', 'important', 'note', 'careful', 'ensure']):
+                    warnings.append(f"• {sentence.strip()}")
+                    if len(warnings) >= 3:
+                        break
+            
+            return '\n'.join(warnings) if warnings else "• Follow standard best practices as outlined in the documentation."
+        except Exception as e:
+            print(f"⚠️ Warning extraction failed: {e}")
+            return "• Follow standard best practices as outlined in the documentation."
 
     def _extract_problem_info(self, context: str) -> str:
         """Extract problem-related information"""
-        sentences = sent_tokenize(context)
-        problems = []
-        
-        for sentence in sentences:
-            if any(word in sentence.lower() for word in ['error', 'problem', 'issue', 'fail', 'cannot', 'unable']):
-                problems.append(f"• {sentence.strip()}")
-                if len(problems) >= 3:
-                    break
-        
-        return '\n'.join(problems) if problems else "• Problem analysis based on documentation context."
+        try:
+            sentences = sent_tokenize(context)
+            problems = []
+            
+            for sentence in sentences:
+                if any(word in sentence.lower() for word in ['error', 'problem', 'issue', 'fail', 'cannot', 'unable']):
+                    problems.append(f"• {sentence.strip()}")
+                    if len(problems) >= 3:
+                        break
+            
+            return '\n'.join(problems) if problems else "• Problem analysis based on documentation context."
+        except Exception as e:
+            print(f"⚠️ Problem extraction failed: {e}")
+            return "• Problem analysis based on documentation context."
 
     def _extract_solutions(self, context: str) -> str:
         """Extract solution-related information"""
-        sentences = sent_tokenize(context)
-        solutions = []
-        
-        for sentence in sentences:
-            if any(word in sentence.lower() for word in ['solution', 'resolve', 'fix', 'correct', 'adjust', 'modify']):
-                solutions.append(f"• {sentence.strip()}")
-                if len(solutions) >= 3:
-                    break
-        
-        return '\n'.join(solutions) if solutions else "• Solutions can be found in the detailed documentation."
+        try:
+            sentences = sent_tokenize(context)
+            solutions = []
+            
+            for sentence in sentences:
+                if any(word in sentence.lower() for word in ['solution', 'resolve', 'fix', 'correct', 'adjust', 'modify']):
+                    solutions.append(f"• {sentence.strip()}")
+                    if len(solutions) >= 3:
+                        break
+            
+            return '\n'.join(solutions) if solutions else "• Solutions can be found in the detailed documentation."
+        except Exception as e:
+            print(f"⚠️ Solution extraction failed: {e}")
+            return "• Solutions can be found in the detailed documentation."
 
     def _extract_relevant_info(self, context: str) -> str:
         """Extract generally relevant information"""
-        sentences = sent_tokenize(context)
-        info = []
-        
-        # Take first few meaningful sentences
-        for sentence in sentences[:4]:
-            if len(sentence.strip()) > 50:  # Meaningful sentences
-                info.append(f"• {sentence.strip()}")
-        
-        return '\n'.join(info) if info else "• Information extracted from the documentation context."
+        try:
+            sentences = sent_tokenize(context)
+            info = []
+            
+            # Take first few meaningful sentences
+            for sentence in sentences[:4]:
+                if len(sentence.strip()) > 50:  # Meaningful sentences
+                    info.append(f"• {sentence.strip()}")
+            
+            return '\n'.join(info) if info else "• Information extracted from the documentation context."
+        except Exception as e:
+            print(f"⚠️ Info extraction failed: {e}")
+            return "• Information extracted from the documentation context."
 
     def _generate_follow_up_questions(self, topic: str, question_type: str) -> str:
         """Generate relevant follow-up questions"""
