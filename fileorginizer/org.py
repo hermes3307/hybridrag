@@ -6,7 +6,7 @@ import math
 from concurrent.futures import ThreadPoolExecutor
 
 class SimpleFileOrganizer:
-    def __init__(self, root_dir=r"e:\OneDrive"):
+    def __init__(self, root_dir=r"E:\Google231213"):
         self.root_dir = root_dir
         self.files_info = []
         self.target_folders = []
@@ -162,14 +162,14 @@ class SimpleFileOrganizer:
                 best_folder_idx = folder_idx
                 
         return self.target_folders[best_folder_idx]
-        
+    
     def organize_files(self):
-        """파일을 대상 폴더로 이동"""
+        """파일을 대상 폴더로 이동, 최대 3단계 깊이로 제한"""
         if not self.target_folders:
             print("No target folders defined!")
             return
             
-        print("Organizing files into target folders...")
+        print("Organizing files into target folders with max 3-level depth...")
         
         # 결과 저장용 딕셔너리
         results = {folder: [] for folder in self.target_folders}
@@ -196,12 +196,21 @@ class SimpleFileOrganizer:
             for file_info in files:
                 source_path = file_info['full_path']
                 
-                # 하위 폴더 구조 보존하기 위한 상대 경로 계산
-                rel_path = file_info['relative_path']
+                # 상대 경로를 최대 3단계로 제한
+                rel_path_parts = file_info['relative_path'].split(os.sep)
+                if rel_path_parts[0] == '.':
+                    rel_path_parts = rel_path_parts[1:]
+                    
+                # 최대 3단계 깊이로 제한 (대상 폴더 + 2단계)
+                if len(rel_path_parts) > 2:
+                    rel_path_parts = rel_path_parts[-2:]  # 마지막 2단계만 유지
+                    
+                rel_path = os.path.join(*rel_path_parts) if rel_path_parts else '.'
+                
                 if rel_path == '.':
                     target_path = os.path.join(target_dir, file_info['filename'])
                 else:
-                    # 원래 하위 폴더 구조를 유지
+                    # 제한된 하위 폴더 구조 유지
                     full_target_dir = os.path.join(target_dir, rel_path)
                     if not os.path.exists(full_target_dir):
                         os.makedirs(full_target_dir)
@@ -218,11 +227,19 @@ class SimpleFileOrganizer:
         print("File organization complete!")
 
 def main():
-    parser = argparse.ArgumentParser(description='Organize files using vector similarity')
-    parser.add_argument('--dir', default=r'e:\OLDONE', help='Root directory to organize')
-    args = parser.parse_args()
+    # 기본 디렉토리 설정
+    default_dir = r"E:\Google231213"
     
-    organizer = SimpleFileOrganizer(args.dir)
+    # 사용자에게 디렉토리 입력 받기
+    print(f"Enter source directory [default: {default_dir}]:")
+    input_dir = input()
+    
+    # 입력이 없으면 기본 디렉토리 사용
+    root_dir = input_dir if input_dir.strip() else default_dir
+    
+    print(f"Using directory: {root_dir}")
+    
+    organizer = SimpleFileOrganizer(root_dir)
     organizer.scan_directory()
     organizer.create_simple_vectors()
     organizer.get_target_folders()
