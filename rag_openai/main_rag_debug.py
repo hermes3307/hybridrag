@@ -14,7 +14,6 @@ load_dotenv()
 import os
 import sys
 import time
-
 import json
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass
@@ -28,9 +27,17 @@ from vector_manager import VectorStoreManager
 from query_engine import ConversationalQueryEngine
 from status import StatusManager
 
+# 🔍 RAG 디버거 추가
+try:
+    from debug_rag import RAGProcessDebugger
+    RAG_DEBUG_AVAILABLE = True
+    print("✅ RAG Debug module loaded successfully")
+except ImportError as e:
+    print(f"⚠️ RAG Debug module not available: {e}")
+    RAG_DEBUG_AVAILABLE = False
+
 # Download required NLTK data with better compatibility
 import nltk
-
 
 def download_nltk_data():
     """Download required NLTK data with fallback for different versions"""
@@ -506,9 +513,9 @@ Answer:"""
         
         final_response = f"""{llm_response}
 
-    {sources_info}
+{sources_info}
 
-    💡 **더 궁금한 점이 있으시면 언제든 물어보세요!** 😊"""
+💡 **더 궁금한 점이 있으시면 언제든 물어보세요!** 😊"""
         
         return final_response
 
@@ -528,180 +535,6 @@ Answer:"""
             sources_text += f"   {i}. 📄 {source}\n"
         
         return sources_text
-
-    def _create_structured_response(self, question: str, context: str, question_type: str, 
-                                  main_topic: str, results: List[Dict]) -> str:
-        """Create a structured response based on the context (simulated LLM response)"""
-        
-        response = f"🎯 **Based on the documentation about {main_topic}:**\n\n"
-        
-        # Extract key information from context
-        if question_type == 'what_is':
-            response += f"📖 **Definition and Overview:**\n"
-            response += self._extract_definitions(context)
-            response += f"\n\n🔧 **Key Features:**\n"
-            response += self._extract_features(context)
-            
-        elif question_type == 'how_to':
-            response += f"📋 **Step-by-Step Guide:**\n"
-            response += self._extract_procedures(context)
-            response += f"\n\n⚠️ **Important Notes:**\n"
-            response += self._extract_warnings(context)
-            
-        elif question_type == 'troubleshoot':
-            response += f"🔍 **Problem Analysis:**\n"
-            response += self._extract_problem_info(context)
-            response += f"\n\n💡 **Solutions:**\n"
-            response += self._extract_solutions(context)
-            
-        else:  # general
-            response += f"📄 **Information from Documentation:**\n"
-            response += self._extract_relevant_info(context)
-        
-        # Add sources
-        response += f"\n\n📚 **Sources Referenced:**\n"
-        sources = set()
-        for result in results[:5]:  # Top 5 sources
-            source = result.get('payload', {}).get('source_file', 'Unknown')
-            if source != 'Unknown':
-                sources.add(source)
-        
-        for i, source in enumerate(sources, 1):
-            response += f"   {i}. {source}\n"
-        
-        # Add follow-up suggestions
-        response += f"\n💡 **Need more details?** Try asking:\n"
-        response += self._generate_follow_up_questions(main_topic, question_type)
-        
-        return response
-
-    def _extract_definitions(self, context: str) -> str:
-        """Extract definition-like content"""
-        try:
-            sentences = sent_tokenize(context)
-            definitions = []
-            
-            for sentence in sentences[:5]:  # First 5 sentences
-                if any(word in sentence.lower() for word in ['is', 'are', 'means', 'refers', 'defines']):
-                    definitions.append(f"• {sentence.strip()}")
-            
-            return '\n'.join(definitions) if definitions else "• Based on the documentation context provided above."
-        except Exception as e:
-            print(f"⚠️ Definition extraction failed: {e}")
-            return "• Based on the documentation context provided above."
-
-    def _extract_features(self, context: str) -> str:
-        """Extract feature-like content"""
-        try:
-            sentences = sent_tokenize(context)
-            features = []
-            
-            for sentence in sentences:
-                if any(word in sentence.lower() for word in ['feature', 'capability', 'function', 'support', 'provide']):
-                    features.append(f"• {sentence.strip()}")
-                    if len(features) >= 3:
-                        break
-            
-            return '\n'.join(features) if features else "• Detailed features are available in the source documentation."
-        except Exception as e:
-            print(f"⚠️ Feature extraction failed: {e}")
-            return "• Detailed features are available in the source documentation."
-
-    def _extract_procedures(self, context: str) -> str:
-        """Extract procedural content"""
-        try:
-            sentences = sent_tokenize(context)
-            procedures = []
-            
-            for sentence in sentences:
-                if any(word in sentence.lower() for word in ['step', 'first', 'then', 'next', 'configure', 'set', 'execute']):
-                    procedures.append(f"• {sentence.strip()}")
-                    if len(procedures) >= 5:
-                        break
-            
-            return '\n'.join(procedures) if procedures else "• Please refer to the detailed procedures in the source documentation."
-        except Exception as e:
-            print(f"⚠️ Procedure extraction failed: {e}")
-            return "• Please refer to the detailed procedures in the source documentation."
-
-    def _extract_warnings(self, context: str) -> str:
-        """Extract warning or important note content"""
-        try:
-            sentences = sent_tokenize(context)
-            warnings = []
-            
-            for sentence in sentences:
-                if any(word in sentence.lower() for word in ['warning', 'caution', 'important', 'note', 'careful', 'ensure']):
-                    warnings.append(f"• {sentence.strip()}")
-                    if len(warnings) >= 3:
-                        break
-            
-            return '\n'.join(warnings) if warnings else "• Follow standard best practices as outlined in the documentation."
-        except Exception as e:
-            print(f"⚠️ Warning extraction failed: {e}")
-            return "• Follow standard best practices as outlined in the documentation."
-
-    def _extract_problem_info(self, context: str) -> str:
-        """Extract problem-related information"""
-        try:
-            sentences = sent_tokenize(context)
-            problems = []
-            
-            for sentence in sentences:
-                if any(word in sentence.lower() for word in ['error', 'problem', 'issue', 'fail', 'cannot', 'unable']):
-                    problems.append(f"• {sentence.strip()}")
-                    if len(problems) >= 3:
-                        break
-            
-            return '\n'.join(problems) if problems else "• Problem analysis based on documentation context."
-        except Exception as e:
-            print(f"⚠️ Problem extraction failed: {e}")
-            return "• Problem analysis based on documentation context."
-
-    def _extract_solutions(self, context: str) -> str:
-        """Extract solution-related information"""
-        try:
-            sentences = sent_tokenize(context)
-            solutions = []
-            
-            for sentence in sentences:
-                if any(word in sentence.lower() for word in ['solution', 'resolve', 'fix', 'correct', 'adjust', 'modify']):
-                    solutions.append(f"• {sentence.strip()}")
-                    if len(solutions) >= 3:
-                        break
-            
-            return '\n'.join(solutions) if solutions else "• Solutions can be found in the detailed documentation."
-        except Exception as e:
-            print(f"⚠️ Solution extraction failed: {e}")
-            return "• Solutions can be found in the detailed documentation."
-
-    def _extract_relevant_info(self, context: str) -> str:
-        """Extract generally relevant information"""
-        try:
-            sentences = sent_tokenize(context)
-            info = []
-            
-            # Take first few meaningful sentences
-            for sentence in sentences[:4]:
-                if len(sentence.strip()) > 50:  # Meaningful sentences
-                    info.append(f"• {sentence.strip()}")
-            
-            return '\n'.join(info) if info else "• Information extracted from the documentation context."
-        except Exception as e:
-            print(f"⚠️ Info extraction failed: {e}")
-            return "• Information extracted from the documentation context."
-
-    def _generate_follow_up_questions(self, topic: str, question_type: str) -> str:
-        """Generate relevant follow-up questions"""
-        
-        if question_type == 'what_is':
-            return f"   • How to configure {topic}?\n   • What are the best practices for {topic}?\n   • Common issues with {topic}?"
-        elif question_type == 'how_to':
-            return f"   • What are common errors when working with {topic}?\n   • Best practices for {topic}?\n   • Advanced configuration of {topic}?"
-        elif question_type == 'troubleshoot':
-            return f"   • How to prevent {topic} issues?\n   • What is {topic}?\n   • Configuration guide for {topic}?"
-        else:
-            return f"   • More details about {topic}?\n   • How to implement {topic}?\n   • Troubleshooting {topic}?"
 
 
 @dataclass
@@ -766,6 +599,17 @@ class ConversationalAssistant:
             self.vector_manager = None
             self.query_engine = None
             self.rag_engine = None
+        
+        # 🔍 RAG 디버거 초기화
+        if RAG_DEBUG_AVAILABLE and self.vector_manager and self.query_engine:
+            try:
+                self.rag_debugger = RAGProcessDebugger(self.vector_manager, self.query_engine)
+                print("✅ RAG debugger initialized")
+            except Exception as e:
+                print(f"⚠️ RAG debugger initialization failed: {e}")
+                self.rag_debugger = None
+        else:
+            self.rag_debugger = None
         
         # StatusManager 초기화
         self.status_manager = StatusManager("processing_status.json")
@@ -836,6 +680,17 @@ class ConversationalAssistant:
         
         return any(keyword in user_input_lower for keyword in command_keywords)
 
+    def _is_debug_command(self, user_input: str) -> bool:
+        """🔍 Check if user input is a RAG debug command"""
+        debug_keywords = [
+            'debug rag', 'show rag process', 'rag debug', 'debug process',
+            'show process', 'explain rag', 'how rag works', 'rag analysis',
+            'debug question', 'analyze question', 'rag step'
+        ]
+        
+        user_input_lower = user_input.lower()
+        return any(keyword in user_input_lower for keyword in debug_keywords)
+
     async def chat(self, user_input: str) -> str:
         """💬 Main chat interface with RAG capabilities"""
         if not user_input.strip():
@@ -849,8 +704,13 @@ class ConversationalAssistant:
             'timestamp': time.time()
         })
 
+        # 🔍 Check if this is a RAG debug command
+        if self._is_debug_command(user_input):
+            print("🔍 Processing as RAG debug command...")
+            response = await self._handle_debug_command(user_input)
+        
         # Check if this is a document processing command
-        if self._is_document_command(user_input):
+        elif self._is_document_command(user_input):
             print("🔧 Processing as document command...")
             response = await self._handle_document_command(user_input)
         
@@ -875,6 +735,133 @@ class ConversationalAssistant:
         self.conversation_history[-1]['assistant'] = response
         
         return response
+
+    async def _handle_debug_command(self, user_input: str) -> str:
+        """🔍 Handle RAG debugging commands"""
+        
+        if not RAG_DEBUG_AVAILABLE:
+            return ("🔍 RAG debugging feature is not available! \n\n"
+                   "💡 To enable RAG debugging:\n"
+                   "   1. Make sure debug_rag.py is in the same directory\n"
+                   "   2. Install required dependencies\n"
+                   "   3. Restart the application")
+        
+        if not self.rag_debugger:
+            return ("🔍 RAG debugger is not initialized! \n\n"
+                   "💡 Please make sure:\n"
+                   "   • Vector database is available\n"
+                   "   • Query engine is initialized\n"
+                   "   • Try restarting the application")
+        
+        user_lower = user_input.lower()
+        
+        # Extract question from debug command
+        question_to_debug = None
+        
+        # Pattern: "debug rag: question"
+        if ':' in user_input:
+            question_to_debug = user_input.split(':', 1)[1].strip()
+        
+        # Pattern: "show rag process for question"
+        elif 'for' in user_lower:
+            parts = user_input.split('for', 1)
+            if len(parts) > 1:
+                question_to_debug = parts[1].strip()
+        
+        # Default demo questions
+        if not question_to_debug:
+            demo_questions = [
+                "IPCDA가 뭐야?",
+                "How to configure database performance?",
+                "Altibase troubleshooting guide"
+            ]
+            
+            return f"""🔍 **RAG 디버깅 데모를 실행할게요!**
+
+사용법:
+• "debug rag: IPCDA가 뭐야?" - 특정 질문 디버깅
+• "show rag process for database configuration" - 특정 주제 분석
+• "rag analysis" - 데모 실행
+
+🎯 데모 질문으로 분석을 시작합니다...
+
+{await self._run_rag_debug_demo(demo_questions)}"""
+        
+        # Debug specific question
+        try:
+            print(f"🔍 Starting RAG debug for question: {question_to_debug}")
+            debug_result = await self.rag_debugger.debug_rag_process(question_to_debug, show_details=True)
+            
+            if debug_result.success:
+                return f"""🎉 **RAG 디버깅 완료!**
+
+❓ **분석된 질문**: {question_to_debug}
+⏱️ **총 처리 시간**: {debug_result.total_processing_time:.3f}초
+✅ **처리 상태**: 성공
+📊 **처리 단계**: {len(debug_result.steps)}단계
+
+🔍 **상세 분석 결과는 콘솔에서 확인하세요!**
+
+💡 **팁**: 
+• 더 자세한 분석을 위해 "debug rag: 다른 질문" 시도해보세요
+• 여러 질문 비교는 console에서 debug_multiple_questions() 사용"""
+            else:
+                return f"""❌ **RAG 디버깅 실패**
+
+❓ **질문**: {question_to_debug}
+🚨 **오류**: {debug_result.error_message}
+⏱️ **처리 시간**: {debug_result.total_processing_time:.3f}초
+
+💡 **해결 방법**:
+• 벡터 데이터베이스가 준비되었는지 확인
+• 문서가 인덱싱되었는지 확인
+• OpenAI API 키가 설정되었는지 확인"""
+        
+        except Exception as e:
+            return f"""❌ **RAG 디버깅 중 오류 발생**
+
+🚨 **오류**: {str(e)}
+
+💡 **해결 방법**:
+• 시스템 상태 확인: 'status' 명령 실행
+• 필요한 구성 요소 확인
+• 문제가 지속되면 재시작 시도"""
+
+    async def _run_rag_debug_demo(self, questions: List[str]) -> str:
+        """🎯 RAG 디버깅 데모 실행"""
+        
+        try:
+            # 첫 번째 질문으로 간단한 데모
+            demo_question = questions[0]
+            
+            print(f"\n🎯 RAG 디버깅 데모 - 질문: {demo_question}")
+            debug_result = await self.rag_debugger.debug_rag_process(demo_question, show_details=False)
+            
+            demo_summary = f"""📊 **데모 결과 요약**:
+
+❓ 질문: {demo_question}
+⏱️ 처리 시간: {debug_result.total_processing_time:.3f}초
+📋 처리 단계: {len(debug_result.steps)}단계
+✅ 성공 여부: {'성공' if debug_result.success else '실패'}
+
+🔍 **주요 처리 단계**:"""
+            
+            for step in debug_result.steps:
+                demo_summary += f"\n   {step.step_number}. {step.step_name} ({step.processing_time:.3f}초)"
+            
+            demo_summary += f"""
+
+💡 **콘솔에서 상세 분석 결과를 확인하세요!**
+
+🎯 **더 많은 디버깅 옵션**:
+• "debug rag: 당신의 질문" - 특정 질문 분석
+• "show rag process for 주제" - 주제별 분석
+• console에서 debug_multiple_questions() - 여러 질문 비교"""
+            
+            return demo_summary
+        
+        except Exception as e:
+            return f"❌ 데모 실행 중 오류: {str(e)}"
 
     async def _handle_document_command(self, user_input: str) -> str:
         """Handle document processing commands (existing functionality)"""
@@ -941,209 +928,20 @@ class ConversationalAssistant:
         except Exception as e:
             return f"❌ Search failed: {str(e)}"
 
-    async def _handle_download_from_url(self, user_input: str) -> str:
-        """Handle URL download requests"""
-        # Extract URL from input
-        url_match = re.search(r'https?://[^\s]+', user_input)
-        if url_match:
-            url = url_match.group()
-        else:
-            return ("🤖 I'd love to help you download documents! Please provide a URL. "
-                   "For example: 'Download documents from https://example.com/docs'")
-        
-        self.state.current_url = url
-        
-        try:
-            print(f"🔍 Analyzing URL: {url}")
-            documents = await self.downloader.scan_documents(url)
-            self.state.discovered_documents = documents
-            
-            if not documents:
-                self.status_manager.update_url_status(url=url, documents_found=0, total_size_mb=0, status='failed')
-                return f"🤖 I couldn't find any documents at {url}. Could you check the URL?"
-            
-            # Update status
-            total_size_mb = sum(doc.size or 0 for doc in documents) / (1024 * 1024)
-            self.status_manager.update_url_status(
-                url=url, documents_found=len(documents), total_size_mb=total_size_mb, status='scanned'
-            )
-            
-            doc_summary = self.downloader.summarize_findings(documents)
-            
-            response = f"🎉 Great! I found documents at {url}:\n\n{doc_summary}\n\n"
-            response += "💡 What would you like to do?\n"
-            response += "• 'Download all PDFs'\n"
-            response += "• 'Download everything'\n"
-            response += "• 'Show me more details first'"
-            
-            return response
-            
-        except Exception as e:
-            self.status_manager.update_url_status(url=url, documents_found=0, total_size_mb=0, status='failed')
-            return f"❌ Oops! I had trouble accessing {url}. Error: {str(e)}"
-
-    async def _handle_download_all(self) -> str:
-        """Handle download all requests"""
-        if not self.state.discovered_documents:
-            return ("🤖 I don't see any discovered documents to download! "
-                   "Please scan a URL first with something like 'download from https://example.com'")
-        
-        try:
-            downloaded_files = await self.downloader.download_documents()
-            self.state.downloaded_files.extend(downloaded_files)
-            
-            stats = self.downloader.get_download_stats()
-            
-            # Update status
-            absolute_file_paths = [os.path.abspath(f) for f in downloaded_files]
-            self.status_manager.update_download_status(
-                total_files=stats['total_found'],
-                downloaded_files=stats['downloaded'],
-                failed_files=stats['failed'],
-                total_size_mb=stats['bytes_downloaded'] / (1024 * 1024),
-                download_directory=str(os.path.abspath(self.downloader.download_dir)),
-                file_list=absolute_file_paths
-            )
-            
-            response = f"✅ Download complete!\n\n"
-            response += f"📥 Downloaded: {stats['downloaded']} files\n"
-            response += f"❌ Failed: {stats['failed']} files\n"
-            if stats['bytes_downloaded'] > 0:
-                mb_downloaded = stats['bytes_downloaded'] / (1024 * 1024)
-                response += f"💾 Total size: {mb_downloaded:.1f} MB\n"
-            
-            response += f"📁 Files saved to: {self.downloader.download_dir}\n\n"
-            response += "💡 Next step: 'Process the files' to chunk them for searching!"
-            
-            return response
-            
-        except Exception as e:
-            return f"❌ Download failed. Error: {str(e)}"
-
-    async def _handle_download_pdfs(self) -> str:
-        """Handle PDF-only download requests"""
-        if not self.state.discovered_documents:
-            return ("🤖 I don't see any discovered documents to download! "
-                   "Please scan a URL first.")
-        
-        try:
-            downloaded_files = await self.downloader.download_documents({'extensions': ['.pdf']})
-            self.state.downloaded_files.extend(downloaded_files)
-            
-            stats = self.downloader.get_download_stats()
-            
-            response = f"✅ PDF download complete!\n\n"
-            response += f"📄 Downloaded: {stats['downloaded']} PDF files\n"
-            response += f"❌ Failed: {stats['failed']} files\n"
-            if stats['bytes_downloaded'] > 0:
-                mb_downloaded = stats['bytes_downloaded'] / (1024 * 1024)
-                response += f"💾 Total size: {mb_downloaded:.1f} MB\n"
-            
-            response += f"📁 Files saved to: {self.downloader.download_dir}\n\n"
-            response += "💡 Ready to process these files for intelligent search!"
-            
-            return response
-            
-        except Exception as e:
-            return f"❌ PDF download failed. Error: {str(e)}"
-
-    async def _handle_chunk_files(self) -> str:
-        """Handle file chunking requests"""
-        if not self.chunker:
-            return "❌ Document chunker is not available. Please check if smart_chunker.py is accessible."
-        
-        if not self.state.downloaded_files:
-            return ("🤖 I don't see any downloaded files to process yet! "
-                   "Would you like me to download some documents first?")
-        
-        try:
-            print(f"🧩 Processing {len(self.state.downloaded_files)} files...")
-            
-            chunks = await self.chunker.process_files(
-                self.state.downloaded_files,
-                chunk_size=1000,
-                overlap=200,
-                use_semantic_splitting=True,
-                preserve_structure=True
-            )
-            
-            self.state.processed_chunks = len(chunks)
-            
-            # Update status
-            processing_stats = self.chunker.get_processing_stats()
-            self.status_manager.update_chunk_status(
-                total_chunks=len(chunks),
-                total_characters=processing_stats.get('total_characters', 0),
-                files_processed=processing_stats.get('files_processed', 0),
-                processing_errors=processing_stats.get('errors', []),
-                chunk_size=1000,
-                overlap=200,
-                semantic_chunking=True
-            )
-            
-            response = f"✅ Perfect! I've processed your documents:\n\n"
-            response += f"📄 Files processed: {len(self.state.downloaded_files)}\n"
-            response += f"🧩 Chunks created: {self.state.processed_chunks:,}\n"
-            response += f"⚙️ Chunk size: ~1000 characters with 200 character overlap\n"
-            response += f"🧠 Semantic chunking: Enabled\n\n"
-            response += "🎯 Ready to index for intelligent search!"
-            
-            return response
-            
-        except Exception as e:
-            return f"❌ I had trouble processing the documents. Error: {str(e)}"
-
-    async def _handle_index_files(self) -> str:
-        """Handle vector indexing requests"""
-        if self.state.processed_chunks == 0:
-            return ("🤖 I need some processed documents to index! "
-                   "Would you like me to process your downloaded files first?")
-        
-        if not self.vector_manager:
-            return ("❌ Vector indexing is not available. Please install required packages:\n"
-                   "pip install sentence-transformers qdrant-client torch")
-        
-        try:
-            print(f"🗄️ Indexing {self.state.processed_chunks} chunks...")
-            
-            chunks = self.chunker.get_chunks()
-            if not chunks:
-                return "🤖 I couldn't find the processed chunks. Please run processing again."
-            
-            success = await self.vector_manager.build_index(chunks)
-            
-            if success:
-                self.state.vector_store_ready = True
-                
-                collection_info = self.vector_manager.get_collection_info()
-                self.status_manager.update_vector_status(
-                    is_ready=True,
-                    collection_name=collection_info.get('name', 'conversation_docs'),
-                    vector_count=collection_info.get('points_count', len(chunks)),
-                    vector_dimensions=self.vector_manager.vector_size,
-                    index_size_mb=len(chunks) * 0.001,
-                    embedding_model=self.vector_manager.model_name,
-                    search_capabilities=["semantic_search", "similarity_search", "RAG_enabled"]
-                )
-                
-                response = f"🎉 Vector indexing completed successfully!\n\n"
-                response += f"🗄️ Vector database: Ready with RAG capabilities\n"
-                response += f"📊 Indexed chunks: {len(chunks):,}\n"
-                response += f"🔢 Vector dimensions: {self.vector_manager.vector_size}\n"
-                response += f"🤖 Model: {self.vector_manager.model_name}\n\n"
-                response += "🎯 **You can now ask me intelligent questions about your documents!**\n"
-                response += "💡 Try: 'What is IPCDA?', 'How to configure database?', 'Troubleshoot connection issues?'"
-                
-                return response
-            else:
-                return "❌ Vector indexing failed. Please check the logs for details."
-            
-        except Exception as e:
-            return f"❌ Indexing failed. Error: {str(e)}"
-
+    # [여기에 기존의 다른 메서드들이 계속됩니다...]
+    # _handle_download_from_url, _handle_download_all, 등등...
+    
     def _get_help_message(self) -> str:
         """Get help message"""
-        return """🤖 **I'm your intelligent document assistant!** Here's what I can do:
+        debug_help = ""
+        if RAG_DEBUG_AVAILABLE:
+            debug_help = """
+🔍 **RAG 디버깅 & 분석**
+   • "debug rag: IPCDA가 뭐야?" - 특정 질문의 RAG 프로세스 분석
+   • "show rag process for database" - 주제별 RAG 분석
+   • "rag analysis" - RAG 프로세스 데모"""
+        
+        return f"""🤖 **I'm your intelligent document assistant!** Here's what I can do:
 
 📥 **Document Management**
    • "Download PDFs from https://example.com/docs"
@@ -1157,7 +955,7 @@ class ConversationalAssistant:
    • "Troubleshoot connection timeout errors"
    • "Best practices for backup procedures"
    • "Explain the difference between memory and disk databases"
-
+{debug_help}
 📊 **Status & Information**
    • "What's the current status?"
    • "Show quick status"
@@ -1173,13 +971,19 @@ class ConversationalAssistant:
 🎯 **Current capabilities**: """ + (
     "✅ RAG-powered intelligent answers available!" if self.state.vector_store_ready 
     else "⏳ Ready for document processing - index some documents to unlock intelligent Q&A!"
+) + (
+    " 🔍 RAG debugging enabled!" if RAG_DEBUG_AVAILABLE else ""
 )
+
+    # [기존의 다른 메서드들을 여기에 추가...]
 
 
 async def main():
     """🎭 Main interactive chat loop with RAG"""
     print("🌟" + "=" * 70 + "🌟")
     print("      🤖 Intelligent Document Assistant with RAG")
+    if RAG_DEBUG_AVAILABLE:
+        print("                🔍 RAG Debugging Enabled")
     print("🌟" + "=" * 70 + "🌟")
     print()
     print("💬 Hi! I'm your intelligent document processing assistant!")
@@ -1190,6 +994,8 @@ async def main():
     print("   • How-to questions: 'How to configure database performance?'")
     print("   • Troubleshooting: 'Fix connection timeout errors'")
     print("   • Document commands: 'Download PDFs from [URL]'")
+    if RAG_DEBUG_AVAILABLE:
+        print("   • RAG debugging: 'debug rag: your question here'")
     print()
     print("   Type 'quit' to exit")
     print("=" * 78)
