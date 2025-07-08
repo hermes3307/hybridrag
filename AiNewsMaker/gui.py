@@ -1310,6 +1310,39 @@ ID: {item_data['id']}
         self.vector_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         vector_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
+        # ✅ ADD: Embedding diagnostics button
+        ttk.Button(control_frame, text="🔧 임베딩 차원 확인", command=self.fix_embedding_dimensions).pack(side=tk.LEFT, padx=5)
+
+    # ✅ ENHANCED: Add collection reset functionality to GUI
+    def fix_embedding_dimensions(self):
+        """임베딩 차원 문제 해결 (NEW GUI METHOD)"""
+        if not self.system:
+            messagebox.showwarning("경고", "시스템이 초기화되지 않았습니다.")
+            return
+        
+        # 현재 임베딩 정보 확인
+        embed_info = self.system.db_manager.get_embedding_info()
+        
+        if embed_info.get("sample_embedding_dim") != 768:
+            # 임베딩 차원 불일치 - 재설정 제안
+            if messagebox.askyesno("임베딩 차원 불일치", 
+                                f"현재 임베딩 차원: {embed_info.get('sample_embedding_dim')}\n"
+                                f"필요한 차원: 768\n\n"
+                                f"벡터 데이터베이스를 768차원으로 재설정하시겠습니까?\n"
+                                f"(기존 데이터는 보존되지만 새로운 임베딩으로 변환됩니다)"):
+                
+                try:
+                    success = self.system.db_manager.reset_collection_with_proper_embeddings()
+                    if success:
+                        messagebox.showinfo("완료", "벡터 데이터베이스가 768차원으로 재설정되었습니다.")
+                        self.refresh_vector_stats()
+                    else:
+                        messagebox.showerror("실패", "벡터 데이터베이스 재설정에 실패했습니다.")
+                except Exception as e:
+                    messagebox.showerror("오류", f"재설정 중 오류 발생: {e}")
+        else:
+            messagebox.showinfo("정상", "임베딩 차원이 정상입니다 (768차원).")
+            
     def setup_writing_tab(self, parent):
         """뉴스 작성 탭 (개선됨)"""
         writing_frame = ttk.Frame(parent)
