@@ -19,6 +19,7 @@ case_studies/
 case_study_output.txt
 vector_db/
 *.log
+collected_news/
 *.json
 altibase_rag/
 
