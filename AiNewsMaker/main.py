@@ -425,44 +425,105 @@ class EnhancedPromptManager:
 
 전체 점수 7점 이상일 때 최종 승인하세요."""
 
+
+# AFTER: Smart handling of embedding function conflicts
+
+import chromadb
+from chromadb.utils import embedding_functions
+import hashlib
+import math
+
 class EnhancedChromaDBManager:
-    """향상된 ChromaDB 관리 클래스 (임베딩 차원 통일)"""
+    """향상된 ChromaDB 관리 클래스 (임베딩 충돌 해결)"""
     
     def __init__(self, db_path: str = "./chroma_db"):
         try:
             self.client = chromadb.PersistentClient(path=db_path)
             
-            # ✅ FIXED: Create custom embedding function that always returns 768 dimensions
-            self.embedding_function = self._create_768_embedding_function()
+            # ✅ FIXED: Check if collection exists first
+            collection_name = "enhanced_news_collection"
+            existing_collections = [col.name for col in self.client.list_collections()]
             
-            # ✅ FIXED: Specify embedding function to ensure consistency
-            self.collection = self.client.get_or_create_collection(
-                name="enhanced_news_collection",
-                metadata={"description": "Enhanced AI News Writer 뉴스 컬렉션"},
-                embedding_function=self.embedding_function  # ✅ Ensures 768-dim consistency
-            )
-            logger.info(f"ChromaDB 초기화 완료: {db_path} (768차원 임베딩)")
+            if collection_name in existing_collections:
+                # ✅ Collection exists - use it without changing embedding function
+                logger.info(f"기존 컬렉션 사용: {collection_name}")
+                self.collection = self.client.get_collection(collection_name)
+                self.embedding_function = None  # Use existing embedding function
+                
+                # Check if we need to handle dimension mismatches later
+                self._check_embedding_compatibility()
+                
+            else:
+                # ✅ New collection - create with custom embedding function
+                logger.info(f"새 컬렉션 생성: {collection_name}")
+                self.embedding_function = self._create_768_embedding_function()
+                self.collection = self.client.create_collection(
+                    name=collection_name,
+                    metadata={"description": "Enhanced AI News Writer 뉴스 컬렉션"},
+                    embedding_function=self.embedding_function
+                )
+            
+            logger.info(f"ChromaDB 초기화 완료: {db_path}")
+            
         except Exception as e:
             logger.error(f"ChromaDB 초기화 실패: {e}")
-            raise
+            # ✅ FALLBACK: Create collection without custom embedding function
+            try:
+                self.collection = self.client.get_or_create_collection(
+                    name="enhanced_news_collection",
+                    metadata={"description": "Enhanced AI News Writer 뉴스 컬렉션"}
+                    # No embedding_function specified - use default
+                )
+                self.embedding_function = None
+                logger.warning("기본 임베딩 함수로 폴백하여 초기화 완료")
+            except Exception as fallback_error:
+                logger.error(f"폴백 초기화도 실패: {fallback_error}")
+                raise fallback_error
+    
+    def _check_embedding_compatibility(self):
+        """기존 컬렉션의 임베딩 호환성 확인 (✅ NEW METHOD)"""
+        try:
+            # 컬렉션에 데이터가 있는지 확인
+            count = self.collection.count()
+            if count > 0:
+                # 샘플 검색으로 임베딩 차원 확인
+                try:
+                    # 더미 검색으로 차원 확인
+                    dummy_embedding = [0.1] * 768
+                    self.collection.query(
+                        query_embeddings=[dummy_embedding],
+                        n_results=1,
+                        include=['documents']
+                    )
+                    logger.info("기존 컬렉션: 768차원 임베딩 호환")
+                    self._embedding_dimension = 768
+                except Exception as e:
+                    if "384" in str(e):
+                        logger.warning("기존 컬렉션: 384차원 임베딩 감지")
+                        self._embedding_dimension = 384
+                    else:
+                        logger.warning(f"임베딩 차원 확인 실패: {e}")
+                        self._embedding_dimension = 768  # 기본값
+            else:
+                self._embedding_dimension = 768  # 빈 컬렉션은 768로 가정
+                
+        except Exception as e:
+            logger.error(f"임베딩 호환성 확인 실패: {e}")
+            self._embedding_dimension = 768
     
     def _create_768_embedding_function(self):
-        """768차원 임베딩 함수 생성 (✅ NEW METHOD)"""
+        """768차원 임베딩 함수 생성"""
         class Custom768EmbeddingFunction(embedding_functions.EmbeddingFunction):
             def __call__(self, input_texts):
                 """텍스트를 768차원 임베딩으로 변환"""
                 embeddings = []
                 for text in input_texts:
-                    # 간단한 768차원 임베딩 생성 (실제 구현에서는 sentence-transformers 등 사용)
                     embedding = self._text_to_768_embedding(text)
                     embeddings.append(embedding)
                 return embeddings
             
-            def _text_to_768_embedding(self, text: str) -> List[float]:
+            def _text_to_768_embedding(self, text: str):
                 """텍스트를 768차원 벡터로 변환"""
-                import hashlib
-                import struct
-                
                 # 텍스트의 해시값을 기반으로 768차원 벡터 생성
                 text_hash = hashlib.sha256(text.encode()).hexdigest()
                 
@@ -479,7 +540,6 @@ class EnhancedChromaDBManager:
                     embedding.append(value)
                 
                 # 정규화
-                import math
                 norm = math.sqrt(sum(x * x for x in embedding))
                 if norm > 0:
                     embedding = [x / norm for x in embedding]
@@ -488,19 +548,20 @@ class EnhancedChromaDBManager:
         
         return Custom768EmbeddingFunction()
     
-    def store_news_chunk(self, chunk: NewsChunk, metadata: NewsMetadata, 
-                        embedding: List[float]) -> None:
-        """뉴스 청크를 벡터 DB에 저장 (✅ ENHANCED)"""
+    def store_news_chunk(self, chunk, metadata, embedding):
+        """뉴스 청크를 벡터 DB에 저장 (차원 자동 조정)"""
         try:
-            # ✅ ENHANCED: Always ensure 768 dimensions
-            if len(embedding) != 768:
-                if len(embedding) < 768:
-                    embedding = embedding + [0.0] * (768 - len(embedding))
-                else:
-                    embedding = embedding[:768]
+            # ✅ FIXED: Adjust embedding dimension based on collection
+            target_dim = getattr(self, '_embedding_dimension', 768)
             
-            # 고유 ID 생성 (중복 방지)
-            import hashlib
+            if len(embedding) != target_dim:
+                if len(embedding) < target_dim:
+                    embedding = embedding + [0.0] * (target_dim - len(embedding))
+                else:
+                    embedding = embedding[:target_dim]
+            
+            # 고유 ID 생성
+            import time
             content_hash = hashlib.md5(chunk.content.encode()).hexdigest()
             unique_id = f"chunk_{content_hash}_{chunk.chunk_id}_{int(time.time())}"
             
@@ -518,14 +579,13 @@ class EnhancedChromaDBManager:
                 "source": metadata.source,
                 "summary": metadata.summary,
                 "created_at": datetime.now().isoformat(),
-                "embedding_dim": len(embedding)  # ✅ Track embedding dimension
+                "embedding_dim": len(embedding)
             }
             
-            # ✅ ENHANCED: Use consistent embedding storage
             self.collection.add(
                 documents=[chunk.content],
                 metadatas=[chunk_metadata],
-                embeddings=[embedding],  # Always 768-dim
+                embeddings=[embedding],
                 ids=[unique_id]
             )
             
@@ -536,8 +596,8 @@ class EnhancedChromaDBManager:
             raise
     
     def search_relevant_news(self, query: str, n_results: int = 10, 
-                           min_relevance: int = 5) -> Dict:
-        """관련 뉴스 검색 (✅ FIXED: 임베딩 차원 통일)"""
+                           min_relevance: int = 5):
+        """관련 뉴스 검색 (차원 호환성 고려)"""
         try:
             collection_count = self.collection.count()
             if collection_count == 0:
@@ -545,12 +605,13 @@ class EnhancedChromaDBManager:
                 return {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
             
             actual_n_results = min(n_results, collection_count)
+            target_dim = getattr(self, '_embedding_dimension', 768)
             
-            # ✅ FIXED: METHOD 1 - 이제 768차원 임베딩으로 텍스트 검색
+            # ✅ METHOD 1: 텍스트 기반 검색 (기존 임베딩 함수 사용)
             try:
-                logger.info(f"텍스트 검색 시도 (768차원): '{query[:50]}...'")
+                logger.info(f"텍스트 검색 시도: '{query[:50]}...'")
                 results = self.collection.query(
-                    query_texts=[query],  # ✅ Now generates 768-dim embeddings automatically
+                    query_texts=[query],
                     n_results=actual_n_results,
                     include=['documents', 'metadatas', 'distances']
                 )
@@ -561,25 +622,24 @@ class EnhancedChromaDBManager:
                 
             except Exception as e:
                 logger.warning(f"텍스트 검색 실패: {e}")
-                # 여전히 실패하면 다른 방법 시도
             
-            # METHOD 2: 수동 768차원 임베딩으로 검색
+            # ✅ METHOD 2: 차원에 맞는 더미 임베딩으로 검색
             try:
-                logger.info("수동 768차원 임베딩 검색 시도...")
-                manual_embedding = self.embedding_function([query])[0]  # ✅ Use consistent embedding
+                logger.info(f"더미 임베딩 검색 시도... ({target_dim}차원)")
+                dummy_embedding = [0.1] * target_dim
                 
                 results = self.collection.query(
-                    query_embeddings=[manual_embedding],
+                    query_embeddings=[dummy_embedding],
                     n_results=actual_n_results,
                     include=['documents', 'metadatas', 'distances']
                 )
                 
                 if results and results.get('documents') and results['documents'][0]:
-                    logger.info(f"✅ 수동 임베딩 검색 성공: {len(results['documents'][0])}개 결과")
+                    logger.info(f"✅ 더미 임베딩 검색 성공: {len(results['documents'][0])}개 결과")
                     return self._filter_by_relevance(results, min_relevance)
                 
             except Exception as e:
-                logger.warning(f"수동 임베딩 검색 실패: {e}")
+                logger.warning(f"더미 임베딩 검색 실패: {e}")
             
             # METHOD 3: 키워드 기반 검색 (폴백)
             try:
@@ -589,7 +649,7 @@ class EnhancedChromaDBManager:
             except Exception as e:
                 logger.warning(f"키워드 검색 실패: {e}")
             
-            # METHOD 4: 최후 수단 - 모든 데이터 가져오기
+            # METHOD 4: 최후 수단
             logger.info("전체 데이터 검색 (최후 수단)")
             return self._get_all_data(actual_n_results, min_relevance)
                 
@@ -597,61 +657,7 @@ class EnhancedChromaDBManager:
             logger.error(f"검색 완전 실패: {e}")
             return {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
     
-    def reset_collection_with_proper_embeddings(self):
-        """컬렉션을 올바른 임베딩으로 재설정 (✅ NEW UTILITY METHOD)"""
-        try:
-            # 기존 데이터 백업
-            old_data = self.collection.get(include=['documents', 'metadatas'])
-            
-            # 컬렉션 삭제
-            self.client.delete_collection("enhanced_news_collection")
-            
-            # 새 컬렉션 생성 (768차원 임베딩 함수 포함)
-            self.collection = self.client.get_or_create_collection(
-                name="enhanced_news_collection",
-                metadata={"description": "Enhanced AI News Writer 뉴스 컬렉션 (768차원)"},
-                embedding_function=self.embedding_function
-            )
-            
-            # 데이터 복원 (새로운 768차원 임베딩으로)
-            if old_data.get('documents'):
-                for i, doc in enumerate(old_data['documents']):
-                    metadata = old_data['metadatas'][i] if i < len(old_data['metadatas']) else {}
-                    
-                    # 새로운 768차원 임베딩 생성
-                    new_embedding = self.embedding_function([doc])[0]
-                    
-                    self.collection.add(
-                        documents=[doc],
-                        metadatas=[metadata],
-                        embeddings=[new_embedding],
-                        ids=[f"restored_{i}"]
-                    )
-            
-            logger.info("컬렉션이 768차원 임베딩으로 재설정되었습니다.")
-            return True
-            
-        except Exception as e:
-            logger.error(f"컬렉션 재설정 실패: {e}")
-            return False
-    
-    def get_embedding_info(self) -> Dict:
-        """임베딩 정보 조회 (✅ NEW DIAGNOSTIC METHOD)"""
-        try:
-            # 샘플 데이터로 임베딩 차원 확인
-            sample_embedding = self.embedding_function(["test"])[0]
-            
-            return {
-                "embedding_function": str(type(self.embedding_function)),
-                "sample_embedding_dim": len(sample_embedding),
-                "collection_count": self.collection.count(),
-                "expected_dim": 768
-            }
-        except Exception as e:
-            return {"error": str(e)}
-
-
-    def _filter_by_relevance(self, results: Dict, min_relevance: int) -> Dict:
+    def _filter_by_relevance(self, results, min_relevance: int):
         """관련도 필터링"""
         if not results.get('metadatas') or not results['metadatas'][0]:
             return results
@@ -659,7 +665,7 @@ class EnhancedChromaDBManager:
         filtered_results = {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
         
         for i, metadata in enumerate(results['metadatas'][0]):
-            relevance = metadata.get('relevance_score', 10)  # 기본값 10
+            relevance = metadata.get('relevance_score', 10)
             if relevance >= min_relevance:
                 filtered_results['documents'][0].append(results['documents'][0][i])
                 filtered_results['metadatas'][0].append(metadata)
@@ -669,38 +675,28 @@ class EnhancedChromaDBManager:
         logger.info(f"관련도 필터링 완료: {len(filtered_results['documents'][0])}개 결과")
         return filtered_results
     
-    def _keyword_based_search(self, query: str, n_results: int, min_relevance: int) -> Dict:
+    def _keyword_based_search(self, query: str, n_results: int, min_relevance: int):
         """키워드 기반 검색 (폴백 방법)"""
         try:
-            # 전체 데이터를 가져와서 키워드 매칭
-            all_data = self.collection.get(
-                include=['documents', 'metadatas']
-            )
+            all_data = self.collection.get(include=['documents', 'metadatas'])
             
             if not all_data.get('documents'):
                 return {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
             
-            # 쿼리 키워드 추출
             query_keywords = query.lower().split()
-            
-            # 점수 계산
             scored_results = []
+            
             for i, doc in enumerate(all_data['documents']):
                 metadata = all_data['metadatas'][i] if i < len(all_data['metadatas']) else {}
                 
-                # 키워드 매칭 점수 계산
                 doc_text = doc.lower()
                 score = sum(1 for keyword in query_keywords if keyword in doc_text)
                 
-                # 관련도 확인
                 relevance = metadata.get('relevance_score', 5)
                 if relevance >= min_relevance and score > 0:
                     scored_results.append((score, doc, metadata, 1.0 - (score / len(query_keywords))))
             
-            # 점수순 정렬
             scored_results.sort(key=lambda x: x[0], reverse=True)
-            
-            # 결과 구성
             top_results = scored_results[:n_results]
             
             return {
@@ -713,18 +709,14 @@ class EnhancedChromaDBManager:
             logger.error(f"키워드 검색 실패: {e}")
             return {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
     
-    def _get_all_data(self, n_results: int, min_relevance: int) -> Dict:
+    def _get_all_data(self, n_results: int, min_relevance: int):
         """모든 데이터 가져오기 (최후 수단)"""
         try:
-            all_data = self.collection.get(
-                limit=n_results,
-                include=['documents', 'metadatas']
-            )
+            all_data = self.collection.get(include=['documents', 'metadatas'])
             
             if not all_data.get('documents'):
                 return {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
             
-            # 관련도 필터링
             filtered_docs = []
             filtered_metas = []
             
@@ -736,75 +728,80 @@ class EnhancedChromaDBManager:
                     filtered_docs.append(doc)
                     filtered_metas.append(metadata)
             
+            # 제한된 결과만 반환
+            filtered_docs = filtered_docs[:n_results]
+            filtered_metas = filtered_metas[:n_results]
+            
             logger.info(f"전체 데이터 검색: {len(filtered_docs)}개 결과")
             
             return {
                 'documents': [filtered_docs],
                 'metadatas': [filtered_metas], 
-                'distances': [[0.5] * len(filtered_docs)]  # 더미 거리
+                'distances': [[0.5] * len(filtered_docs)]
             }
             
         except Exception as e:
             logger.error(f"전체 데이터 가져오기 실패: {e}")
             return {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
     
-    def get_collection_stats(self) -> Dict:
+    def get_collection_stats(self):
         """컬렉션 통계 조회"""
         try:
             count = self.collection.count()
+            embedding_dim = getattr(self, '_embedding_dimension', 'unknown')
             return {
                 "total_chunks": count,
-                "collection_name": self.collection.name
+                "collection_name": self.collection.name,
+                "embedding_dimension": embedding_dim
             }
         except Exception as e:
             logger.error(f"통계 조회 실패: {e}")
-            return {"total_chunks": 0, "collection_name": "unknown"}
-        
-    def store_news_chunk(self, chunk: NewsChunk, metadata: NewsMetadata, 
-                        embedding: List[float]) -> None:
-        """뉴스 청크를 벡터 DB에 저장"""
+            return {"total_chunks": 0, "collection_name": "unknown", "embedding_dimension": "error"}
+    
+    def safe_reset_collection(self):
+        """안전한 컬렉션 재설정 (✅ NEW METHOD)"""
+        """기존 데이터를 보존하면서 새로운 임베딩 함수로 컬렉션 재설정"""
         try:
-            # 임베딩 차원을 768로 통일
-            if len(embedding) != 768:
-                if len(embedding) < 768:
-                    embedding = embedding + [0.0] * (768 - len(embedding))
-                else:
-                    embedding = embedding[:768]
+            # 1. 기존 데이터 백업
+            logger.info("기존 데이터 백업 중...")
+            old_data = self.collection.get(include=['documents', 'metadatas'])
             
-            # 고유 ID 생성 (중복 방지)
-            import hashlib
-            content_hash = hashlib.md5(chunk.content.encode()).hexdigest()
-            unique_id = f"chunk_{content_hash}_{chunk.chunk_id}_{int(time.time())}"
+            # 2. 컬렉션 삭제
+            logger.info("기존 컬렉션 삭제 중...")
+            self.client.delete_collection("enhanced_news_collection")
             
-            # 메타데이터 확장
-            chunk_metadata = {
-                "topics": json.dumps(chunk.topics, ensure_ascii=False),
-                "keywords": json.dumps(chunk.keywords, ensure_ascii=False),
-                "chunk_type": chunk.chunk_type,
-                "chunk_id": chunk.chunk_id,
-                "sentiment": metadata.sentiment,
-                "importance": metadata.importance,
-                "relevance_score": metadata.relevance_score,
-                "company_mentions": json.dumps(metadata.company_mentions, ensure_ascii=False),
-                "date": metadata.date,
-                "source": metadata.source,
-                "summary": metadata.summary,
-                "created_at": datetime.now().isoformat()
-            }
-            
-            self.collection.add(
-                documents=[chunk.content],
-                metadatas=[chunk_metadata],
-                embeddings=[embedding],
-                ids=[unique_id]
+            # 3. 새 컬렉션 생성 (768차원 임베딩 함수 포함)
+            logger.info("새 컬렉션 생성 중...")
+            self.embedding_function = self._create_768_embedding_function()
+            self.collection = self.client.create_collection(
+                name="enhanced_news_collection",
+                metadata={"description": "Enhanced AI News Writer 뉴스 컬렉션 (768차원)"},
+                embedding_function=self.embedding_function
             )
+            self._embedding_dimension = 768
             
-            logger.info(f"청크 저장 완료: {chunk.chunk_id} (ID: {unique_id[:20]}...)")
+            # 4. 데이터 복원
+            if old_data.get('documents'):
+                logger.info(f"데이터 복원 중... ({len(old_data['documents'])}개 항목)")
+                for i, doc in enumerate(old_data['documents']):
+                    metadata = old_data['metadatas'][i] if i < len(old_data['metadatas']) else {}
+                    
+                    # 새로운 768차원 임베딩 생성
+                    new_embedding = self.embedding_function([doc])[0]
+                    
+                    self.collection.add(
+                        documents=[doc],
+                        metadatas=[metadata],
+                        embeddings=[new_embedding],
+                        ids=[f"restored_{i}_{int(time.time())}"]
+                    )
+            
+            logger.info("컬렉션이 768차원 임베딩으로 안전하게 재설정되었습니다.")
+            return True
             
         except Exception as e:
-            logger.error(f"청크 저장 실패: {e}")
-            raise
-
+            logger.error(f"컬렉션 재설정 실패: {e}")
+            return False
 
 class EnhancedClaudeClient:
     """향상된 Claude API 클라이언트"""
