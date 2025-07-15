@@ -1122,16 +1122,16 @@ ID: {item_data['id']}
         collection_frame = ttk.Frame(parent)
         parent.add(collection_frame, text="📰 뉴스 수집")
         
-        # 좌우 분할 프레임
-        left_frame = ttk.Frame(collection_frame)
-        left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
+        collection_frame.columnconfigure(0, weight=1, uniform="col")
+        collection_frame.columnconfigure(1, weight=1, uniform="col")
+        collection_frame.rowconfigure(0, weight=1)
         
-        # 오른쪽 프레임(헤드라인) - 더 크게 (1/2 이상)
+        left_frame = ttk.Frame(collection_frame)
+        left_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
+        
         right_frame = ttk.Frame(collection_frame)
-        right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(5, 0))
-        right_frame.pack_propagate(False)
-        right_frame.update_idletasks()
-        right_frame.config(height=350)
+        right_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
+        right_frame.grid_propagate(True)
         
         # 좌측: 수집 설정 및 제어
         # API 상태 체크 프레임
