@@ -43,8 +43,8 @@ class EnhancedNewsWriterGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("AI News Writer Pro - 전문 뉴스 자동 생성 시스템")
-        self.root.geometry("1400x900")
-        self.root.minsize(1200, 800)
+        self.root.geometry("1069x768")
+        self.root.minsize(900, 600)
         
         # 시스템 인스턴스
         self.system = None
@@ -67,27 +67,38 @@ class EnhancedNewsWriterGUI:
         
     def setup_ui(self):
         """UI 구성 (벡터DB 탭 추가)"""
-        # 메인 프레임
-        main_frame = ttk.Frame(self.root)
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
-        # 상단 탭 프레임
-        tab_frame = ttk.Frame(main_frame)
-        tab_frame.pack(fill=tk.BOTH, expand=True)
-        
+        # PanedWindow로 상단(탭)과 하단(로그) 분할
+        paned = tk.PanedWindow(self.root, orient=tk.VERTICAL, sashrelief=tk.RAISED, sashwidth=6, showhandle=True)
+        paned.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        # 상단 프레임(탭)
+        top_frame = ttk.Frame(paned)
+        paned.add(top_frame, stretch='always', minsize=350)
+
+        # 하단 프레임(로그)
+        bottom_frame = ttk.Frame(paned)
+        paned.add(bottom_frame, stretch='always', minsize=120)
+
         # 메인 노트북 (탭)
-        self.notebook = ttk.Notebook(tab_frame)
+        self.notebook = ttk.Notebook(top_frame)
         self.notebook.pack(fill=tk.BOTH, expand=True)
-        
+
         # 탭 생성 (벡터DB 탭 추가)
         self.setup_config_tab(self.notebook)
         self.setup_collection_tab(self.notebook)
         self.setup_writing_tab(self.notebook)
         self.setup_vector_stats_tab(self.notebook)  # NEW: Vector database statistics tab
-        
-        # 하단 로그 프레임
-        self.setup_bottom_log_frame(main_frame)
-           
+
+        # 하단 로그 프레임 (bottom_frame에)
+        self.setup_bottom_log_frame(bottom_frame)
+
+        # 벡터DB 탭 선택 시 자동으로 컬렉션 내용 미리보기 표시
+        def on_tab_changed(event):
+            selected_tab = event.widget.select()
+            tab_text = event.widget.tab(selected_tab, "text")
+            if "벡터DB" in tab_text:
+                self.view_collection_contents()
+        self.notebook.bind("<<NotebookTabChanged>>", on_tab_changed)
 
     def reload_previous_news(self):
         """이전 뉴스 불러오기 (NEW FUNCTION)"""
@@ -1115,8 +1126,12 @@ ID: {item_data['id']}
         left_frame = ttk.Frame(collection_frame)
         left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
         
+        # 오른쪽 프레임(헤드라인) - 더 크게 (1/2 이상)
         right_frame = ttk.Frame(collection_frame)
         right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(5, 0))
+        right_frame.pack_propagate(False)
+        right_frame.update_idletasks()
+        right_frame.config(height=350)
         
         # 좌측: 수집 설정 및 제어
         # API 상태 체크 프레임
@@ -1171,21 +1186,22 @@ ID: {item_data['id']}
         stats_grid = ttk.Frame(stats_frame)
         stats_grid.pack(fill=tk.X, pady=5)
         
+        # 한 줄에 모두 표시
         ttk.Label(stats_grid, text="총 수집:").grid(row=0, column=0, sticky=tk.W, padx=5)
         self.total_articles_var = tk.StringVar(value="0")
-        ttk.Label(stats_grid, textvariable=self.total_articles_var, foreground="blue").grid(row=0, column=1, sticky=tk.W, padx=5)
+        ttk.Label(stats_grid, textvariable=self.total_articles_var, foreground="blue").grid(row=0, column=1, sticky=tk.W, padx=2)
         
-        ttk.Label(stats_grid, text="관련도 높음:").grid(row=0, column=2, sticky=tk.W, padx=15)
+        ttk.Label(stats_grid, text="| 관련도 높음:").grid(row=0, column=2, sticky=tk.W, padx=2)
         self.relevant_articles_var = tk.StringVar(value="0")
-        ttk.Label(stats_grid, textvariable=self.relevant_articles_var, foreground="green").grid(row=0, column=3, sticky=tk.W, padx=5)
+        ttk.Label(stats_grid, textvariable=self.relevant_articles_var, foreground="green").grid(row=0, column=3, sticky=tk.W, padx=2)
         
-        ttk.Label(stats_grid, text="로컬 저장:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=2)
+        ttk.Label(stats_grid, text="| 로컬 저장:").grid(row=0, column=4, sticky=tk.W, padx=2)
         self.saved_articles_var = tk.StringVar(value="0")
-        ttk.Label(stats_grid, textvariable=self.saved_articles_var, foreground="purple").grid(row=1, column=1, sticky=tk.W, padx=5, pady=2)
+        ttk.Label(stats_grid, textvariable=self.saved_articles_var, foreground="purple").grid(row=0, column=5, sticky=tk.W, padx=2)
         
-        ttk.Label(stats_grid, text="DB 저장:").grid(row=1, column=2, sticky=tk.W, padx=15, pady=2)
+        ttk.Label(stats_grid, text="| DB 저장:").grid(row=0, column=6, sticky=tk.W, padx=2)
         self.db_saved_var = tk.StringVar(value="0")
-        ttk.Label(stats_grid, textvariable=self.db_saved_var, foreground="red").grid(row=1, column=3, sticky=tk.W, padx=5, pady=2)
+        ttk.Label(stats_grid, textvariable=self.db_saved_var, foreground="red").grid(row=0, column=7, sticky=tk.W, padx=2)
         
         # 수동 입력 프레임
         manual_frame = ttk.LabelFrame(left_frame, text="수동 뉴스 입력", padding=10)
@@ -1212,7 +1228,7 @@ ID: {item_data['id']}
         
         # 트리뷰 사용하여 더 많은 정보 표시
         columns = ('title', 'date', 'preview')
-        self.headlines_tree = ttk.Treeview(headlines_scroll_frame, columns=columns, show='tree headings', height=15)
+        self.headlines_tree = ttk.Treeview(headlines_scroll_frame, columns=columns, show='tree headings', height=5)
         
         self.headlines_tree.heading('#0', text='번호')
         self.headlines_tree.heading('title', text='제목')
@@ -1246,6 +1262,8 @@ ID: {item_data['id']}
         ttk.Button(reload_btn_frame, text="🔄 이전 뉴스 불러오기", command=self.reload_previous_news).pack(side=tk.LEFT, padx=5)
         ttk.Button(reload_btn_frame, text="✅ 선택 뉴스 벡터DB 추가", command=self.add_selected_to_vector).pack(side=tk.LEFT, padx=5)
         ttk.Button(reload_btn_frame, text="📊 벡터DB 상태", command=self.show_vector_status).pack(side=tk.LEFT, padx=5)
+        # 수동 뉴스 입력 버튼 추가
+        ttk.Button(reload_btn_frame, text="✍️ 수동 뉴스 입력", command=self.show_manual_news_popup).pack(side=tk.LEFT, padx=5)
 
     def setup_vector_stats_tab(self, parent):
         """벡터 데이터베이스 통계 탭 (NEW)"""
@@ -1292,7 +1310,7 @@ ID: {item_data['id']}
         
         # 트리뷰로 벡터DB 내용 표시
         columns = ('id', 'content_preview', 'topics', 'relevance', 'date')
-        self.vector_tree = ttk.Treeview(content_frame, columns=columns, show='tree headings', height=15)
+        self.vector_tree = ttk.Treeview(content_frame, columns=columns, show='tree headings', height=5)
         
         self.vector_tree.heading('#0', text='순번')
         self.vector_tree.heading('id', text='청크 ID')
@@ -1425,7 +1443,7 @@ ID: {item_data['id']}
         result_frame = ttk.LabelFrame(right_writing_frame, text="생성된 뉴스", padding=10)
         result_frame.pack(fill=tk.BOTH, expand=True)
         
-        self.result_text = scrolledtext.ScrolledText(result_frame, wrap=tk.WORD, font=("맑은 고딕", 10))
+        self.result_text = scrolledtext.ScrolledText(result_frame, wrap=tk.WORD, font=("맑은 고딕", 10), height=5)
         self.result_text.pack(fill=tk.BOTH, expand=True)
         
         # 결과 버튼
@@ -1454,20 +1472,12 @@ ID: {item_data['id']}
         log_frame = ttk.LabelFrame(parent, text="📋 시스템 로그", padding=10)
         log_frame.pack(fill=tk.X, pady=5)
         
-        # 로그 텍스트 (높이를 줄여서 하단에 배치)
-        self.log_text = scrolledtext.ScrolledText(log_frame, wrap=tk.WORD, height=6, font=("Consolas", 9))
-        self.log_text.pack(fill=tk.X, pady=5)
+        # 로그 텍스트 (높이를 8로 늘림)
+        self.log_text = scrolledtext.ScrolledText(log_frame, wrap=tk.WORD, height=8, font=("Consolas", 9))
+        self.log_text.pack(fill=tk.X, pady=(5,0))
         
-        # 로그 버튼
-        log_btn_frame = ttk.Frame(log_frame)
-        log_btn_frame.pack(fill=tk.X, pady=5)
-        
-        ttk.Button(log_btn_frame, text="로그 지우기", command=lambda: self.log_text.delete(1.0, tk.END)).pack(side=tk.LEFT, padx=5)
-        ttk.Button(log_btn_frame, text="로그 저장", command=self.save_log).pack(side=tk.LEFT, padx=5)
-        ttk.Button(log_btn_frame, text="자동 스크롤", command=self.toggle_auto_scroll).pack(side=tk.LEFT, padx=5)
-        
-        self.auto_scroll = True
-        
+        # 버튼 삭제: 로그 지우기, 로그 저장, 자동 스크롤
+
     def setup_logging(self):
         """로깅 설정"""
         # 기존 핸들러 제거
@@ -2340,6 +2350,55 @@ ID: {item_data['id']}
                 logging.info(f"로그 저장: {file_path}")
             except Exception as e:
                 messagebox.showerror("오류", f"로그 저장 실패: {e}")
+
+    def show_manual_news_popup(self):
+        """수동 뉴스 입력 팝업"""
+        popup = tk.Toplevel(self.root)
+        popup.title("수동 뉴스 입력")
+        popup.geometry("600x400")
+        popup.transient(self.root)
+        
+        ttk.Label(popup, text="뉴스 내용:").pack(anchor=tk.W, padx=10, pady=5)
+        manual_text = scrolledtext.ScrolledText(popup, height=10, wrap=tk.WORD)
+        manual_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        btn_frame = ttk.Frame(popup)
+        btn_frame.pack(fill=tk.X, pady=10)
+        
+        def save_manual():
+            content = manual_text.get(1.0, tk.END).strip()
+            if not content:
+                messagebox.showwarning("경고", "뉴스 내용을 입력해주세요.")
+                return
+            self.add_manual_news_content(content)
+            popup.destroy()
+        
+        ttk.Button(btn_frame, text="저장", command=save_manual).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="취소", command=popup.destroy).pack(side=tk.LEFT, padx=5)
+
+    def add_manual_news_content(self, content):
+        """수동 뉴스 입력 실제 저장 로직 (기존 add_manual_news와 유사)"""
+        if not self.system:
+            messagebox.showwarning("경고", "먼저 시스템을 초기화해주세요.")
+            return
+        def manual_worker():
+            try:
+                company = self.company_var.get()
+                import asyncio
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                success = loop.run_until_complete(
+                    self.system.collect_manual_news(company, content)
+                )
+                loop.close()
+                if success:
+                    self.root.after(0, lambda: messagebox.showinfo("성공", "수동 뉴스가 추가되었습니다."))
+                else:
+                    self.root.after(0, lambda: messagebox.showerror("실패", "수동 뉴스 추가에 실패했습니다."))
+            except Exception as e:
+                self.root.after(0, lambda: messagebox.showerror("오류", f"수동 뉴스 추가 오류: {e}"))
+        import threading
+        threading.Thread(target=manual_worker, daemon=True).start()
 
 
 def main():
