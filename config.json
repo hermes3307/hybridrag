@@ -1,0 +1,9 @@
+{
+  "claude_api_key": "",
+  "naver_client_id": "",
+  "naver_client_secret": "",
+  "company_name": "알티베이스",
+  "additional_keywords": "데이터베이스, DBMS, 오라클",
+  "rag_news_count": 15,
+  "news_directory": "collected_news"
+}
