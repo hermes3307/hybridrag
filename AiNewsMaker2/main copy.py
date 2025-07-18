@@ -213,27 +213,24 @@ class EnhancedNaverNewsAPI:
             return ""
     
     def _get_dummy_news(self, query: str, display: int = 10) -> List[NewsArticle]:
-        """테스트용 더미 뉴스 (회사명별 동적 생성)"""
+        """테스트용 더미 뉴스 (확장됨)"""
         dummy_articles = []
-        
-        # 쿼리에서 회사명 추출
-        company_name = query.split()[0] if query else "테스트회사"
         
         base_articles = [
             {
-                "title_template": "{company} 관련 최신 기술 동향 발표",
-                "description_template": "{company}의 새로운 혁신이 업계에 주목받고 있습니다.",
-                "content_template": "{company}가 새로운 기술 혁신을 통해 시장에서 주목받고 있습니다. 전문가들은 이번 발표가 업계 전반에 큰 변화를 가져올 것으로 예상한다고 밝혔습니다. 특히 성능 향상과 안정성 개선에 중점을 둔 이번 업데이트는 고객들로부터 긍정적인 반응을 얻고 있습니다."
+                "title_template": "{query} 관련 최신 기술 동향 발표",
+                "description_template": "{query}의 새로운 혁신이 업계에 주목받고 있습니다.",
+                "content_template": "{query}가 새로운 기술 혁신을 통해 시장에서 주목받고 있습니다. 전문가들은 이번 발표가 업계 전반에 큰 변화를 가져올 것으로 예상한다고 밝혔습니다. 특히 성능 향상과 안정성 개선에 중점을 둔 이번 업데이트는 고객들로부터 긍정적인 반응을 얻고 있습니다."
             },
             {
-                "title_template": "{company} 시장 점유율 확대 소식",
-                "description_template": "{company}의 시장 영향력이 계속 확대되고 있습니다.",
-                "content_template": "{company}의 시장 점유율이 지속적으로 확대되고 있어 업계의 관심이 집중되고 있습니다. 분석가들은 향후 성장 전망을 긍정적으로 평가하고 있으며, 신제품 출시와 함께 더욱 강력한 시장 지배력을 보일 것으로 전망됩니다."
+                "title_template": "{query} 시장 점유율 확대 소식",
+                "description_template": "{query}의 시장 영향력이 계속 확대되고 있습니다.",
+                "content_template": "{query}의 시장 점유율이 지속적으로 확대되고 있어 업계의 관심이 집중되고 있습니다. 분석가들은 향후 성장 전망을 긍정적으로 평가하고 있으며, 신제품 출시와 함께 더욱 강력한 시장 지배력을 보일 것으로 전망됩니다."
             },
             {
-                "title_template": "{company} 신규 파트너십 체결",
-                "description_template": "{company}가 글로벌 기업과의 전략적 파트너십을 발표했습니다.",
-                "content_template": "{company}가 글로벌 선도 기업과의 전략적 파트너십을 체결했다고 발표했습니다. 이번 협업을 통해 기술력 향상과 시장 확대에 탄력을 받을 것으로 기대되며, 양사는 상호 보완적인 기술과 경험을 바탕으로 시너지 효과를 창출할 계획입니다."
+                "title_template": "{query} 신규 파트너십 체결",
+                "description_template": "{query}가 글로벌 기업과의 전략적 파트너십을 발표했습니다.",
+                "content_template": "{query}가 글로벌 선도 기업과의 전략적 파트너십을 체결했다고 발표했습니다. 이번 협업을 통해 기술력 향상과 시장 확대에 탄력을 받을 것으로 기대되며, 양사는 상호 보완적인 기술과 경험을 바탕으로 시너지 효과를 창출할 계획입니다."
             }
         ]
         
@@ -241,11 +238,11 @@ class EnhancedNaverNewsAPI:
             template = base_articles[i % len(base_articles)]
             
             dummy_articles.append(NewsArticle(
-                title=template["title_template"].format(company=company_name),
+                title=template["title_template"].format(query=query),
                 link=f"http://test.com/news{i+1}",
-                description=template["description_template"].format(company=company_name),
+                description=template["description_template"].format(query=query),
                 pub_date=f"Mon, {7 + i} Jul 2025 {10 + i}:00:00 +0900",
-                content=template["content_template"].format(company=company_name)
+                content=template["content_template"].format(query=query)
             ))
         
         return dummy_articles
@@ -356,11 +353,10 @@ class EnhancedPromptManager:
 
 **전문 뉴스 작성 원칙:**
 1. **사실 정보 완전 반영**: 제공된 주요 사실을 모두 포함하여 상세히 서술
-2. **키워드 활용**: 제공된 키워드들을 자연스럽게 포함
-3. **전문적 구성**: 경제지 수준의 체계적이고 논리적인 구조
-4. **상세한 설명**: 각 사실에 대해 배경, 의미, 영향을 구체적으로 분석
-5. **인용 활용**: 관계자 발언이나 전문가 의견을 자연스럽게 포함
-6. **시장 분석**: 업계 영향과 향후 전망을 전문적으로 분석
+2. **전문적 구성**: 경제지 수준의 체계적이고 논리적인 구조
+3. **상세한 설명**: 각 사실에 대해 배경, 의미, 영향을 구체적으로 분석
+4. **인용 활용**: 관계자 발언이나 전문가 의견을 자연스럽게 포함
+5. **시장 분석**: 업계 영향과 향후 전망을 전문적으로 분석
 
 **필수 구조 (상세 작성):**
 
@@ -393,7 +389,6 @@ class EnhancedPromptManager:
 - 전문적이고 객관적인 어조 유지
 - 참고 자료의 정보를 자연스럽게 통합
 - 추상적 표현보다는 구체적이고 명확한 서술
-- **반드시 제공된 키워드들을 자연스럽게 포함시키세요**
 
 **반드시 지정된 길이를 정확히 맞춰서 작성하세요.**"""
                 
@@ -601,8 +596,8 @@ class EnhancedChromaDBManager:
             raise
     
     def search_relevant_news(self, query: str, n_results: int = 10, 
-                           min_relevance: int = 5, target_companies: List[str] = None):
-        """관련 뉴스 검색 (회사 필터링 강화)"""
+                           min_relevance: int = 5):
+        """관련 뉴스 검색 (차원 호환성 고려)"""
         try:
             collection_count = self.collection.count()
             if collection_count == 0:
@@ -617,19 +612,13 @@ class EnhancedChromaDBManager:
                 logger.info(f"텍스트 검색 시도: '{query[:50]}...'")
                 results = self.collection.query(
                     query_texts=[query],
-                    n_results=actual_n_results * 2,  # 필터링을 위해 더 많이 가져옴
+                    n_results=actual_n_results,
                     include=['documents', 'metadatas', 'distances']
                 )
                 
                 if results and results.get('documents') and results['documents'][0]:
-                    # 회사 필터링 적용
-                    filtered_results = self._filter_by_companies_and_relevance(
-                        results, target_companies, min_relevance, actual_n_results
-                    )
-                    
-                    if filtered_results['documents'][0]:
-                        logger.info(f"✅ 텍스트 검색 성공: {len(filtered_results['documents'][0])}개 결과")
-                        return filtered_results
+                    logger.info(f"✅ 텍스트 검색 성공: {len(results['documents'][0])}개 결과")
+                    return self._filter_by_relevance(results, min_relevance)
                 
             except Exception as e:
                 logger.warning(f"텍스트 검색 실패: {e}")
@@ -641,18 +630,13 @@ class EnhancedChromaDBManager:
                 
                 results = self.collection.query(
                     query_embeddings=[dummy_embedding],
-                    n_results=actual_n_results * 2,
+                    n_results=actual_n_results,
                     include=['documents', 'metadatas', 'distances']
                 )
                 
                 if results and results.get('documents') and results['documents'][0]:
-                    filtered_results = self._filter_by_companies_and_relevance(
-                        results, target_companies, min_relevance, actual_n_results
-                    )
-                    
-                    if filtered_results['documents'][0]:
-                        logger.info(f"✅ 더미 임베딩 검색 성공: {len(filtered_results['documents'][0])}개 결과")
-                        return filtered_results
+                    logger.info(f"✅ 더미 임베딩 검색 성공: {len(results['documents'][0])}개 결과")
+                    return self._filter_by_relevance(results, min_relevance)
                 
             except Exception as e:
                 logger.warning(f"더미 임베딩 검색 실패: {e}")
@@ -660,71 +644,38 @@ class EnhancedChromaDBManager:
             # METHOD 3: 키워드 기반 검색 (폴백)
             try:
                 logger.info("키워드 기반 검색 시도...")
-                return self._keyword_based_search(query, actual_n_results, min_relevance, target_companies)
+                return self._keyword_based_search(query, actual_n_results, min_relevance)
                 
             except Exception as e:
                 logger.warning(f"키워드 검색 실패: {e}")
             
             # METHOD 4: 최후 수단
             logger.info("전체 데이터 검색 (최후 수단)")
-            return self._get_all_data(actual_n_results, min_relevance, target_companies)
+            return self._get_all_data(actual_n_results, min_relevance)
                 
         except Exception as e:
             logger.error(f"검색 완전 실패: {e}")
             return {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
     
-    def _filter_by_companies_and_relevance(self, results, target_companies: List[str], 
-                                         min_relevance: int, max_results: int):
-        """회사명과 관련도로 필터링"""
+    def _filter_by_relevance(self, results, min_relevance: int):
+        """관련도 필터링"""
         if not results.get('metadatas') or not results['metadatas'][0]:
             return results
         
         filtered_results = {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
         
         for i, metadata in enumerate(results['metadatas'][0]):
-            # 관련도 체크
             relevance = metadata.get('relevance_score', 10)
-            if relevance < min_relevance:
-                continue
-            
-            # 회사명 필터링 (target_companies가 지정된 경우만)
-            if target_companies:
-                company_mentions_str = metadata.get('company_mentions', '[]')
-                try:
-                    company_mentions = json.loads(company_mentions_str)
-                except:
-                    company_mentions = []
-                
-                # 문서 내용에서도 회사명 검색
-                doc_content = results['documents'][0][i].lower()
-                
-                # 대상 회사 중 하나라도 언급되어야 함
-                found_company = False
-                for target_company in target_companies:
-                    target_lower = target_company.lower()
-                    if (target_lower in [c.lower() for c in company_mentions] or 
-                        target_lower in doc_content):
-                        found_company = True
-                        break
-                
-                if not found_company:
-                    continue
-            
-            # 필터 통과한 항목 추가
-            filtered_results['documents'][0].append(results['documents'][0][i])
-            filtered_results['metadatas'][0].append(metadata)
-            if results.get('distances') and results['distances'][0]:
-                filtered_results['distances'][0].append(results['distances'][0][i])
-            
-            # 최대 결과 수 도달 시 중단
-            if len(filtered_results['documents'][0]) >= max_results:
-                break
+            if relevance >= min_relevance:
+                filtered_results['documents'][0].append(results['documents'][0][i])
+                filtered_results['metadatas'][0].append(metadata)
+                if results.get('distances') and results['distances'][0]:
+                    filtered_results['distances'][0].append(results['distances'][0][i])
         
-        logger.info(f"회사/관련도 필터링 완료: {len(filtered_results['documents'][0])}개 결과")
+        logger.info(f"관련도 필터링 완료: {len(filtered_results['documents'][0])}개 결과")
         return filtered_results
     
-    def _keyword_based_search(self, query: str, n_results: int, min_relevance: int, 
-                            target_companies: List[str] = None):
+    def _keyword_based_search(self, query: str, n_results: int, min_relevance: int):
         """키워드 기반 검색 (폴백 방법)"""
         try:
             all_data = self.collection.get(include=['documents', 'metadatas'])
@@ -738,36 +689,11 @@ class EnhancedChromaDBManager:
             for i, doc in enumerate(all_data['documents']):
                 metadata = all_data['metadatas'][i] if i < len(all_data['metadatas']) else {}
                 
-                # 관련도 체크
-                relevance = metadata.get('relevance_score', 5)
-                if relevance < min_relevance:
-                    continue
-                
-                # 회사명 필터링
-                if target_companies:
-                    company_mentions_str = metadata.get('company_mentions', '[]')
-                    try:
-                        company_mentions = json.loads(company_mentions_str)
-                    except:
-                        company_mentions = []
-                    
-                    doc_content = doc.lower()
-                    found_company = False
-                    for target_company in target_companies:
-                        target_lower = target_company.lower()
-                        if (target_lower in [c.lower() for c in company_mentions] or 
-                            target_lower in doc_content):
-                            found_company = True
-                            break
-                    
-                    if not found_company:
-                        continue
-                
-                # 키워드 점수 계산
                 doc_text = doc.lower()
                 score = sum(1 for keyword in query_keywords if keyword in doc_text)
                 
-                if score > 0:
+                relevance = metadata.get('relevance_score', 5)
+                if relevance >= min_relevance and score > 0:
                     scored_results.append((score, doc, metadata, 1.0 - (score / len(query_keywords))))
             
             scored_results.sort(key=lambda x: x[0], reverse=True)
@@ -783,7 +709,7 @@ class EnhancedChromaDBManager:
             logger.error(f"키워드 검색 실패: {e}")
             return {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
     
-    def _get_all_data(self, n_results: int, min_relevance: int, target_companies: List[str] = None):
+    def _get_all_data(self, n_results: int, min_relevance: int):
         """모든 데이터 가져오기 (최후 수단)"""
         try:
             all_data = self.collection.get(include=['documents', 'metadatas'])
@@ -796,34 +722,11 @@ class EnhancedChromaDBManager:
             
             for i, doc in enumerate(all_data['documents']):
                 metadata = all_data['metadatas'][i] if i < len(all_data['metadatas']) else {}
-                
-                # 관련도 체크
                 relevance = metadata.get('relevance_score', 5)
-                if relevance < min_relevance:
-                    continue
                 
-                # 회사명 필터링
-                if target_companies:
-                    company_mentions_str = metadata.get('company_mentions', '[]')
-                    try:
-                        company_mentions = json.loads(company_mentions_str)
-                    except:
-                        company_mentions = []
-                    
-                    doc_content = doc.lower()
-                    found_company = False
-                    for target_company in target_companies:
-                        target_lower = target_company.lower()
-                        if (target_lower in [c.lower() for c in company_mentions] or 
-                            target_lower in doc_content):
-                            found_company = True
-                            break
-                    
-                    if not found_company:
-                        continue
-                
-                filtered_docs.append(doc)
-                filtered_metas.append(metadata)
+                if relevance >= min_relevance:
+                    filtered_docs.append(doc)
+                    filtered_metas.append(metadata)
             
             # 제한된 결과만 반환
             filtered_docs = filtered_docs[:n_results]
@@ -856,7 +759,8 @@ class EnhancedChromaDBManager:
             return {"total_chunks": 0, "collection_name": "unknown", "embedding_dimension": "error"}
     
     def safe_reset_collection(self):
-        """안전한 컬렉션 재설정"""
+        """안전한 컬렉션 재설정 (✅ NEW METHOD)"""
+        """기존 데이터를 보존하면서 새로운 임베딩 함수로 컬렉션 재설정"""
         try:
             # 1. 기존 데이터 백업
             logger.info("기존 데이터 백업 중...")
@@ -965,67 +869,45 @@ class EnhancedClaudeClient:
             return self._get_enhanced_dummy_response(prompt)
     
     def _get_enhanced_dummy_response(self, prompt: str) -> str:
-        """향상된 테스트용 더미 응답 생성 (동적 회사명 지원)"""
-        
-        # 프롬프트에서 회사명 추출
-        company_name = "테스트회사"
-        keywords = []
-        
-        # 키워드 추출
-        if "키워드:" in prompt or "핵심 키워드:" in prompt:
-            lines = prompt.split('\n')
-            for line in lines:
-                if "키워드:" in line or "핵심 키워드:" in line:
-                    keyword_part = line.split(':')[1].strip()
-                    keywords = [k.strip() for k in keyword_part.split(',')]
-                    if keywords:
-                        company_name = keywords[0]  # 첫 번째 키워드를 회사명으로
-                    break
-        
-        # 토픽에서 회사명 추출
-        if "토픽:" in prompt:
-            lines = prompt.split('\n')
-            for line in lines:
-                if "토픽:" in line:
-                    topic_part = line.split(':')[1].strip()
-                    # 토픽에서 회사명 추출 시도
-                    for keyword in keywords:
-                        if keyword in topic_part:
-                            company_name = keyword
-                            break
-                    break
-        
+        """향상된 테스트용 더미 응답 생성"""
         if "뉴스 분석" in prompt or "분석할 뉴스" in prompt:
-            return f"""{{
+            return """{
   "relevance_score": 8,
   "topics": ["기업기술", "제품출시", "시장동향"],
-  "keywords": {json.dumps(keywords[:7] if keywords else [company_name, "기술혁신", "제품출시"], ensure_ascii=False)},
-  "summary": "{company_name}가 새로운 기술 혁신을 통해 시장에서 주목받고 있습니다. 업계 전문가들은 긍정적인 반응을 보이고 있습니다.",
+  "keywords": ["알티베이스", "HyperDB", "인메모리DB", "성능향상", "실시간분석", "데이터베이스", "기술혁신"],
+  "summary": "알티베이스가 새로운 인메모리 데이터베이스 엔진 HyperDB 3.0을 출시하여 30% 성능 향상을 달성했습니다. 실시간 분석 기능이 강화되어 금융권의 관심이 높아지고 있습니다.",
   "sentiment": "긍정",
   "importance": 8,
-  "company_mentions": ["{company_name}"],
-  "date": "2025-07-18",
+  "company_mentions": ["알티베이스"],
+  "date": "2025-07-07",
   "source": "테스트뉴스"
-}}"""
+}"""
         elif "청크로 분할" in prompt:
-            return f"""{{
+            return """{
   "chunks": [
-    {{
+    {
       "chunk_id": 1,
-      "content": "{company_name}가 새로운 혁신 기술을 공식 출시했다고 발표했습니다.",
+      "content": "알티베이스가 새로운 인메모리 데이터베이스 엔진 'HyperDB 3.0'을 공식 출시했다고 7일 발표했습니다.",
       "topics": ["제품출시", "기업발표"],
-      "keywords": {json.dumps([company_name] + keywords[:3], ensure_ascii=False)},
+      "keywords": ["알티베이스", "HyperDB", "출시", "발표"],
       "chunk_type": "제목"
-    }},
-    {{
+    },
+    {
       "chunk_id": 2,
-      "content": "이번 기술은 기존 대비 향상된 성능을 보여주며, 시장에서 큰 관심을 받고 있습니다. 전문가들은 업계 전반에 긍정적인 영향을 미칠 것으로 예상한다고 밝혔습니다.",
+      "content": "이번 버전은 기존 대비 30% 향상된 성능을 보여주며, 실시간 분석 기능이 대폭 강화되었습니다. 메모리 최적화 알고리즘과 병렬 처리 기술이 적용되어 대용량 데이터 처리가 가능합니다.",
       "topics": ["성능개선", "기술혁신"],
-      "keywords": {json.dumps(keywords[:4] if keywords else ["성능향상", "기술혁신"], ensure_ascii=False)},
+      "keywords": ["성능향상", "실시간분석", "메모리최적화", "병렬처리"],
       "chunk_type": "본문"
-    }}
+    },
+    {
+      "chunk_id": 3,
+      "content": "알티베이스 관계자는 'HyperDB 3.0은 디지털 전환 시대의 요구에 부합하는 혁신적인 제품'이라며 '금융, 통신, 제조업 등에서 안정적인 성능을 제공할 것'이라고 밝혔습니다.",
+      "topics": ["관계자발언", "산업적용"],
+      "keywords": ["디지털전환", "금융", "통신", "제조업", "안정성"],
+      "chunk_type": "인용"
+    }
   ]
-}}"""
+}"""
         elif "품질을 평가" in prompt:
             return """{
   "overall_score": 8,
@@ -1041,25 +923,23 @@ class EnhancedClaudeClient:
   "approval": true
 }"""
         else:
-            # 뉴스 생성용 더미 응답 (동적 회사명 반영)
-            keyword_str = ", ".join(keywords) if keywords else f"{company_name}, 기술혁신, 시장선도"
-            
-            return f"""제목: {company_name}, 차세대 혁신 기술로 시장 선도 나서
+            # 뉴스 생성용 더미 응답 (향상됨)
+            return """제목: 알티베이스, 차세대 인메모리 DB 엔진 'HyperDB 3.0' 출시로 시장 선도
 
-리드: {company_name}가 새로운 혁신 기술을 공식 출시하며 업계의 주목을 받고 있다. 이번 기술은 기존 대비 크게 향상된 성능을 자랑하며, 시장에서 긍정적인 반응을 얻고 있다. 전문가들은 이번 발표가 업계 전반에 큰 변화를 가져올 것으로 예상한다고 밝혔다.
+리드: 국내 데이터베이스 전문기업 알티베이스가 기존 대비 30% 향상된 성능의 차세대 인메모리 데이터베이스 엔진 'HyperDB 3.0'을 공식 출시했다고 7일 발표했다. 실시간 분석 기능 강화와 메모리 최적화로 대기업과 금융권의 주목을 받고 있다.
 
 본문:
-{company_name}는 이날 새로운 혁신 기술을 공식 발표하며 "기존 기술의 한계를 뛰어넘는 획기적인 솔루션"이라고 강조했다.
+알티베이스(대표 이홍성)는 이날 서울 강남구 본사에서 기자간담회를 열고 "HyperDB 3.0이 기존 버전 대비 처리 속도 30% 향상, 메모리 사용량 20% 절감을 달성했다"고 밝혔다.
 
-새로운 기술은 향상된 성능과 안정성을 바탕으로 다양한 분야에서 활용 가능하며, 특히 {keywords[1] if len(keywords) > 1 else "핵심 기능"}과 {keywords[2] if len(keywords) > 2 else "고성능 처리"} 부분에서 차별화된 경쟁력을 보여준다.
+새로운 엔진은 독자 개발한 메모리 최적화 알고리즘과 멀티코어 병렬 처리 기술을 적용해 대용량 데이터 실시간 처리 성능을 크게 개선했다. 특히 복잡한 분석 쿼리 처리 시간을 기존 대비 절반으로 단축시켰다는 것이 회사 측 설명이다.
 
-{company_name} 관계자는 "이번 기술 출시를 통해 시장에서의 입지를 더욱 강화할 것"이라며 "고객들에게 더 나은 서비스를 제공할 수 있게 됐다"고 밝혔다.
+이홍성 대표는 "디지털 전환 가속화로 실시간 데이터 처리 수요가 급증하는 상황에서 HyperDB 3.0은 차별화된 기술력으로 시장을 선도할 것"이라며 "특히 금융, 통신, 제조업 등 미션 크리티컬한 환경에서 안정적이고 빠른 성능을 보장한다"고 강조했다.
 
-업계 전문가들은 "{company_name}의 이번 혁신이 시장 전반에 긍정적인 영향을 미칠 것"이라고 평가했으며, "기술력 측면에서 한 단계 발전한 모습을 보여주고 있다"고 분석했다.
+업계에서는 이번 제품 출시가 국내 데이터베이스 시장의 경쟁 구도를 바꿀 수 있을 것으로 관측하고 있다. 한 DB 전문가는 "알티베이스의 기술력이 글로벌 수준에 근접했다"며 "오라클, IBM 등 해외 업체들과의 경쟁에서도 충분히 승부할 수 있을 것"이라고 평가했다.
 
-결론: {company_name}는 이번 기술 출시를 바탕으로 시장 확대와 고객 만족도 향상을 동시에 추진할 계획이며, 지속적인 기술 혁신을 통해 업계 선두주자로 자리매김할 것으로 전망된다.
+결론: 알티베이스는 HyperDB 3.0을 통해 국내외 시장 확대를 본격화할 계획이며, 올 하반기 글로벌 진출을 위한 마케팅을 강화할 예정이다. 회사는 2025년 매출 300억원 달성을 목표로 하고 있다.
 
-키워드: {keyword_str}"""
+키워드: 알티베이스, HyperDB, 인메모리데이터베이스, 성능향상, 실시간분석, 디지털전환, 데이터베이스시장"""
 
 class EnhancedNewsCollector:
     """향상된 뉴스 수집기"""
@@ -1196,6 +1076,7 @@ class EnhancedNewsCollector:
         except Exception as e:
             logger.error(f"뉴스 수집 실패: {e}")
             return False
+        
 
     def _extract_json_from_response(self, response: str) -> dict:
         """응답에서 JSON 추출 (개선됨)"""
@@ -1250,6 +1131,8 @@ class EnhancedNewsCollector:
         except:
             return datetime.now().strftime("%Y-%m-%d")
 
+# AFTER: Complete EnhancedNewsWriter class with all required methods
+
 class EnhancedNewsWriter:
     """향상된 뉴스 작성기"""
     
@@ -1261,52 +1144,40 @@ class EnhancedNewsWriter:
                                    user_facts: str, style: str = "기업 보도형",
                                    length_specification: str = "",
                                    use_rag: bool = True, rag_count: int = 10) -> str:
-        """향상된 뉴스 생성 (RAG 폴백 개선 및 회사 필터링 강화)"""
+        """향상된 뉴스 생성 (RAG 폴백 개선)"""
         try:
             reference_materials = ""
             
             if use_rag:
-                # 키워드에서 회사명들 추출
-                target_companies = []
-                for keyword in keywords:
-                    if any(company_indicator in keyword.lower() for company_indicator in 
-                          ['삼성', '알티베이스', 'lg', 'sk', '현대', '기업', '회사']):
-                        target_companies.append(keyword)
-                
-                logger.info(f"대상 회사 필터: {target_companies}")
-                
-                # 1. 높은 관련도로 검색 시도 (회사 필터링 적용)
+                # 1. 높은 관련도로 검색 시도
                 search_query = f"{topic} {' '.join(keywords)}"
-                logger.info(f"RAG 검색: '{search_query[:50]}...' (상위 {rag_count}개)")
+                logging.info(f"RAG 검색: '{search_query[:50]}...' (상위 {rag_count}개)")
                 
                 search_results = self.db_manager.search_relevant_news(
                     search_query, 
                     n_results=rag_count,
-                    min_relevance=6,  # 높은 관련도
-                    target_companies=target_companies  # 회사 필터링 추가
+                    min_relevance=6  # 높은 관련도
                 )
                 
                 # 2. 결과가 부족하면 낮은 관련도로 재시도
                 result_count = len(search_results.get('documents', [[]])[0])
                 if result_count < 3:  # 3개 미만이면
-                    logger.info(f"결과 부족({result_count}개), 낮은 관련도로 재검색...")
+                    logging.info(f"결과 부족({result_count}개), 낮은 관련도로 재검색...")
                     search_results = self.db_manager.search_relevant_news(
                         search_query,
                         n_results=rag_count,
-                        min_relevance=3,  # 낮은 관련도
-                        target_companies=target_companies
+                        min_relevance=3  # 낮은 관련도
                     )
                     result_count = len(search_results.get('documents', [[]])[0])
                 
                 # 3. 여전히 부족하면 키워드별 개별 검색
                 if result_count < 3:
-                    logger.info(f"여전히 부족({result_count}개), 키워드별 검색...")
-                    for keyword in target_companies[:3]:  # 상위 3개 회사명으로
+                    logging.info(f"여전히 부족({result_count}개), 키워드별 검색...")
+                    for keyword in keywords[:3]:  # 상위 3개 키워드로
                         additional_results = self.db_manager.search_relevant_news(
                             keyword,
                             n_results=5,
-                            min_relevance=1,  # 매우 낮은 관련도
-                            target_companies=[keyword]  # 해당 회사만
+                            min_relevance=1  # 매우 낮은 관련도
                         )
                         
                         # 결과 병합
@@ -1316,30 +1187,27 @@ class EnhancedNewsWriter:
                             if search_results.get('distances') and additional_results.get('distances'):
                                 search_results['distances'][0].extend(additional_results['distances'][0])
                 
-                # 4. 참고 자료 구성
+                # 4. 참고 자료 구성 (✅ FIXED: Method implemented)
                 final_count = len(search_results.get('documents', [[]])[0])
+                reference_materials = self._build_comprehensive_reference_materials(search_results)
+                logging.info(f"RAG 참고 자료 구성 완료: {final_count}개 문서")
                 
-                if final_count > 0:
-                    reference_materials = self._build_comprehensive_reference_materials(search_results)
-                    logger.info(f"RAG 참고 자료 구성 완료: {final_count}개 문서")
-                else:
-                    # 5. 참고 자료가 없으면 일반적인 가이드 제공 (회사별 맞춤)
-                    company_guide = target_companies[0] if target_companies else "해당 기업"
+                # 5. 참고 자료가 없으면 일반적인 가이드 제공
+                if final_count == 0:
                     reference_materials = f"""참고 자료가 없습니다. 다음 가이드를 따라 작성하세요:
 
-**{company_guide} 관련 {topic} 뉴스 작성 가이드:**
-1. {company_guide}의 공식 발표 내용을 중심으로 구성
+**일반적인 {topic} 뉴스 작성 가이드:**
+1. 회사의 공식 발표 내용을 중심으로 구성
 2. 기술적 혁신점과 시장에서의 의미 강조  
 3. 업계 전문가 관점에서 분석
 4. 향후 전망과 기대효과 포함
 5. 고객과 파트너사에 미치는 영향 분석
 
 키워드 활용: {', '.join(keywords)}
-
-**중요: 반드시 제공된 모든 키워드를 자연스럽게 포함시켜 주세요.**
 """
             
             # 뉴스 생성
+            from main import EnhancedPromptManager
             generation_prompt = EnhancedPromptManager.get_enhanced_news_generation_prompt(
                 topic, keywords, user_facts, reference_materials, length_specification
             )
@@ -1357,18 +1225,18 @@ class EnhancedNewsWriter:
             
             try:
                 quality_dict = self._extract_json_from_response(quality_result)
-                logger.info(f"뉴스 품질 평가: {quality_dict.get('overall_score', 0)}점")
+                logging.info(f"뉴스 품질 평가: {quality_dict.get('overall_score', 0)}점")
                 return news_draft
             except:
-                logger.warning("품질 검증 결과 파싱 실패")
+                logging.warning("품질 검증 결과 파싱 실패")
                 return news_draft
                 
         except Exception as e:
-            logger.error(f"뉴스 생성 실패: {e}")
+            logging.error(f"뉴스 생성 실패: {e}")
             return None
     
     def _build_comprehensive_reference_materials(self, search_results: Dict) -> str:
-        """포괄적인 참고 자료 구성 (전체 내용 포함)"""
+        """포괄적인 참고 자료 구성 (전체 내용 포함) - ✅ FIXED: Added missing method"""
         if not search_results or not search_results.get('documents') or not search_results['documents'][0]:
             return "관련 참고 자료가 없습니다."
         
@@ -1435,19 +1303,20 @@ class EnhancedNewsWriter:
     async def _ensure_proper_length(self, news_draft: str, length_specification: str,
                                    topic: str, keywords: List[str], user_facts: str, 
                                    reference_materials: str) -> str:
-        """길이 요구사항을 정확히 맞추기 위한 재생성"""
+        """길이 요구사항을 정확히 맞추기 위한 재생성 - ✅ FIXED: Added missing method"""
         
         if "줄 수" in length_specification:
             target_lines = int(re.search(r'(\d+)', length_specification).group(1))
             current_lines = len([line for line in news_draft.split('\n') if line.strip()])
             
-            logger.info(f"현재 줄 수: {current_lines}, 목표: {target_lines}")
+            logging.info(f"현재 줄 수: {current_lines}, 목표: {target_lines}")
             
             # 목표 대비 80% 미만이거나 120% 초과시 재생성
             if current_lines < target_lines * 0.8 or current_lines > target_lines * 1.2:
-                logger.info("길이 기준 미달/초과로 재생성 시도")
+                logging.info("길이 기준 미달/초과로 재생성 시도")
                 
                 # 더 명확한 길이 지시와 함께 재생성
+                from main import EnhancedPromptManager
                 enhanced_prompt = f"""이전 생성된 뉴스가 {current_lines}줄이었는데, 정확히 {target_lines}줄이 필요합니다.
 
 **반드시 {target_lines}줄로 작성하세요:**
@@ -1466,11 +1335,12 @@ class EnhancedNewsWriter:
             target_words = int(re.search(r'(\d+)', length_specification).group(1))
             current_words = len(news_draft.split())
             
-            logger.info(f"현재 단어 수: {current_words}, 목표: {target_words}")
+            logging.info(f"현재 단어 수: {current_words}, 목표: {target_words}")
             
             if current_words < target_words * 0.8 or current_words > target_words * 1.2:
-                logger.info("단어 수 기준 미달/초과로 재생성 시도")
+                logging.info("단어 수 기준 미달/초과로 재생성 시도")
                 
+                from main import EnhancedPromptManager
                 enhanced_prompt = f"""이전 생성된 뉴스가 {current_words}단어였는데, 정확히 {target_words}단어가 필요합니다.
 
 **반드시 {target_words}단어로 작성하세요:**
@@ -1488,7 +1358,7 @@ class EnhancedNewsWriter:
         return news_draft
     
     def _extract_json_from_response(self, response: str) -> dict:
-        """응답에서 JSON 추출"""
+        """응답에서 JSON 추출 - ✅ FIXED: Added missing method"""
         json_match = re.search(r'```json\s*(.*?)\s*```', response, re.DOTALL)
         if json_match:
             json_str = json_match.group(1)
@@ -1501,6 +1371,7 @@ class EnhancedNewsWriter:
                 raise ValueError("JSON을 찾을 수 없습니다")
         
         return json.loads(json_str.strip())
+    
 
 class EnhancedAINewsWriterSystem:
     """향상된 AI News Writer 시스템 메인 클래스"""
@@ -1603,8 +1474,8 @@ async def enhanced_main():
         naver_client_secret=naver_client_secret
     )
     
-    company_name = "삼성전자"  # 변경된 회사명
-    additional_keywords = ["스마트폰", "갤럭시", "반도체", "OLED"]  # 변경된 키워드
+    company_name = "알티베이스"
+    additional_keywords = ["데이터베이스", "DBMS", "오라클", "인메모리"]
     
     # 1. 향상된 뉴스 수집 테스트
     print("1. 향상된 키워드 조합 뉴스 수집 중...")
@@ -1618,12 +1489,12 @@ async def enhanced_main():
     
     # 2. 수동 뉴스 추가
     print("2. 수동 뉴스 추가 중...")
-    manual_news = f"""
-    {company_name}가 차세대 스마트폰 '갤럭시 S30'을 공식 출시했다.
-    이번 신제품은 기존 버전 대비 30% 향상된 배터리 성능과 20% 개선된 카메라 화질을 자랑한다.
-    AI 기능이 대폭 강화되어 사용자들의 주목을 받고 있으며,
-    독자 개발한 엑시노스 프로세서와 고해상도 OLED 디스플레이가 적용되었다.
-    회사 관계자는 "모바일 혁신의 새로운 기준을 제시하는 제품"이라고 밝혔다.
+    manual_news = """
+    알티베이스가 차세대 인메모리 데이터베이스 'HyperDB 3.0'을 공식 출시했다.
+    이번 신제품은 기존 버전 대비 30% 향상된 처리 성능과 20% 절약된 메모리 사용량을 자랑한다.
+    실시간 분석 기능이 대폭 강화되어 금융권과 대기업의 주목을 받고 있으며,
+    독자 개발한 메모리 최적화 알고리즘과 멀티코어 병렬 처리 기술이 적용되었다.
+    회사 관계자는 "디지털 전환 시대의 요구에 부합하는 혁신적인 제품"이라고 밝혔다.
     """
     
     manual_success = await system.collect_manual_news(company_name, manual_news)
@@ -1631,15 +1502,15 @@ async def enhanced_main():
     
     # 3. 향상된 RAG 뉴스 작성
     print("3. 향상된 RAG AI 뉴스 작성 중...")
-    topic = "스마트폰 신제품 출시"
-    keywords = ["삼성전자", "갤럭시", "스마트폰", "AI기능", "엑시노스"]  # 변경된 키워드
-    user_facts = f"""{company_name}가 갤럭시 S30이라는 혁신적인 스마트폰을 출시했다.
+    topic = "데이터베이스 신기술 출시"
+    keywords = ["알티베이스", "HyperDB", "인메모리", "성능향상", "실시간분석"]
+    user_facts = """알티베이스가 HyperDB 3.0이라는 혁신적인 인메모리 데이터베이스를 출시했다.
 주요 특징:
-- 기존 대비 30% 배터리 성능 향상
-- 카메라 화질 20% 개선
-- AI 기능 대폭 강화
-- 엑시노스 프로세서 탑재
-- 고해상도 OLED 디스플레이"""
+- 기존 대비 30% 성능 향상
+- 메모리 사용량 20% 절약
+- 실시간 분석 기능 강화
+- 멀티코어 병렬 처리 지원
+- 금융권과 대기업 타겟"""
     
     generated_news = await system.write_news(
         topic=topic,
@@ -1665,12 +1536,14 @@ async def enhanced_main():
     print(f"API 호출 횟수: {stats.get('api_requests', 0)}")
     print(f"네이버 API 모드: {'테스트' if stats.get('naver_test_mode', True) else '실제'}")
     
-    print("\n=== ✨ 주요 수정사항 ===")
-    print("✅ 회사명별 동적 더미 뉴스 생성")
-    print("✅ RAG 검색 시 회사 필터링 강화")
-    print("✅ 키워드 기반 뉴스 내용 생성")
-    print("✅ 테스트 모드에서 입력 키워드 반영")
-    print("✅ 회사별 맞춤형 참고자료 가이드")
+    print("\n=== ✨ 향상된 기능 ===")
+    print("✅ 회사명 + 추가 키워드 조합 검색")
+    print("✅ 12개월(365일) 기본 수집 기간")
+    print("✅ 로컬 파일 자동 저장")
+    print("✅ 개선된 RAG (10개 뉴스 전체 내용 참조)")
+    print("✅ 향상된 뉴스 품질 평가")
+    print("✅ 뉴스 길이 조절 지원")
+    print("✅ 종합적인 참고 자료 메타데이터")
 
 # 동기 함수로 래핑
 def run_enhanced_main():

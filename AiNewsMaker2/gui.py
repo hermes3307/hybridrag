@@ -14,6 +14,7 @@ import os
 from datetime import datetime, timedelta
 import logging
 import sys
+import traceback
 
 # main.py에서 필요한 클래스들 임포트
 try:
@@ -52,6 +53,7 @@ class EnhancedNewsWriterGUI:
         self.is_collecting = False
         self.collected_news = []  # 수집된 뉴스 저장
         self.saved_articles_count = 0
+        self.auto_scroll = True  # <-- Fix: Ensure auto_scroll is always initialized
         
         # 뉴스 저장 디렉토리
         self.news_directory = "collected_news"
@@ -499,7 +501,7 @@ class EnhancedNewsWriterGUI:
                 ids = all_data.get('ids', [])
                 documents = all_data.get('documents', [])
                 metadatas = all_data.get('metadatas', [])
-                
+               
             except Exception as e:
                 logging.error(f"컬렉션 데이터 조회 실패: {e}")
                 messagebox.showerror("오류", f"컬렉션 데이터 조회 실패: {e}")
@@ -1208,7 +1210,7 @@ ID: {item_data['id']}
         manual_frame.pack(fill=tk.BOTH, expand=True, pady=5)
         
         ttk.Label(manual_frame, text="뉴스 내용:").pack(anchor=tk.W)
-        self.manual_text = scrolledtext.ScrolledText(manual_frame, height=8, wrap=tk.WORD)
+        self.manual_text = scrolledtext.ScrolledText(manual_frame, height=4, wrap=tk.WORD)
         self.manual_text.pack(fill=tk.BOTH, expand=True, pady=5)
         
         manual_btn_frame = ttk.Frame(manual_frame)
@@ -1658,27 +1660,148 @@ ID: {item_data['id']}
         
         return list(set(queries))  # 중복 제거
     
-    def start_collection(self):
-        """뉴스 수집 시작 (개선됨)"""
+    def check_system_health(self):
+        """시스템 상태 확인"""
         if not self.system:
-            messagebox.showwarning("경고", "먼저 시스템을 초기화해주세요.")
+            return False, "시스템이 초기화되지 않았습니다."
+        try:
+            # 네이버 API 키 확인
+            naver_id = self.naver_id_var.get().strip()
+            naver_secret = self.naver_secret_var.get().strip()
+            if not naver_id or not naver_secret:
+                return False, "네이버 API 키가 설정되지 않았습니다."
+            # 회사명 확인
+            company = self.company_var.get().strip()
+            if not company:
+                return False, "회사명이 설정되지 않았습니다."
+            return True, "시스템이 정상입니다."
+        except Exception as e:
+            return False, f"시스템 상태 확인 실패: {e}"
+
+    def simple_store_news(self, company, article):
+        """간단한 동기 뉴스 저장 (asyncio 없이)"""
+        try:
+            # 본문이 없으면 제목+설명 사용
+            news_content = article.content if article.content else f"{article.title}\n{article.description}"
+            if len(news_content.strip()) < 50:
+                logging.warning(f"뉴스 내용이 너무 짧음: {article.title}")
+                return False
+            # 간단한 텍스트 기반 관련도 검사
+            full_text = f"{article.title} {article.description} {news_content}".lower()
+            company_lower = company.lower()
+            # 기본 관련도 계산
+            relevance_score = 0
+            # 회사명 언급 횟수
+            company_mentions = full_text.count(company_lower)
+            if company_mentions == 0:
+                logging.info(f"회사명 없음: {article.title}")
+                return False
+            relevance_score += min(4, company_mentions)  # 최대 4점
+            # 제목에 회사명 있으면 보너스
+            if company_lower in article.title.lower():
+                relevance_score += 3
+            # 중요 키워드 체크
+            important_keywords = ["출시", "발표", "개발", "계약", "파트너십", "투자", "실적"]
+            for keyword in important_keywords:
+                if keyword in full_text:
+                    relevance_score += 1
+            # 최종 관련도 (1-10)
+            final_relevance = max(1, min(10, relevance_score))
+            # 관련도 5점 미만 제외
+            if final_relevance < 5:
+                logging.info(f"관련도 부족 ({final_relevance}): {article.title}")
+                return False
+            # 간단한 청킹
+            chunks = []
+            # 제목 청크
+            chunks.append({
+                'chunk_id': 1,
+                'content': article.title,
+                'topics': [],
+                'keywords': [company],
+                'chunk_type': "제목"
+            })
+            # 본문 청크들 (문단별 분할)
+            paragraphs = [p.strip() for p in news_content.split('\n') if len(p.strip()) > 30]
+            for i, paragraph in enumerate(paragraphs[:3]):  # 최대 3개 문단
+                chunks.append({
+                    'chunk_id': i + 2,
+                    'content': paragraph,
+                    'topics': [],
+                    'keywords': [company],
+                    'chunk_type': "본문"
+                })
+            # 간단한 메타데이터 생성
+            metadata = {
+                'relevance_score': final_relevance,
+                'topics': ["기업뉴스"],
+                'keywords': [company, "뉴스"],
+                'summary': article.description[:100] if article.description else article.title,
+                'sentiment': "중립",
+                'importance': final_relevance,
+                'company_mentions': [company],
+                'date': self._convert_pub_date(article.pub_date),
+                'source': article.link
+            }
+            # 벡터 DB에 저장 (동기 방식)
+            for chunk in chunks:
+                embedding = [0.1] * 768  # 더미 임베딩
+                self.system.db_manager.store_news_chunk(chunk, metadata, embedding)
+            logging.info(f"간단 저장 완료: {article.title[:50]}... ({len(chunks)}개 청크, 관련도: {final_relevance})")
+            return True
+        except Exception as e:
+            logging.error(f"뉴스 저장 실패: {e}")
+            return False
+
+    def _convert_pub_date(self, pub_date: str) -> str:
+        """날짜 형식 변환"""
+        try:
+            from datetime import datetime
+            dt = datetime.strptime(pub_date, "%a, %d %b %Y %H:%M:%S %z")
+            return dt.strftime("%Y-%m-%d")
+        except:
+            from datetime import datetime
+            return datetime.now().strftime("%Y-%m-%d")
+
+    def start_collection(self):
+        """뉴스 수집 시작 (개선됨 - 안정성 향상)"""
+        # 시스템 상태 확인
+        is_healthy, health_msg = self.check_system_health()
+        if not is_healthy:
+            messagebox.showwarning("시스템 오류", health_msg)
             return
         
         if self.is_collecting:
             messagebox.showwarning("경고", "이미 수집이 진행 중입니다.")
             return
         
+        # UI 상태 업데이트
         self.is_collecting = True
         self.collect_btn.config(state=tk.DISABLED)
         self.stop_btn.config(state=tk.NORMAL)
         self.progress.start()
         
+        # 수집 통계 초기화
+        self.update_statistics(0, 0, 0, 0)
+        self.clear_headlines()
+        
+        # GUI 응답성 유지를 위한 주기적 업데이트
+        def update_gui():
+            if self.is_collecting:
+                self.root.update_idletasks()
+                self.root.after(100, update_gui)  # 100ms마다 GUI 업데이트
+        
+        # GUI 업데이트 시작
+        update_gui()
+        
         # 별도 스레드에서 수집 실행
         def collection_worker():
+            import traceback
             total_collected = 0
             relevant_collected = 0
             saved_collected = 0
             db_saved_collected = 0
+            loop = None
             
             try:
                 company = self.company_var.get()
@@ -1687,11 +1810,7 @@ ID: {item_data['id']}
                 
                 logging.info(f"{company} 뉴스 수집 시작 (최근 {days}일, 최대 {max_articles}개)")
                 
-                # 수집 통계 초기화
-                self.root.after(0, lambda: self.update_statistics(0, 0, 0, 0))
-                self.root.after(0, lambda: self.clear_headlines())
-                
-                # asyncio 루프 실행
+                # asyncio 루프 실행 (타임아웃 설정)
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 
@@ -1708,68 +1827,105 @@ ID: {item_data['id']}
                     try:
                         logging.info(f"검색 중: '{query}' ({query_idx + 1}/{len(search_queries)})")
                         
-                        # 네이버 뉴스 검색
-                        articles = self.system.naver_api.search_news(query, display=min(10, articles_per_query))
-                        total_collected += len(articles)
+                        # 네이버 뉴스 검색 (타임아웃 설정)
+                        try:
+                            articles = self.system.naver_api.search_news(query, display=min(10, articles_per_query))
+                            if not articles:
+                                logging.warning(f"'{query}' 검색 결과 없음")
+                                continue
+                            total_collected += len(articles)
+                        except Exception as search_error:
+                            logging.error(f"검색 실패 ({query}): {search_error}")
+                            continue
                         
                         for article_idx, article in enumerate(articles):
                             if not self.is_collecting or saved_collected >= max_articles:
                                 break
                                 
-                            # 날짜 필터링
-                            if self.system.news_collector._is_recent_article(article.pub_date, days):
-                                # 로컬 파일로 저장
-                                saved_filename = self.save_article_to_file(article, query_idx + 1, article_idx + 1)
+                            try:
+                                # 날짜 필터링
+                                if self.system.news_collector._is_recent_article(article.pub_date, days):
+                                    # 로컬 파일로 저장
+                                    saved_filename = self.save_article_to_file(article, query_idx + 1, article_idx + 1)
+                                    
+                                    # 수집된 뉴스 정보 저장
+                                    article_info = {
+                                        'title': article.title,
+                                        'link': article.link,
+                                        'description': article.description,
+                                        'pub_date': article.pub_date,
+                                        'content': article.content,
+                                        'filename': saved_filename,
+                                        'query': query
+                                    }
+                                    self.collected_news.append(article_info)
+                                    
+                                    # UI 업데이트 (개선된 헤드라인 표시)
+                                    self.root.after(0, lambda info=article_info: self.add_enhanced_headline(info))
+                                    
+                                    saved_collected += 1
+                                    
+                                    # DB 저장 시도 (타임아웃 설정)
+                                    try:
+                                        success = loop.run_until_complete(
+                                            asyncio.wait_for(
+                                                self.system.news_collector.collect_and_store_news(company, article),
+                                                timeout=30.0  # 30초 타임아웃
+                                            )
+                                        )
+                                        if success:
+                                            db_saved_collected += 1
+                                            relevant_collected += 1
+                                    except asyncio.TimeoutError:
+                                        logging.warning(f"DB 저장 타임아웃: {article.title}")
+                                    except Exception as e:
+                                        logging.warning(f"DB 저장 실패: {e}")
+                                    
+                                    # 통계 업데이트
+                                    self.root.after(0, lambda: self.update_statistics(
+                                        total_collected, relevant_collected, saved_collected, db_saved_collected
+                                    ))
                                 
-                                # 수집된 뉴스 정보 저장
-                                article_info = {
-                                    'title': article.title,
-                                    'link': article.link,
-                                    'description': article.description,
-                                    'pub_date': article.pub_date,
-                                    'content': article.content,
-                                    'filename': saved_filename,
-                                    'query': query
-                                }
-                                self.collected_news.append(article_info)
-                                
-                                # UI 업데이트 (개선된 헤드라인 표시)
-                                self.root.after(0, lambda info=article_info: self.add_enhanced_headline(info))
-                                
-                                saved_collected += 1
-                                
-                                # DB 저장 시도
+                                # API 호출 제한 (타임아웃 설정)
                                 try:
-                                    success = loop.run_until_complete(
-                                        self.system.news_collector.collect_and_store_news(company, article)
-                                    )
-                                    if success:
-                                        db_saved_collected += 1
-                                        relevant_collected += 1
-                                except Exception as e:
-                                    logging.warning(f"DB 저장 실패: {e}")
+                                    loop.run_until_complete(asyncio.wait_for(asyncio.sleep(1), timeout=5.0))
+                                except asyncio.TimeoutError:
+                                    logging.warning("API 호출 제한 타임아웃")
                                 
-                                # 통계 업데이트
-                                self.root.after(0, lambda: self.update_statistics(
-                                    total_collected, relevant_collected, saved_collected, db_saved_collected
-                                ))
-                            
-                            # API 호출 제한
-                            loop.run_until_complete(asyncio.sleep(1))
+                            except Exception as article_error:
+                                logging.error(f"기사 처리 실패: {article_error}\n{traceback.format_exc()}")
+                                continue
                         
-                        # 쿼리 간 딜레이
-                        loop.run_until_complete(asyncio.sleep(2))
+                        # 쿼리 간 딜레이 (타임아웃 설정)
+                        try:
+                            loop.run_until_complete(asyncio.wait_for(asyncio.sleep(2), timeout=10.0))
+                        except asyncio.TimeoutError:
+                            logging.warning("쿼리 간 딜레이 타임아웃")
                         
                     except Exception as e:
-                        logging.error(f"뉴스 수집 중 오류 ({query}): {e}")
-                        
-                loop.close()
+                        logging.error(f"뉴스 수집 중 오류 ({query}): {e}\n{traceback.format_exc()}")
+                        continue
                 
                 # 수집 완료 처리
                 self.root.after(0, lambda: self.collection_complete(saved_collected, db_saved_collected))
                 
             except Exception as e:
+                logging.error(f"수집 작업자 오류: {e}\n{traceback.format_exc()}")
                 self.root.after(0, lambda: self.collection_error(str(e)))
+            finally:
+                # 리소스 정리
+                if loop and not loop.is_closed():
+                    try:
+                        # 남은 작업 취소
+                        pending = asyncio.all_tasks(loop)
+                        for task in pending:
+                            task.cancel()
+                        
+                        # 루프 정리
+                        loop.run_until_complete(asyncio.sleep(0))
+                        loop.close()
+                    except Exception as cleanup_error:
+                        logging.error(f"루프 정리 오류: {cleanup_error}\n{traceback.format_exc()}")
         
         self.collection_thread = threading.Thread(target=collection_worker, daemon=True)
         self.collection_thread.start()
@@ -1841,12 +1997,35 @@ ID: {item_data['id']}
             logging.error(f"헤드라인 추가 실패: {e}")
     
     def stop_collection(self):
-        """뉴스 수집 중지"""
-        self.is_collecting = False
-        self.collect_btn.config(state=tk.NORMAL)
-        self.stop_btn.config(state=tk.DISABLED)
-        self.progress.stop()
-        logging.info("뉴스 수집이 중지되었습니다.")
+        """뉴스 수집 중지 (개선됨)"""
+        try:
+            self.is_collecting = False
+            self.collect_btn.config(state=tk.NORMAL)
+            self.stop_btn.config(state=tk.DISABLED)
+            self.progress.stop()
+            
+            # 스레드가 실행 중이면 잠시 대기
+            if self.collection_thread and self.collection_thread.is_alive():
+                logging.info("뉴스 수집 중지 요청됨. 완료 대기 중...")
+                self.collection_thread.join(timeout=5.0)  # 최대 5초 대기
+                
+                if self.collection_thread.is_alive():
+                    logging.warning("수집 스레드가 5초 내에 종료되지 않았습니다.")
+                else:
+                    logging.info("뉴스 수집이 안전하게 중지되었습니다.")
+            else:
+                logging.info("뉴스 수집이 중지되었습니다.")
+                
+        except Exception as e:
+            logging.error(f"수집 중지 중 오류: {e}")
+            # 최소한의 복구
+            try:
+                self.is_collecting = False
+                self.collect_btn.config(state=tk.NORMAL)
+                self.stop_btn.config(state=tk.DISABLED)
+                self.progress.stop()
+            except:
+                pass
     
     def collection_complete(self, saved_count, db_saved_count):
         """수집 완료 처리"""
@@ -1860,14 +2039,39 @@ ID: {item_data['id']}
         logging.info(f"뉴스 수집 완료: 로컬 {saved_count}개, DB {db_saved_count}개")
     
     def collection_error(self, error_msg):
-        """수집 오류 처리"""
-        self.is_collecting = False
-        self.collect_btn.config(state=tk.NORMAL)
-        self.stop_btn.config(state=tk.DISABLED)
-        self.progress.stop()
-        
-        messagebox.showerror("오류", f"뉴스 수집 실패: {error_msg}")
-        logging.error(f"뉴스 수집 실패: {error_msg}")
+        """수집 오류 처리 (개선됨)"""
+        try:
+            self.is_collecting = False
+            self.collect_btn.config(state=tk.NORMAL)
+            self.stop_btn.config(state=tk.DISABLED)
+            self.progress.stop()
+            
+            # 오류 메시지 개선
+            if "timeout" in error_msg.lower() or "타임아웃" in error_msg:
+                display_msg = "네트워크 연결이 느리거나 불안정합니다. 잠시 후 다시 시도해주세요."
+            elif "api" in error_msg.lower():
+                display_msg = "API 호출에 실패했습니다. API 키와 설정을 확인해주세요."
+            else:
+                display_msg = f"뉴스 수집 중 오류가 발생했습니다: {error_msg}"
+            
+            messagebox.showerror("수집 오류", display_msg)
+            logging.error(f"뉴스 수집 실패: {error_msg}")
+            
+            # 부분적으로 수집된 결과가 있으면 알림
+            if self.collected_news:
+                partial_count = len(self.collected_news)
+                messagebox.showinfo("부분 완료", f"오류가 발생했지만 {partial_count}개의 기사가 수집되었습니다.")
+                
+        except Exception as e:
+            logging.error(f"오류 처리 중 추가 오류: {e}")
+            # 최소한의 복구 시도
+            try:
+                self.is_collecting = False
+                self.collect_btn.config(state=tk.NORMAL)
+                self.stop_btn.config(state=tk.DISABLED)
+                self.progress.stop()
+            except:
+                pass
     
     def update_statistics(self, total, relevant, saved, db_saved):
         """통계 업데이트"""
