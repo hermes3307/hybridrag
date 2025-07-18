@@ -1,0 +1,7 @@
+# Requirements for AiNewsMaker2
+anthropic
+requests
+bs4
+chromadb
+dotenv
+python-dotenv 
