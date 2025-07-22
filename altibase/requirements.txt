@@ -1,7 +1,0 @@
-requests
-PyMuPDF
-sentence-transformers
-qdrant-client>=1.7.0,<2.0.0
-numpy
-tqdm
-psutil
