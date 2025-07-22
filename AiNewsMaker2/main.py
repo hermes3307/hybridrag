@@ -60,6 +60,7 @@ class EnhancedNaverNewsAPI:
     """향상된 네이버 뉴스 검색 API 클라이언트"""
     
     def __init__(self, client_id: str, client_secret: str):
+        logger.debug(f"Initializing EnhancedNaverNewsAPI with client_id={client_id}")
         self.client_id = client_id
         self.client_secret = client_secret
         self.base_url = "https://openapi.naver.com/v1/search/news.json"
@@ -69,10 +70,11 @@ class EnhancedNaverNewsAPI:
             self.test_mode = True
         else:
             self.test_mode = False
+        logger.debug(f"EnhancedNaverNewsAPI initialized. test_mode={self.test_mode}")
     
     def search_news_with_keywords(self, company_name: str, additional_keywords: List[str] = None, 
                                 display: int = 10, start: int = 1, sort: str = "date") -> List[NewsArticle]:
-        """회사명과 추가 키워드를 조합한 향상된 뉴스 검색"""
+        logger.debug(f"search_news_with_keywords called with company_name={company_name}, additional_keywords={additional_keywords}, display={display}, start={start}, sort={sort}")
         all_articles = []
         
         # 기본 검색 쿼리들 생성
@@ -93,16 +95,16 @@ class EnhancedNaverNewsAPI:
         
         # 중복 제거
         search_queries = list(set(search_queries))
-        logger.info(f"검색 쿼리 생성: {search_queries}")
+        logger.debug(f"search_queries after deduplication: {search_queries}")
         
         for query in search_queries[:5]:  # 최대 5개 쿼리만 실행
             try:
+                logger.debug(f"Searching news for query: {query}")
                 articles = self.search_news(query, display=min(display, 10), start=start, sort=sort)
                 all_articles.extend(articles)
-                
+                logger.debug(f"Found {len(articles)} articles for query: {query}")
                 # API 호출 제한
                 time.sleep(1)
-                
             except Exception as e:
                 logger.error(f"검색 쿼리 '{query}' 실행 실패: {e}")
         
@@ -116,26 +118,26 @@ class EnhancedNaverNewsAPI:
                 seen_titles.add(article.title)
         
         logger.info(f"중복 제거 후 unique 기사: {len(unique_articles)}개")
+        logger.debug(f"Returning {len(unique_articles[:display])} unique articles")
         return unique_articles[:display]  # 요청된 개수만큼 반환
     
     def search_news(self, query: str, display: int = 10, start: int = 1, 
                    sort: str = "date") -> List[NewsArticle]:
-        """기본 네이버 뉴스 검색"""
+        logger.debug(f"search_news called with query={query}, display={display}, start={start}, sort={sort}")
         if self.test_mode:
+            logger.debug("Test mode active, returning dummy news.")
             return self._get_dummy_news(query, display)
         
         try:
             encoded_query = urllib.parse.quote(query)
             url = f"{self.base_url}?query={encoded_query}&display={display}&start={start}&sort={sort}"
-            
+            logger.debug(f"Requesting URL: {url}")
             headers = {
                 "X-Naver-Client-Id": self.client_id,
                 "X-Naver-Client-Secret": self.client_secret
             }
-            
             response = requests.get(url, headers=headers, timeout=10)
             response.raise_for_status()
-            
             data = response.json()
             articles = []
             
@@ -150,6 +152,7 @@ class EnhancedNaverNewsAPI:
                 # 기사 본문 크롤링
                 article.content = self._fetch_article_content(article.link)
                 articles.append(article)
+                logger.debug(f"Appended article: {article.title}")
                 
                 # API 호출 제한을 위한 딜레이
                 time.sleep(0.1)
@@ -442,6 +445,7 @@ class EnhancedChromaDBManager:
     """향상된 ChromaDB 관리 클래스 (임베딩 충돌 해결)"""
     
     def __init__(self, db_path: str = "./chroma_db"):
+        logger.debug(f"Initializing EnhancedChromaDBManager with db_path={db_path}")
         try:
             self.client = chromadb.PersistentClient(path=db_path)
             
@@ -469,6 +473,7 @@ class EnhancedChromaDBManager:
                 )
             
             logger.info(f"ChromaDB 초기화 완료: {db_path}")
+            logger.debug(f"ChromaDBManager initialized. Collection: {collection_name}")
             
         except Exception as e:
             logger.error(f"ChromaDB 초기화 실패: {e}")
@@ -554,7 +559,7 @@ class EnhancedChromaDBManager:
         return Custom768EmbeddingFunction()
     
     def store_news_chunk(self, chunk, metadata, embedding):
-        """뉴스 청크를 벡터 DB에 저장 (차원 자동 조정)"""
+        logger.debug(f"store_news_chunk called for chunk_id={chunk.chunk_id}")
         try:
             # ✅ FIXED: Adjust embedding dimension based on collection
             target_dim = getattr(self, '_embedding_dimension', 768)
@@ -903,6 +908,7 @@ class EnhancedClaudeClient:
     """향상된 Claude API 클라이언트"""
     
     def __init__(self, api_key: str = None):
+        logger.debug(f"Initializing EnhancedClaudeClient with api_key={'set' if api_key else 'not set'}")
         self.api_key = api_key
         if api_key and api_key != "YOUR_CLAUDE_API_KEY":
             self.client = anthropic.Anthropic(api_key=api_key)
@@ -915,9 +921,10 @@ class EnhancedClaudeClient:
         self.min_interval = 2  # 최소 2초 간격
         self.request_count = 0
         self.max_requests_per_hour = 50  # 시간당 최대 요청 수
+        logger.debug("EnhancedClaudeClient initialized.")
     
     async def generate_response(self, prompt: str, max_tokens: int = 4000) -> str:
-        """Claude API를 통해 응답 생성 (향상된 속도 제한 및 오류 처리)"""
+        logger.debug(f"generate_response called with prompt length={len(prompt)} and max_tokens={max_tokens}")
         # API 호출 간격 제한
         current_time = time.time()
         time_since_last_call = current_time - self.last_call_time
@@ -930,7 +937,7 @@ class EnhancedClaudeClient:
         self.request_count += 1
         
         if not self.client:
-            # API 키가 없을 때 테스트용 더미 응답
+            logger.debug("No Claude client, returning dummy response.")
             return self._get_enhanced_dummy_response(prompt)
         
         try:
@@ -938,6 +945,7 @@ class EnhancedClaudeClient:
             max_retries = 3
             for attempt in range(max_retries):
                 try:
+                    logger.debug(f"Claude API call attempt {attempt+1}")
                     response = self.client.messages.create(
                         model="claude-3-5-sonnet-20241022",
                         max_tokens=max_tokens,
@@ -1066,15 +1074,15 @@ class EnhancedNewsCollector:
     
     def __init__(self, claude_client: EnhancedClaudeClient, db_manager: EnhancedChromaDBManager, 
                  naver_api: EnhancedNaverNewsAPI):
+        logger.debug("Initializing EnhancedNewsCollector")
         self.claude_client = claude_client
         self.db_manager = db_manager
         self.naver_api = naver_api
-        
+        logger.debug("EnhancedNewsCollector initialized.")
+    
     async def collect_company_news_enhanced(self, company_name: str, additional_keywords: List[str] = None,
                                           days_back: int = 365, max_articles: int = 50) -> int:
-        """향상된 회사 관련 뉴스 자동 수집"""
-        logger.info(f"{company_name} 뉴스 수집 시작 (키워드: {additional_keywords}, 최근 {days_back}일, 최대 {max_articles}개)")
-        
+        logger.debug(f"collect_company_news_enhanced called with company_name={company_name}, additional_keywords={additional_keywords}, days_back={days_back}, max_articles={max_articles}")
         collected_count = 0
         
         try:
@@ -1084,10 +1092,12 @@ class EnhancedNewsCollector:
                 additional_keywords, 
                 display=max_articles
             )
+            logger.debug(f"Found {len(articles)} articles for collection.")
             
             for article in articles[:max_articles]:
                 # 날짜 필터링
                 if self._is_recent_article(article.pub_date, days_back):
+                    logger.debug(f"Collecting and storing article: {article.title}")
                     success = await self.collect_and_store_news(company_name, article)
                     if success:
                         collected_count += 1
@@ -1097,6 +1107,7 @@ class EnhancedNewsCollector:
                 
                 # 최대 수집 개수 도달시 중단
                 if collected_count >= max_articles:
+                    logger.info("Max articles collected, breaking loop.")
                     break
                 
         except Exception as e:
@@ -1106,7 +1117,7 @@ class EnhancedNewsCollector:
         return collected_count
         
     async def collect_and_store_news(self, company_name: str, article: NewsArticle) -> bool:
-        """간단한 뉴스 수집 및 저장 (Claude API 없이)"""
+        logger.debug(f"collect_and_store_news called for company_name={company_name}, article_title={article.title}")
         try:
             # 본문이 없으면 제목+설명 사용
             news_content = article.content if article.content else f"{article.title}\n{article.description}"
@@ -1188,6 +1199,7 @@ class EnhancedNewsCollector:
             # 4. 벡터 DB에 저장
             for chunk in chunks:
                 embedding = [0.1] * 768  # 더미 임베딩
+                logger.debug(f"Storing chunk_id={chunk.chunk_id} for article: {article.title}")
                 self.db_manager.store_news_chunk(chunk, metadata, embedding)
             
             logger.info(f"간단 저장 완료: {article.title[:50]}... ({len(chunks)}개 청크, 관련도: {final_relevance})")
@@ -1254,14 +1266,22 @@ class EnhancedNewsWriter:
     """향상된 뉴스 작성기"""
     
     def __init__(self, claude_client, db_manager):
+        logger.debug("Initializing EnhancedNewsWriter")
         self.claude_client = claude_client
         self.db_manager = db_manager
+        logger.debug("EnhancedNewsWriter initialized.")
+    
+    def get_full_generation_prompt(self, topic, keywords, user_facts, reference_materials, length_specification=""):
+        """Return the exact prompt string that will be sent to Claude."""
+        return EnhancedPromptManager.get_enhanced_news_generation_prompt(
+            topic, keywords, user_facts, reference_materials, length_specification
+        )
     
     async def generate_enhanced_news(self, topic: str, keywords: List[str], 
                                    user_facts: str, style: str = "기업 보도형",
                                    length_specification: str = "",
                                    use_rag: bool = True, rag_count: int = 10) -> str:
-        """향상된 뉴스 생성 (RAG 폴백 개선 및 회사 필터링 강화)"""
+        logger.debug(f"generate_enhanced_news called with topic={topic}, keywords={keywords}, user_facts length={len(user_facts)}, style={style}, length_specification={length_specification}, use_rag={use_rag}, rag_count={rag_count}")
         try:
             reference_materials = ""
             
@@ -1273,7 +1293,7 @@ class EnhancedNewsWriter:
                           ['삼성', '알티베이스', 'lg', 'sk', '현대', '기업', '회사']):
                         target_companies.append(keyword)
                 
-                logger.info(f"대상 회사 필터: {target_companies}")
+                logger.debug(f"대상 회사 필터: {target_companies}")
                 
                 # 1. 높은 관련도로 검색 시도 (회사 필터링 적용)
                 search_query = f"{topic} {' '.join(keywords)}"
@@ -1288,6 +1308,7 @@ class EnhancedNewsWriter:
                 
                 # 2. 결과가 부족하면 낮은 관련도로 재시도
                 result_count = len(search_results.get('documents', [[]])[0])
+                logger.debug(f"RAG 검색 결과 개수: {result_count}")
                 if result_count < 3:  # 3개 미만이면
                     logger.info(f"결과 부족({result_count}개), 낮은 관련도로 재검색...")
                     search_results = self.db_manager.search_relevant_news(
@@ -1340,7 +1361,7 @@ class EnhancedNewsWriter:
 """
             
             # 뉴스 생성
-            generation_prompt = EnhancedPromptManager.get_enhanced_news_generation_prompt(
+            generation_prompt = self.get_full_generation_prompt(
                 topic, keywords, user_facts, reference_materials, length_specification
             )
             
@@ -1365,7 +1386,7 @@ class EnhancedNewsWriter:
                 
         except Exception as e:
             logger.error(f"뉴스 생성 실패: {e}")
-            return None
+            return ""
     
     def _build_comprehensive_reference_materials(self, search_results: Dict) -> str:
         """포괄적인 참고 자료 구성 (전체 내용 포함)"""
@@ -1459,7 +1480,7 @@ class EnhancedNewsWriter:
 
 **중요: 정확히 {target_lines}줄을 맞춰주세요. 각 줄에 충분한 내용을 포함하세요.**"""
                 
-                regenerated = await self.claude_client.generate_response(enhanced_prompt, max_tokens=10000)
+                regenerated = await self.claude_client.generate_response(enhanced_prompt, max_tokens=8000)
                 return regenerated
         
         elif "단어 수" in length_specification:
@@ -1482,7 +1503,7 @@ class EnhancedNewsWriter:
 
 **중요: 정확히 {target_words}단어를 맞춰주세요.**"""
                 
-                regenerated = await self.claude_client.generate_response(enhanced_prompt, max_tokens=10000)
+                regenerated = await self.claude_client.generate_response(enhanced_prompt, max_tokens=8000)
                 return regenerated
         
         return news_draft
@@ -1507,13 +1528,14 @@ class EnhancedAINewsWriterSystem:
     
     def __init__(self, claude_api_key: str = None, naver_client_id: str = None, 
                  naver_client_secret: str = None, db_path: str = "./chroma_db"):
+        logger.debug("Initializing EnhancedAINewsWriterSystem")
         self.claude_client = EnhancedClaudeClient(claude_api_key)
         self.db_manager = EnhancedChromaDBManager(db_path)
         self.naver_api = EnhancedNaverNewsAPI(naver_client_id, naver_client_secret)
         self.news_collector = EnhancedNewsCollector(self.claude_client, self.db_manager, self.naver_api)
         self.news_writer = EnhancedNewsWriter(self.claude_client, self.db_manager)
-        
         logger.info("Enhanced AI News Writer 시스템 초기화 완료")
+        logger.debug("EnhancedAINewsWriterSystem initialized.")
     
     async def collect_news_background(self, company_name: str, additional_keywords: List[str] = None,
                                     days_back: int = 365, max_articles: int = 50) -> int:

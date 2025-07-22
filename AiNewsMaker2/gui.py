@@ -15,6 +15,9 @@ from datetime import datetime, timedelta
 import logging
 import sys
 import traceback
+import tkinter.font as tkfont
+from ttkthemes import ThemedTk
+import csv
 
 # main.py에서 필요한 클래스들 임포트
 try:
@@ -29,19 +32,34 @@ class GUILogHandler(logging.Handler):
     def __init__(self, text_widget):
         super().__init__()
         self.text_widget = text_widget
+        # Setup color tags
+        self.text_widget.tag_config('ERROR', foreground='red')
+        self.text_widget.tag_config('WARNING', foreground='orange')
+        self.text_widget.tag_config('INFO', foreground='green')
+        self.text_widget.tag_config('DEBUG', foreground='gray')
     
     def emit(self, record):
         try:
             msg = self.format(record)
             if self.text_widget and self.text_widget.winfo_exists():
-                self.text_widget.insert(tk.END, msg + '\n')
+                level = record.levelname
+                tag = level if level in ('ERROR', 'WARNING', 'INFO', 'DEBUG') else None
+                self.text_widget.insert(tk.END, msg + '\n', tag)
                 self.text_widget.see(tk.END)
                 self.text_widget.update()
-        except:
+        except Exception:
             pass  # GUI가 닫혔을 때 오류 방지
 
 class EnhancedNewsWriterGUI:
     def __init__(self, root):
+        # Set a global font
+        default_font = tkfont.nametofont("TkDefaultFont")
+        default_font.configure(family="Segoe UI", size=10)
+        root.option_add("*Font", default_font)
+        # Set window icon placeholder (if you have an .ico file, set it here)
+        # root.iconbitmap('app_icon.ico')
+        # Add status bar
+        self.statusbar_var = tk.StringVar(value="Ready.")
         self.root = root
         self.root.title("AI News Writer Pro - 전문 뉴스 자동 생성 시스템")
         self.root.geometry("1069x768")
@@ -60,9 +78,16 @@ class EnhancedNewsWriterGUI:
         if not os.path.exists(self.news_directory):
             os.makedirs(self.news_directory)
         
+        self.news_history_file = "generated_news_history.json"
+        self.news_history = []
+        self.load_news_history()
+        
         self.setup_ui()
         self.setup_logging()
         self.load_config()
+        # Add status bar at the bottom
+        self.statusbar = ttk.Label(root, textvariable=self.statusbar_var, relief=tk.SUNKEN, anchor='w', padding=4)
+        self.statusbar.pack(side=tk.BOTTOM, fill=tk.X)
         
         # 시작 시 자동으로 시스템 초기화
         self.root.after(1000, self.auto_initialize_system)
@@ -85,22 +110,71 @@ class EnhancedNewsWriterGUI:
         self.notebook = ttk.Notebook(top_frame)
         self.notebook.pack(fill=tk.BOTH, expand=True)
 
-        # 탭 생성 (벡터DB 탭 추가)
+        # 탭 생성 순서: 설정, 뉴스 수집, 뉴스 작성, 벡터DB, 최근 생성 뉴스/프롬프트
         self.setup_config_tab(self.notebook)
         self.setup_collection_tab(self.notebook)
         self.setup_writing_tab(self.notebook)
-        self.setup_vector_stats_tab(self.notebook)  # NEW: Vector database statistics tab
+        self.setup_vector_stats_tab(self.notebook)  # 벡터DB 탭 (moved here)
+        self.setup_history_tab(self.notebook)
 
-        # 하단 로그 프레임 (bottom_frame에)
-        self.setup_bottom_log_frame(bottom_frame)
-
-        # 벡터DB 탭 선택 시 자동으로 컬렉션 내용 미리보기 표시
+        # 벡터DB 탭 선택 시 로그에 내용 표시 (다이얼로그 X)
         def on_tab_changed(event):
             selected_tab = event.widget.select()
             tab_text = event.widget.tab(selected_tab, "text")
             if "벡터DB" in tab_text:
-                self.view_collection_contents()
+                # Show vector DB content in log panel instead of dialog
+                try:
+                    content = self.get_vector_db_log_content()
+                    self.log_text.insert(tk.END, content + '\n')
+                    self.log_text.see(tk.END)
+                except Exception as e:
+                    self.log_text.insert(tk.END, f"[벡터DB 표시 오류] {e}\n")
+                    self.log_text.see(tk.END)
         self.notebook.bind("<<NotebookTabChanged>>", on_tab_changed)
+
+        # 하단 로그 프레임 (bottom_frame에)
+        self.setup_bottom_log_frame(bottom_frame)
+
+        # Add menu bar
+        self.menubar = tk.Menu(self.root)
+        file_menu = tk.Menu(self.menubar, tearoff=0)
+        file_menu.add_command(label="Exit", command=self.root.quit)
+        self.menubar.add_cascade(label="File", menu=file_menu)
+        edit_menu = tk.Menu(self.menubar, tearoff=0)
+        edit_menu.add_command(label="Copy", command=lambda: self.root.event_generate('<<Copy>>'))
+        edit_menu.add_command(label="Paste", command=lambda: self.root.event_generate('<<Paste>>'))
+        self.menubar.add_cascade(label="Edit", menu=edit_menu)
+        help_menu = tk.Menu(self.menubar, tearoff=0)
+        help_menu.add_command(label="About", command=lambda: tk.messagebox.showinfo("About", "AI News Writer Pro\nProfessional News Generation System\nPowered by ttkthemes"))
+        self.menubar.add_cascade(label="Help", menu=help_menu)
+        self.root.config(menu=self.menubar)
+
+        # Add padding and style to all frames and widgets
+        style = ttk.Style()
+        style.theme_use('arc')  # Use a modern theme from ttkthemes
+        style.configure('TFrame', padding=8)
+        style.configure('TLabel', padding=4)
+        style.configure('TButton', padding=6)
+        style.configure('TNotebook.Tab', padding=[12, 6])
+        style.configure('TEntry', padding=4)
+        style.configure('TCombobox', padding=4)
+        style.configure('Treeview', rowheight=24)
+
+        # Add tooltips to important buttons/fields
+        self.add_tooltips()
+
+    def get_vector_db_log_content(self):
+        # Return a summary string of the vector DB content for log panel
+        try:
+            stats = self.system.db_manager.get_collection_stats() if self.system else None
+            if not stats:
+                return "[벡터DB] 데이터 없음"
+            lines = ["[벡터DB 상태 요약]"]
+            for k, v in stats.items():
+                lines.append(f"{k}: {v}")
+            return '\n'.join(lines)
+        except Exception as e:
+            return f"[벡터DB 상태 조회 오류] {e}"
 
     def reload_previous_news(self):
         """이전 뉴스 불러오기 (NEW FUNCTION)"""
@@ -1119,6 +1193,24 @@ ID: {item_data['id']}
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
         
+        # 로그 레벨 설정 프레임
+        loglevel_frame = ttk.LabelFrame(scrollable_frame, text="로그 레벨", padding=10)
+        loglevel_frame.pack(fill=tk.X, padx=10, pady=5)
+        self.log_level_var = tk.StringVar(value="INFO")
+        log_levels = ["DEBUG", "INFO", "WARNING", "ERROR"]
+        loglevel_combo = ttk.Combobox(loglevel_frame, textvariable=self.log_level_var, values=log_levels, state="readonly", width=10)
+        loglevel_combo.pack(side=tk.LEFT, padx=5)
+        loglevel_combo.bind("<<ComboboxSelected>>", self.on_log_level_change)
+        ttk.Label(loglevel_frame, text="(실시간 변경 가능)").pack(side=tk.LEFT, padx=5)
+        
+    def on_log_level_change(self, event=None):
+        """로그 레벨 변경 핸들러"""
+        level = self.log_level_var.get()
+        import logging
+        root_logger = logging.getLogger()
+        root_logger.setLevel(getattr(logging, level, logging.INFO))
+        logging.info(f"로그 레벨이 {level}로 변경되었습니다.")
+    
     def setup_collection_tab(self, parent):
         """뉴스 수집 탭"""
         collection_frame = ttk.Frame(parent)
@@ -1472,26 +1564,25 @@ ID: {item_data['id']}
         
         # 로그 프레임
         log_frame = ttk.LabelFrame(parent, text="📋 시스템 로그", padding=10)
-        log_frame.pack(fill=tk.X, pady=5)
+        log_frame.pack(fill=tk.BOTH, expand=True, pady=5)
         
         # 로그 텍스트 (높이를 8로 늘림)
         self.log_text = scrolledtext.ScrolledText(log_frame, wrap=tk.WORD, height=8, font=("Consolas", 9))
-        self.log_text.pack(fill=tk.X, pady=(5,0))
+        self.log_text.pack(fill=tk.BOTH, expand=True, pady=(5,0))
         
         # 버튼 삭제: 로그 지우기, 로그 저장, 자동 스크롤
 
     def setup_logging(self):
         """로깅 설정"""
-        # 기존 핸들러 제거
         root_logger = logging.getLogger()
         for handler in root_logger.handlers[:]:
             root_logger.removeHandler(handler)
-        
-        # GUI 핸들러 추가
         gui_handler = GUILogHandler(self.log_text)
         gui_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
         root_logger.addHandler(gui_handler)
-        root_logger.setLevel(logging.INFO)
+        # 로그 레벨을 설정값에 따라 적용
+        level = getattr(logging, getattr(self, 'log_level_var', None).get() if hasattr(self, 'log_level_var') else 'INFO', logging.INFO)
+        root_logger.setLevel(level)
         
     def toggle_auto_scroll(self):
         """자동 스크롤 토글"""
@@ -2258,6 +2349,12 @@ ID: {item_data['id']}
                 # 뉴스 생성
                 self.root.after(0, lambda: self.update_generation_status("뉴스 생성 중..."))
                 
+                # --- Capture the full prompt sent to Claude ---
+                prompt = self.system.news_writer.get_full_generation_prompt(
+                    topic, keywords, enhanced_user_facts, reference_materials, f"{length_count}{length_type}"
+                )
+                self.root.after(0, lambda: self.add_news_history(news, prompt, meta))
+                
                 news = loop.run_until_complete(
                     self.system.write_news(
                         topic, keywords, enhanced_user_facts, style,
@@ -2604,11 +2701,251 @@ ID: {item_data['id']}
         import threading
         threading.Thread(target=manual_worker, daemon=True).start()
 
+    def setup_history_tab(self, parent):
+        """최근 생성 뉴스/프롬프트 탭 (comprehensive upgrade)"""
+        history_frame = ttk.Frame(parent)
+        parent.add(history_frame, text="🕑 최근 생성 뉴스/프롬프트")
+
+        # Top: Search/filter and sort
+        top_frame = ttk.Frame(history_frame)
+        top_frame.pack(fill=tk.X, padx=5, pady=2)
+        ttk.Label(top_frame, text="검색:").pack(side=tk.LEFT)
+        self.history_search_var = tk.StringVar()
+        search_entry = ttk.Entry(top_frame, textvariable=self.history_search_var, width=20)
+        search_entry.pack(side=tk.LEFT, padx=2)
+        search_entry.bind('<KeyRelease>', lambda e: self.refresh_history_list())
+        ttk.Label(top_frame, text="정렬:").pack(side=tk.LEFT, padx=(10,0))
+        self.history_sort_var = tk.StringVar(value="날짜 내림차순")
+        sort_combo = ttk.Combobox(top_frame, textvariable=self.history_sort_var, values=["날짜 내림차순", "날짜 오름차순", "토픽"], state="readonly", width=12)
+        sort_combo.pack(side=tk.LEFT, padx=2)
+        sort_combo.bind('<<ComboboxSelected>>', lambda e: self.refresh_history_list())
+        ttk.Button(top_frame, text="내보내기", command=self.export_history).pack(side=tk.RIGHT, padx=2)
+        ttk.Button(top_frame, text="가져오기", command=self.import_history).pack(side=tk.RIGHT, padx=2)
+
+        # Middle: Treeview for history
+        mid_frame = ttk.Frame(history_frame)
+        mid_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=2)
+        columns = ("timestamp", "topic", "type")
+        self.history_tree = ttk.Treeview(mid_frame, columns=columns, show="headings", selectmode="browse", height=18)
+        self.history_tree.heading("timestamp", text="날짜/시간")
+        self.history_tree.heading("topic", text="토픽")
+        self.history_tree.heading("type", text="유형")
+        self.history_tree.column("timestamp", width=140, anchor="center")
+        self.history_tree.column("topic", width=220, anchor="w")
+        self.history_tree.column("type", width=60, anchor="center")
+        self.history_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.history_tree.bind('<<TreeviewSelect>>', self.on_history_select)
+        # Alternating row colors
+        self.history_tree.tag_configure('oddrow', background='#f0f0f0')
+        self.history_tree.tag_configure('evenrow', background='#e0e0e0')
+        # Scrollbar
+        tree_scroll = ttk.Scrollbar(mid_frame, orient="vertical", command=self.history_tree.yview)
+        self.history_tree.configure(yscrollcommand=tree_scroll.set)
+        tree_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Empty state label
+        self.history_empty_label = ttk.Label(mid_frame, text="No news or prompts yet. Generate some news!", foreground="gray")
+        self.history_empty_label.place(relx=0.5, rely=0.5, anchor="center")
+        self.history_empty_label.lower(self.history_tree)
+
+        # Right: Details
+        right_frame = ttk.Frame(history_frame)
+        right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.history_news_text = scrolledtext.ScrolledText(right_frame, height=12, font=("맑은 고딕", 10), foreground="gray")
+        self.history_news_text.pack(fill=tk.BOTH, expand=True, pady=2)
+        self.history_prompt_text = scrolledtext.ScrolledText(right_frame, height=8, font=("Consolas", 9), foreground="gray")
+        self.history_prompt_text.pack(fill=tk.BOTH, expand=True, pady=2)
+
+        btn_frame = ttk.Frame(right_frame)
+        btn_frame.pack(fill=tk.X, pady=5)
+        self.btn_copy_prompt = ttk.Button(btn_frame, text="프롬프트 복사", command=self.copy_history_prompt)
+        self.btn_copy_prompt.pack(side=tk.LEFT, padx=2)
+        self.btn_copy_news = ttk.Button(btn_frame, text="뉴스 복사", command=self.copy_history_news)
+        self.btn_copy_news.pack(side=tk.LEFT, padx=2)
+        self.btn_regen = ttk.Button(btn_frame, text="이 프롬프트로 재생성", command=self.regenerate_from_history)
+        self.btn_regen.pack(side=tk.LEFT, padx=2)
+        self.btn_delete = ttk.Button(btn_frame, text="삭제", command=self.delete_history_entry)
+        self.btn_delete.pack(side=tk.LEFT, padx=2)
+        # Tooltips (simple)
+        self.btn_copy_prompt.tooltip = "Copy the full prompt to clipboard"
+        self.btn_copy_news.tooltip = "Copy the generated news to clipboard"
+        self.btn_regen.tooltip = "Refill the writing tab with this prompt"
+        self.btn_delete.tooltip = "Delete this entry from history"
+
+        # Keyboard shortcuts
+        self.root.bind_all('<Control-c>', lambda e: self.copy_history_prompt())
+        self.root.bind_all('<Control-r>', lambda e: self.regenerate_from_history())
+        self.root.bind_all('<Delete>', lambda e: self.delete_history_entry())
+
+        self.refresh_history_list()
+
+    def refresh_history_list(self):
+        try:
+            # Save selection
+            selected = self.history_tree.selection()
+            selected_id = selected[0] if selected else None
+            # Filter and sort
+            search = self.history_search_var.get().strip().lower() if hasattr(self, 'history_search_var') else ''
+            sort = self.history_sort_var.get() if hasattr(self, 'history_sort_var') else '날짜 내림차순'
+            filtered = [entry for entry in self.news_history if (search in entry['meta'].get('topic', '').lower() or search in entry['prompt'].lower() or search in entry['news'].lower())]
+            if sort == '날짜 내림차순':
+                filtered.sort(key=lambda x: x['timestamp'], reverse=True)
+            elif sort == '날짜 오름차순':
+                filtered.sort(key=lambda x: x['timestamp'])
+            elif sort == '토픽':
+                filtered.sort(key=lambda x: x['meta'].get('topic', ''))
+            self.history_tree.delete(*self.history_tree.get_children())
+            if not filtered:
+                self.history_empty_label.lift(self.history_tree)
+                self.history_news_text.config(state=tk.NORMAL)
+                self.history_news_text.delete(1.0, tk.END)
+                self.history_news_text.config(state=tk.DISABLED)
+                self.history_prompt_text.config(state=tk.NORMAL)
+                self.history_prompt_text.delete(1.0, tk.END)
+                self.history_prompt_text.config(state=tk.DISABLED)
+                for btn in [self.btn_copy_prompt, self.btn_copy_news, self.btn_regen, self.btn_delete]:
+                    btn.state(['disabled'])
+                return
+            else:
+                self.history_empty_label.lower(self.history_tree)
+            for i, entry in enumerate(filtered):
+                topic = entry['meta'].get('topic', '(제목 없음)')
+                ts = entry['timestamp']
+                ntype = entry['meta'].get('type', '일반')
+                tag = 'evenrow' if i % 2 == 0 else 'oddrow'
+                self.history_tree.insert('', 'end', iid=str(i), values=(ts, topic, ntype), tags=(tag,))
+            # Restore selection
+            if selected_id and selected_id in self.history_tree.get_children():
+                self.history_tree.selection_set(selected_id)
+                self.history_tree.see(selected_id)
+            else:
+                self.history_tree.selection_set(self.history_tree.get_children()[0])
+            for btn in [self.btn_copy_prompt, self.btn_copy_news, self.btn_regen, self.btn_delete]:
+                btn.state(['!disabled'])
+            self.statusbar_var.set(f"히스토리 {len(filtered)}건 표시됨.")
+        except Exception as e:
+            logging.error(f"히스토리 리스트 갱신 오류: {e}")
+            self.history_tree.delete(*self.history_tree.get_children())
+            self.history_empty_label.lift(self.history_tree)
+            self.statusbar_var.set(f"Error: {e}")
+
+    def on_history_select(self, event=None):
+        sel = self.history_tree.selection()
+        if not sel:
+            for btn in [self.btn_copy_prompt, self.btn_copy_news, self.btn_regen, self.btn_delete]:
+                btn.state(['disabled'])
+            return
+        idx = int(sel[0])
+        entry = self.news_history[idx]
+        self.history_news_text.config(state=tk.NORMAL)
+        self.history_news_text.delete(1.0, tk.END)
+        self.history_news_text.insert(1.0, entry["news"])
+        self.history_news_text.config(state=tk.DISABLED)
+        self.history_prompt_text.config(state=tk.NORMAL)
+        self.history_prompt_text.delete(1.0, tk.END)
+        self.history_prompt_text.insert(1.0, entry["prompt"])
+        self.history_prompt_text.config(state=tk.DISABLED)
+        for btn in [self.btn_copy_prompt, self.btn_copy_news, self.btn_regen, self.btn_delete]:
+            btn.state(['!disabled'])
+
+    def export_history(self):
+        try:
+            file_path = filedialog.asksaveasfilename(title="히스토리 내보내기", defaultextension=".csv", filetypes=[("CSV 파일", "*.csv"), ("JSON 파일", "*.json")])
+            if not file_path:
+                return
+            if file_path.endswith('.json'):
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    json.dump(self.news_history, f, ensure_ascii=False, indent=2)
+            else:
+                with open(file_path, 'w', encoding='utf-8', newline='') as f:
+                    writer = csv.writer(f)
+                    writer.writerow(["timestamp", "topic", "type", "news", "prompt"])
+                    for entry in self.news_history:
+                        writer.writerow([entry['timestamp'], entry['meta'].get('topic', ''), entry['meta'].get('type', ''), entry['news'], entry['prompt']])
+            self.statusbar_var.set("히스토리 내보내기 완료.")
+        except Exception as e:
+            messagebox.showerror("오류", f"히스토리 내보내기 실패: {e}")
+
+    def import_history(self):
+        try:
+            file_path = filedialog.askopenfilename(title="히스토리 가져오기", filetypes=[("CSV 파일", "*.csv"), ("JSON 파일", "*.json")])
+            if not file_path:
+                return
+            if file_path.endswith('.json'):
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    self.news_history = json.load(f)
+            else:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    reader = csv.DictReader(f)
+                    self.news_history = []
+                    for row in reader:
+                        self.news_history.append({
+                            "timestamp": row.get("timestamp", ""),
+                            "news": row.get("news", ""),
+                            "prompt": row.get("prompt", ""),
+                            "meta": {"topic": row.get("topic", ""), "type": row.get("type", "일반")}
+                        })
+            self.save_news_history()
+            self.refresh_history_list()
+            self.statusbar_var.set("히스토리 가져오기 완료.")
+        except Exception as e:
+            messagebox.showerror("오류", f"히스토리 가져오기 실패: {e}")
+
+    def load_news_history(self):
+        try:
+            with open(self.news_history_file, "r", encoding="utf-8") as f:
+                self.news_history = json.load(f)
+        except Exception:
+            self.news_history = []
+
+    def save_news_history(self):
+        try:
+            with open(self.news_history_file, "w", encoding="utf-8") as f:
+                json.dump(self.news_history, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logging.error(f"뉴스 히스토리 저장 실패: {e}")
+
+    def add_news_history(self, news, prompt, meta):
+        entry = {
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "news": news,
+            "prompt": prompt,
+            "meta": meta
+        }
+        self.news_history.insert(0, entry)
+        self.news_history = self.news_history[:20]  # Keep only 20 most recent
+        self.save_news_history()
+        self.refresh_history_list()
+
+    def delete_history_entry(self):
+        sel = self.history_tree.selection()
+        if not sel:
+            return
+        idx = sel[0]
+        del self.news_history[idx]
+        self.save_news_history()
+        self.refresh_history_list()
+
+    def add_tooltips(self):
+        try:
+            import tooltip
+        except ImportError:
+            # Simple fallback if tooltip module is not available
+            def add_tooltip(widget, text):
+                pass
+        else:
+            def add_tooltip(widget, text):
+                tooltip.ToolTip(widget, text)
+        # Example: add_tooltip(self.generate_btn, "뉴스 생성")
+        # Add more tooltips as needed
+        pass
+
 
 def main():
     """GUI 메인 함수"""
     try:
-        root = tk.Tk()
+        # NOTE: Requires 'pip install ttkthemes'
+        root = ThemedTk(theme="arc")
         app = EnhancedNewsWriterGUI(root)
         
         # 창 닫기 이벤트 처리
