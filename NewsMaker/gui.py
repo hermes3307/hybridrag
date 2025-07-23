@@ -1354,20 +1354,30 @@ ID: {item_data['id']}
         """벡터 데이터베이스 통계 탭 (NEW)"""
         vector_frame = ttk.Frame(parent)
         parent.add(vector_frame, text="📊 벡터DB")
+        
+        # Initialize StringVars for vector stats
+        self.vector_total_chunks_var = tk.StringVar(value="0")
+        self.vector_collection_name_var = tk.StringVar(value="unknown")
+        self.vector_last_update_var = tk.StringVar(value="N/A")
+        self.vector_avg_relevance_var = tk.StringVar(value="N/A")
+        
         # 상단 통계 요약
         stats_summary_frame = ttk.LabelFrame(vector_frame, text="벡터 데이터베이스 요약", padding=10)
         stats_summary_frame.pack(fill=tk.X, padx=10, pady=5)
         stats_grid = ttk.Frame(stats_summary_frame)
         stats_grid.pack(fill=tk.X, pady=5)
+        
+        # Row 0: Total chunks and Collection name
         ttk.Label(stats_grid, text="총 청크 수:").grid(row=0, column=0, sticky=tk.W, padx=5)
-        self.vector_total_chunks_var = tk.StringVar(value="0")
         ttk.Label(stats_grid, textvariable=self.vector_total_chunks_var, foreground="blue").grid(row=0, column=1, sticky=tk.W, padx=5)
         ttk.Label(stats_grid, text="컬렉션명:").grid(row=0, column=2, sticky=tk.W, padx=15)
-        self.vector_collection_name_var = tk.StringVar(value="unknown")
         ttk.Label(stats_grid, textvariable=self.vector_collection_name_var, foreground="green").grid(row=0, column=3, sticky=tk.W, padx=5)
+        
+        # Row 1: Last update and Average relevance
         ttk.Label(stats_grid, text="마지막 업데이트:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=2)
-        self.vector_last_update_var = tk.StringVar(value="N/A")
         ttk.Label(stats_grid, textvariable=self.vector_last_update_var, foreground="gray").grid(row=1, column=1, sticky=tk.W, padx=5, pady=2)
+        ttk.Label(stats_grid, text="평균 관련도:").grid(row=1, column=2, sticky=tk.W, padx=15, pady=2)
+        ttk.Label(stats_grid, textvariable=self.vector_avg_relevance_var, foreground="purple").grid(row=1, column=3, sticky=tk.W, padx=5, pady=2)
         # 벡터DB 탭 선택 시 컬렉션내용보기만 표시, 팝업 없이
         def on_tab_selected(event=None):
             self.view_collection_contents()
