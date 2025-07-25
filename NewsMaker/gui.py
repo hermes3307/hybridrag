@@ -1065,8 +1065,14 @@ ID: {item_data['id']}
                 self.root.after(3000, self.refresh_vector_stats)  # 3초 후 통계 로드
                 
                 # 네이버 API 자동 테스트
+                def call_test_naver_api_when_ready():
+                    if self.system is not None:
+                        self.test_naver_api()
+                    else:
+                        # 시스템이 아직 준비되지 않았으면 1초 후 다시 시도
+                        self.root.after(1000, call_test_naver_api_when_ready)
                 if naver_id and naver_secret:
-                    self.root.after(2000, self.test_naver_api)
+                    self.root.after(5000, call_test_naver_api_when_ready)
             else:
                 self.status_var.set("API 키를 설정하고 시스템을 초기화해주세요.")
                 self.status_label_widget.config(foreground="green")
@@ -1421,7 +1427,7 @@ ID: {item_data['id']}
         self.length_type_var = tk.StringVar(value="줄 수")
         ttk.Radiobutton(length_frame, text="줄 수", variable=self.length_type_var, value="줄 수").pack(side=tk.LEFT)
         ttk.Radiobutton(length_frame, text="단어 수", variable=self.length_type_var, value="단어 수").pack(side=tk.LEFT, padx=10)
-        self.length_count_var = tk.IntVar(value=100)
+        self.length_count_var = tk.IntVar(value=50)
         ttk.Spinbox(length_frame, from_=10, to=500, textvariable=self.length_count_var, width=10).pack(side=tk.LEFT, padx=10)
         ttk.Label(input_frame, text="주요 사실:").grid(row=4, column=0, sticky=tk.NW, pady=2)
         self.facts_text = scrolledtext.ScrolledText(input_frame, height=12, width=60, foreground="#888888")  # gray tone
@@ -1432,7 +1438,7 @@ ID: {item_data['id']}
         self.use_rag_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(rag_frame, text="RAG 참조 사용", variable=self.use_rag_var).pack(side=tk.LEFT)
         ttk.Label(rag_frame, text="참조 뉴스 개수:").pack(side=tk.LEFT, padx=10)
-        self.rag_count_var = tk.IntVar(value=15)
+        self.rag_count_var = tk.IntVar(value=5)
         ttk.Spinbox(rag_frame, from_=5, to=20, textvariable=self.rag_count_var, width=8).pack(side=tk.LEFT)
         generate_frame = ttk.Frame(input_frame)
         generate_frame.grid(row=6, column=0, columnspan=3, pady=15)
