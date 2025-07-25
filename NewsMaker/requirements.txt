@@ -5,3 +5,4 @@ bs4
 chromadb
 dotenv
 python-dotenv 
+sentence-transformers 

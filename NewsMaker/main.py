@@ -444,28 +444,30 @@ import math
 class EnhancedChromaDBManager:
     """향상된 ChromaDB 관리 클래스 (임베딩 충돌 해결)"""
     
+
     def __init__(self, db_path: str = "./chroma_db"):
         logger.debug(f"Initializing EnhancedChromaDBManager with db_path={db_path}")
+        
+        # Always create the embedding function instance first
+        self.embedding_function = self._create_768_embedding_function()
+            
         try:
             self.client = chromadb.PersistentClient(path=db_path)
             
-            # ✅ FIXED: Check if collection exists first
             collection_name = "enhanced_news_collection"
             existing_collections = [col.name for col in self.client.list_collections()]
             
             if collection_name in existing_collections:
-                # ✅ Collection exists - use it without changing embedding function
+                # Collection exists - use it without changing embedding function
                 logger.info(f"기존 컬렉션 사용: {collection_name}")
                 self.collection = self.client.get_collection(collection_name)
-                self.embedding_function = None  # Use existing embedding function
                 
                 # Check if we need to handle dimension mismatches later
                 self._check_embedding_compatibility()
                 
             else:
-                # ✅ New collection - create with custom embedding function
+                # New collection - create with custom embedding function
                 logger.info(f"새 컬렉션 생성: {collection_name}")
-                self.embedding_function = self._create_768_embedding_function()
                 self.collection = self.client.create_collection(
                     name=collection_name,
                     metadata={"description": "Enhanced AI News Writer 뉴스 컬렉션"},
@@ -477,7 +479,7 @@ class EnhancedChromaDBManager:
             
         except Exception as e:
             logger.error(f"ChromaDB 초기화 실패: {e}")
-            # ✅ FALLBACK: Create collection without custom embedding function
+            # FALLBACK: Create collection without custom embedding function
             try:
                 self.collection = self.client.get_or_create_collection(
                     name="enhanced_news_collection",
@@ -489,7 +491,7 @@ class EnhancedChromaDBManager:
             except Exception as fallback_error:
                 logger.error(f"폴백 초기화도 실패: {fallback_error}")
                 raise fallback_error
-    
+            
     def _check_embedding_compatibility(self):
         """기존 컬렉션의 임베딩 호환성 확인 (✅ NEW METHOD)"""
         try:
@@ -606,7 +608,7 @@ class EnhancedChromaDBManager:
             raise
     
     def search_relevant_news(self, query: str, n_results: int = 10, 
-                           min_relevance: int = 5, target_companies: List[str] = None):
+                             min_relevance: int = 5, target_companies: List[str] = None):
         """관련 뉴스 검색 (회사 필터링 강화)"""
         try:
             collection_count = self.collection.count()
@@ -617,11 +619,15 @@ class EnhancedChromaDBManager:
             actual_n_results = min(n_results, collection_count)
             target_dim = getattr(self, '_embedding_dimension', 768)
             
-            # ✅ METHOD 1: 텍스트 기반 검색 (기존 임베딩 함수 사용)
+            # ✅ METHOD 1: 임베딩 기반 검색 (수정됨)
             try:
-                logger.info(f"텍스트 검색 시도: '{query[:50]}...'")
+                logger.info(f"임베딩 기반 검색 시도: '{query[:50]}...'")
+
+                # Manually create the embedding to ensure correct dimension
+                query_embedding = self.embedding_function([query])[0]
+
                 results = self.collection.query(
-                    query_texts=[query],
+                    query_embeddings=[query_embedding], # Use query_embeddings
                     n_results=actual_n_results * 2,  # 필터링을 위해 더 많이 가져옴
                     include=['documents', 'metadatas', 'distances']
                 )
@@ -633,13 +639,13 @@ class EnhancedChromaDBManager:
                     )
                     
                     if filtered_results['documents'][0]:
-                        logger.info(f"✅ 텍스트 검색 성공: {len(filtered_results['documents'][0])}개 결과")
+                        logger.info(f"✅ 임베딩 검색 성공: {len(filtered_results['documents'][0])}개 결과")
                         return filtered_results
-                
-            except Exception as e:
-                logger.warning(f"텍스트 검색 실패: {e}")
             
-            # ✅ METHOD 2: 차원에 맞는 더미 임베딩으로 검색
+            except Exception as e:
+                logger.warning(f"임베딩 검색 실패: {e}")
+            
+            # ✅ METHOD 2: 더미 임베딩으로 검색
             try:
                 logger.info(f"더미 임베딩 검색 시도... ({target_dim}차원)")
                 dummy_embedding = [0.1] * target_dim
@@ -658,7 +664,7 @@ class EnhancedChromaDBManager:
                     if filtered_results['documents'][0]:
                         logger.info(f"✅ 더미 임베딩 검색 성공: {len(filtered_results['documents'][0])}개 결과")
                         return filtered_results
-                
+            
             except Exception as e:
                 logger.warning(f"더미 임베딩 검색 실패: {e}")
             
@@ -673,11 +679,11 @@ class EnhancedChromaDBManager:
             # METHOD 4: 최후 수단
             logger.info("전체 데이터 검색 (최후 수단)")
             return self._get_all_data(actual_n_results, min_relevance, target_companies)
-                
+                    
         except Exception as e:
             logger.error(f"검색 완전 실패: {e}")
             return {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
-    
+     
     def _filter_by_companies_and_relevance(self, results, target_companies: List[str], 
                                          min_relevance: int, max_results: int):
         """회사명과 관련도로 필터링"""
@@ -1416,10 +1422,10 @@ class EnhancedNewsWriter:
 """
         
         return stats_info + reference_text
-    
+
     async def _ensure_proper_length(self, news_draft: str, length_specification: str,
-                                   topic: str, keywords: List[str], user_facts: str, 
-                                   reference_materials: str) -> str:
+                                      topic: str, keywords: List[str], user_facts: str, 
+                                      reference_materials: str) -> str:
         """길이 요구사항을 정확히 맞추기 위한 재생성"""
         
         if "줄 수" in length_specification:
@@ -1444,8 +1450,8 @@ class EnhancedNewsWriter:
 
 **중요: 정확히 {target_lines}줄을 맞춰주세요. 각 줄에 충분한 내용을 포함하세요.**"""
                 
-                regenerated = await self.claude_client.generate_response(enhanced_prompt, max_tokens=8000)
-                return regenerated
+                regenerated_result = await self.claude_client.generate_response(enhanced_prompt, max_tokens=8000)
+                return regenerated_result["response"]
         
         elif "단어 수" in length_specification:
             target_words = int(re.search(r'(\d+)', length_specification).group(1))
@@ -1467,11 +1473,11 @@ class EnhancedNewsWriter:
 
 **중요: 정확히 {target_words}단어를 맞춰주세요.**"""
                 
-                regenerated = await self.claude_client.generate_response(enhanced_prompt, max_tokens=8000)
-                return regenerated
+                regenerated_result = await self.claude_client.generate_response(enhanced_prompt, max_tokens=8000)
+                return regenerated_result["response"]
         
         return news_draft
-    
+       
     def _extract_json_from_response(self, response: str) -> dict:
         """응답에서 JSON 추출"""
         json_match = re.search(r'```json\s*(.*?)\s*```', response, re.DOTALL)
