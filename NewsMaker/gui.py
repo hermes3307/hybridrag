@@ -83,6 +83,12 @@ class EnhancedNewsWriterGUI:
         self.news_history = []
         self.load_news_history()
         
+        # Initialize vector stats variables to prevent attribute errors
+        self.vector_total_chunks_var = tk.StringVar(value="0")
+        self.vector_collection_name_var = tk.StringVar(value="unknown")
+        self.vector_last_update_var = tk.StringVar(value="N/A")
+        self.vector_avg_relevance_var = tk.StringVar(value="N/A")
+        
         self.setup_ui()
         self.setup_logging()
         self.load_config()
@@ -544,20 +550,14 @@ class EnhancedNewsWriterGUI:
             logging.error(f"벡터DB 내보내기 실패: {e}")
 
     def view_collection_contents(self):
-        """컬렉션 내용 보기 (ENHANCED WITH CONTENT VIEWING)"""
+        """컬렉션 내용 보기 (ENHANCED WITH CONTENT VIEWING & EMBEDDINGS)"""
         try:
             if not self.system:
                 messagebox.showwarning("경고", "시스템이 초기화되지 않았습니다.")
                 return
-            
-            # 기존 항목 지우기
             for item in self.vector_tree.get_children():
                 self.vector_tree.delete(item)
-            
-            # 컬렉션 데이터 저장 (전체 내용 보기를 위해)
             self.vector_full_data = []
-            
-            # 먼저 컬렉션이 비어있는지 확인
             try:
                 collection_count = self.system.db_manager.collection.count()
                 if collection_count == 0:
@@ -566,46 +566,37 @@ class EnhancedNewsWriterGUI:
                     return
             except Exception as e:
                 logging.error(f"컬렉션 카운트 조회 실패: {e}")
-            
-            # 컬렉션 데이터 조회
             try:
                 all_data = self.system.db_manager.collection.get(
-                    include=['documents', 'metadatas']
+                    include=['documents', 'metadatas', 'embeddings']
                 )
-                
                 ids = all_data.get('ids', [])
                 documents = all_data.get('documents', [])
                 metadatas = all_data.get('metadatas', [])
-               
+                embeddings = all_data.get('embeddings', [])
             except Exception as e:
                 logging.error(f"컬렉션 데이터 조회 실패: {e}")
                 messagebox.showerror("오류", f"컬렉션 데이터 조회 실패: {e}")
                 return
-            
             if not documents:
                 logging.info("컬렉션에 문서가 없습니다.")
                 messagebox.showinfo("알림", "벡터 데이터베이스에 저장된 문서가 없습니다.")
                 return
-            
-            # 트리뷰에 데이터 추가 및 전체 데이터 저장
-            max_display = min(300, len(documents))  # 300개로 확장
-            
+            max_display = min(300, len(documents))
             for i in range(max_display):
                 try:
                     doc = documents[i]
                     metadata = metadatas[i] if i < len(metadatas) else {}
+                    embedding = embeddings[i] if i < len(embeddings) else []
                     doc_id = ids[i] if i < len(ids) else f"unknown_{i}"
-                    
-                    # ✅ NEW: 전체 데이터 저장 (클릭시 보기용)
                     full_item_data = {
                         'id': doc_id,
                         'document': doc,
                         'metadata': metadata,
+                        'embedding': embedding,
                         'index': i
                     }
                     self.vector_full_data.append(full_item_data)
-                    
-                    # 토픽 파싱 (안전하게)
                     try:
                         topics_raw = metadata.get('topics', '[]')
                         if isinstance(topics_raw, str):
@@ -615,15 +606,11 @@ class EnhancedNewsWriterGUI:
                         topics_str = ', '.join(topics[:2]) if topics else 'N/A'
                     except:
                         topics_str = str(metadata.get('topics', 'N/A'))[:20]
-                    
-                    # 내용 미리보기
                     try:
                         content_preview = doc[:50] + "..." if len(doc) > 50 else doc
                         content_preview = content_preview.replace('\n', ' ').replace('\r', ' ')
                     except:
                         content_preview = "내용 없음"
-                    
-                    # 관련도 처리
                     try:
                         relevance = metadata.get('relevance_score', 'N/A')
                         if isinstance(relevance, (int, float)):
@@ -632,13 +619,9 @@ class EnhancedNewsWriterGUI:
                             relevance_str = str(relevance)
                     except:
                         relevance_str = "N/A"
-                    
-                    # 날짜 처리
                     date_str = metadata.get('date', metadata.get('created_at', 'N/A'))
                     if isinstance(date_str, str) and 'T' in date_str:
                         date_str = date_str.split('T')[0]
-                    
-                    # 트리뷰에 추가
                     self.vector_tree.insert('', 'end',
                         text=str(i+1),
                         values=(
@@ -649,34 +632,26 @@ class EnhancedNewsWriterGUI:
                             str(date_str)
                         )
                     )
-                    
                 except Exception as item_error:
                     logging.warning(f"항목 {i} 처리 실패: {item_error}")
-                    # 오류 데이터도 저장
                     error_data = {
                         'id': f'error_{i}',
                         'document': f'처리 오류: {str(item_error)}',
                         'metadata': {'error': True},
+                        'embedding': [],
                         'index': i
                     }
                     self.vector_full_data.append(error_data)
-                    
-                    # 오류가 있는 항목은 기본값으로 표시
                     self.vector_tree.insert('', 'end',
                         text=str(i+1),
                         values=(f"error_{i}", "처리 오류", "N/A", "N/A", "N/A")
                     )
-            
-            # ✅ NEW: 더블클릭 이벤트 핸들러 바인딩
             self.vector_tree.bind('<Double-1>', self.on_vector_item_double_click)
-            
             logging.info(f"컬렉션 내용 표시 완료: {max_display}개 항목 (전체 {len(documents)}개)")
-            
             if len(documents) > 300:
                 messagebox.showinfo("알림", f"총 {len(documents)}개 항목 중 처음 300개만 표시됩니다.\n\n💡 팁: 항목을 더블클릭하면 전체 내용을 볼 수 있습니다.")
             else:
                 messagebox.showinfo("표시 완료", f"총 {len(documents)}개 항목이 표시되었습니다.\n\n💡 팁: 항목을 더블클릭하면 전체 내용을 볼 수 있습니다.")
-            
         except Exception as e:
             error_msg = f"컬렉션 내용 조회 실패: {e}"
             messagebox.showerror("오류", error_msg)
@@ -706,51 +681,39 @@ class EnhancedNewsWriterGUI:
         except Exception as e:
             logging.error(f"벡터 아이템 클릭 처리 실패: {e}")
 
-    def show_vector_content_detail(self, item_data):
-        """벡터 컨텐츠 상세 보기 창 (NEW FUNCTION)"""
+    def show_vector_content_detail(self, item_data, current_index=None):
+        """벡터 컨텐츠 상세 보기 창 (ENHANCED: shows embedding vector, navigation)"""
         try:
-            # 새 창 생성
+            if current_index is None:
+                # fallback for direct calls
+                current_index = item_data.get('index', 0)
             detail_window = tk.Toplevel(self.root)
             detail_window.title(f"벡터 데이터 상세 보기 - {item_data['id'][:30]}...")
             detail_window.geometry("900x700")
             detail_window.transient(self.root)
-            
-            # 메뉴바 추가
             menubar = tk.Menu(detail_window)
             detail_window.config(menu=menubar)
-            
             file_menu = tk.Menu(menubar, tearoff=0)
             menubar.add_cascade(label="파일", menu=file_menu)
             file_menu.add_command(label="내용 저장", command=lambda: self.save_vector_content(item_data))
             file_menu.add_command(label="클립보드 복사", command=lambda: self.copy_vector_content_to_clipboard(item_data))
             file_menu.add_command(label="메타데이터 내보내기", command=lambda: self.export_metadata(item_data))
-            
-            # 상단 정보 프레임
             info_frame = ttk.LabelFrame(detail_window, text="기본 정보", padding=10)
             info_frame.pack(fill=tk.X, padx=10, pady=5)
-            
-            # 기본 정보 표시
             info_grid = ttk.Frame(info_frame)
             info_grid.pack(fill=tk.X)
-            
             ttk.Label(info_grid, text="ID:", font=("", 9, "bold")).grid(row=0, column=0, sticky=tk.W, padx=5)
             ttk.Label(info_grid, text=str(item_data['id'])).grid(row=0, column=1, sticky=tk.W, padx=5)
-            
             metadata = item_data['metadata']
-            
             ttk.Label(info_grid, text="관련도:", font=("", 9, "bold")).grid(row=0, column=2, sticky=tk.W, padx=15)
             relevance = metadata.get('relevance_score', 'N/A')
             ttk.Label(info_grid, text=f"{relevance}/10" if isinstance(relevance, (int, float)) else str(relevance)).grid(row=0, column=3, sticky=tk.W, padx=5)
-            
             ttk.Label(info_grid, text="날짜:", font=("", 9, "bold")).grid(row=1, column=0, sticky=tk.W, padx=5, pady=2)
             date_str = metadata.get('date', metadata.get('created_at', 'N/A'))
             ttk.Label(info_grid, text=str(date_str)).grid(row=1, column=1, sticky=tk.W, padx=5, pady=2)
-            
             ttk.Label(info_grid, text="청크 타입:", font=("", 9, "bold")).grid(row=1, column=2, sticky=tk.W, padx=15, pady=2)
             chunk_type = metadata.get('chunk_type', 'N/A')
             ttk.Label(info_grid, text=str(chunk_type)).grid(row=1, column=3, sticky=tk.W, padx=5, pady=2)
-            
-            # 토픽 및 키워드
             ttk.Label(info_grid, text="토픽:", font=("", 9, "bold")).grid(row=2, column=0, sticky=tk.W, padx=5, pady=2)
             try:
                 topics = json.loads(metadata.get('topics', '[]')) if isinstance(metadata.get('topics'), str) else metadata.get('topics', [])
@@ -758,8 +721,6 @@ class EnhancedNewsWriterGUI:
             except:
                 topics_text = str(metadata.get('topics', 'N/A'))
             ttk.Label(info_grid, text=topics_text).grid(row=2, column=1, columnspan=3, sticky=tk.W, padx=5, pady=2)
-            
-            # 키워드
             ttk.Label(info_grid, text="키워드:", font=("", 9, "bold")).grid(row=3, column=0, sticky=tk.W, padx=5, pady=2)
             try:
                 keywords = json.loads(metadata.get('keywords', '[]')) if isinstance(metadata.get('keywords'), str) else metadata.get('keywords', [])
@@ -767,24 +728,25 @@ class EnhancedNewsWriterGUI:
             except:
                 keywords_text = str(metadata.get('keywords', 'N/A'))
             ttk.Label(info_grid, text=keywords_text).grid(row=3, column=1, columnspan=3, sticky=tk.W, padx=5, pady=2)
-            
-            # 내용 프레임
+            # Embedding vector display
+            emb_frame = ttk.LabelFrame(detail_window, text="임베딩 벡터 (Embedding Vector)", padding=10)
+            emb_frame.pack(fill=tk.X, padx=10, pady=5)
+            emb = item_data.get('embedding', [])
+            emb_str = ', '.join([f"{x:.3f}" for x in emb[:10]]) + (" ..." if len(emb) > 10 else "")
+            emb_label = ttk.Label(emb_frame, text=emb_str, wraplength=800, foreground="blue")
+            emb_label.pack(anchor=tk.W)
+            def toggle_embedding():
+                if emb_label.cget('text').endswith('...'):
+                    emb_label.config(text=', '.join([f"{x:.3f}" for x in emb]))
+                else:
+                    emb_label.config(text=emb_str)
+            if len(emb) > 10:
+                ttk.Button(emb_frame, text="전체 보기/접기", command=toggle_embedding).pack(anchor=tk.W, pady=2)
             content_frame = ttk.LabelFrame(detail_window, text="전체 내용", padding=10)
             content_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
-            
-            # 스크롤 가능한 텍스트 위젯
             content_text = scrolledtext.ScrolledText(content_frame, wrap=tk.WORD, font=("맑은 고딕", 10))
             content_text.pack(fill=tk.BOTH, expand=True)
-            
-            # 전체 내용 표시
-            full_content = f"""=== 벡터 데이터베이스 저장 내용 ===
-
-{item_data['document']}
-
-=== 메타데이터 정보 ===
-"""
-            
-            # 메타데이터를 보기 좋게 정리
+            full_content = f"""=== 벡터 데이터베이스 저장 내용 ===\n\n{item_data['document']}\n\n=== 메타데이터 정보 ===\n"""
             for key, value in metadata.items():
                 if key in ['topics', 'keywords', 'company_mentions']:
                     try:
@@ -797,18 +759,36 @@ class EnhancedNewsWriterGUI:
                         full_content += f"{key}: {str(value)}\n"
                 else:
                     full_content += f"{key}: {str(value)}\n"
-            
             content_text.insert(1.0, full_content)
-            content_text.config(state=tk.DISABLED)  # 읽기 전용
-            
-            # 하단 버튼
+            content_text.config(state=tk.DISABLED)
             button_frame = ttk.Frame(detail_window)
             button_frame.pack(fill=tk.X, padx=10, pady=10)
-            
             ttk.Button(button_frame, text="내용 저장", command=lambda: self.save_vector_content(item_data)).pack(side=tk.LEFT, padx=5)
             ttk.Button(button_frame, text="클립보드 복사", command=lambda: self.copy_vector_content_to_clipboard(item_data)).pack(side=tk.LEFT, padx=5)
             ttk.Button(button_frame, text="닫기", command=detail_window.destroy).pack(side=tk.RIGHT, padx=5)
-            
+            # --- Navigation controls ---
+            nav_frame = ttk.Frame(detail_window)
+            nav_frame.pack(fill=tk.X, padx=10, pady=5)
+            def go_to_index(new_index):
+                if 0 <= new_index < len(self.vector_full_data):
+                    detail_window.destroy()
+                    self.show_vector_content_detail(self.vector_full_data[new_index], new_index)
+            prev_btn = ttk.Button(nav_frame, text="⬅️ 이전", command=lambda: go_to_index(current_index-1))
+            next_btn = ttk.Button(nav_frame, text="다음 ➡️", command=lambda: go_to_index(current_index+1))
+            prev_btn.pack(side=tk.LEFT, padx=5)
+            next_btn.pack(side=tk.LEFT, padx=5)
+            ttk.Label(nav_frame, text=f"{current_index+1} / {len(self.vector_full_data)}").pack(side=tk.LEFT, padx=10)
+            ttk.Label(nav_frame, text="이동:").pack(side=tk.LEFT)
+            jump_var = tk.StringVar()
+            jump_entry = ttk.Entry(nav_frame, textvariable=jump_var, width=5)
+            jump_entry.pack(side=tk.LEFT)
+            def jump_to():
+                try:
+                    idx = int(jump_var.get()) - 1
+                    go_to_index(idx)
+                except:
+                    pass
+            ttk.Button(nav_frame, text="Go", command=jump_to).pack(side=tk.LEFT, padx=2)
         except Exception as e:
             messagebox.showerror("오류", f"상세 내용 표시 실패: {e}")
             logging.error(f"벡터 내용 상세 표시 실패: {e}")
@@ -1190,7 +1170,7 @@ ID: {item_data['id']}
         advanced_frame_inner = ttk.LabelFrame(adv_scrollable, text="고급 설정", padding=10)
         advanced_frame_inner.pack(fill=tk.X, padx=10, pady=5)
         ttk.Label(advanced_frame_inner, text="RAG 참조 뉴스 개수:").grid(row=0, column=0, sticky=tk.W, pady=2)
-        self.rag_news_count_var = tk.IntVar(value=15)
+        self.rag_news_count_var = tk.IntVar(value=5)
         ttk.Spinbox(advanced_frame_inner, from_=5, to=20, textvariable=self.rag_news_count_var, width=10).grid(row=0, column=1, padx=5, pady=2, sticky=tk.W)
         ttk.Label(advanced_frame_inner, text="개").grid(row=0, column=2, sticky=tk.W)
 
@@ -1354,7 +1334,29 @@ ID: {item_data['id']}
         """벡터 데이터베이스 통계 탭 (NEW)"""
         vector_frame = ttk.Frame(parent)
         parent.add(vector_frame, text="📊 벡터DB")
-        
+        # --- Search Bar ---
+        search_frame = ttk.Frame(vector_frame)
+        search_frame.pack(fill=tk.X, padx=10, pady=5)
+        ttk.Label(search_frame, text="검색:").pack(side=tk.LEFT)
+        self.vector_search_var = tk.StringVar()
+        search_entry = ttk.Entry(search_frame, textvariable=self.vector_search_var, width=30)
+        search_entry.pack(side=tk.LEFT, padx=5)
+        def do_search(*args):
+            query = self.vector_search_var.get().strip().lower()
+            if not hasattr(self, 'vector_full_data') or not self.vector_full_data:
+                return
+            if not query:
+                self._refresh_vector_tree(self.vector_full_data)
+                return
+            filtered = [item for item in self.vector_full_data if query in str(item.get('id', '')).lower() or query in str(item.get('document', '')).lower()]
+            self._refresh_vector_tree(filtered)
+        search_entry.bind('<Return>', do_search)
+        ttk.Button(search_frame, text="검색", command=do_search).pack(side=tk.LEFT, padx=2)
+        def clear_search():
+            self.vector_search_var.set("")
+            if hasattr(self, 'vector_full_data'):
+                self._refresh_vector_tree(self.vector_full_data)
+        ttk.Button(search_frame, text="초기화", command=clear_search).pack(side=tk.LEFT, padx=2)
         # Initialize StringVars for vector stats
         self.vector_total_chunks_var = tk.StringVar(value="0")
         self.vector_collection_name_var = tk.StringVar(value="unknown")
@@ -1382,6 +1384,13 @@ ID: {item_data['id']}
         def on_tab_selected(event=None):
             self.view_collection_contents()
         parent.bind("<Visibility>", on_tab_selected)
+
+        # --- Admin Buttons ---
+        admin_btn_frame = ttk.Frame(vector_frame)
+        admin_btn_frame.pack(fill=tk.X, padx=10, pady=5)
+        ttk.Button(admin_btn_frame, text="🗑️ 벡터DB 초기화", command=self.clear_vector_db).pack(side=tk.LEFT, padx=5)
+        ttk.Button(admin_btn_frame, text="📊 통계 보기", command=self.show_vector_status).pack(side=tk.LEFT, padx=5)
+        ttk.Button(admin_btn_frame, text="ℹ️ DB 정보", command=self.show_vector_db_info).pack(side=tk.LEFT, padx=5)
 
     def setup_writing_tab(self, parent):
         """뉴스 작성 탭 (개선됨)"""
@@ -2208,6 +2217,14 @@ ID: {item_data['id']}
         keywords = [k.strip() for k in keywords_str.split(",")]
         length_type = self.length_type_var.get()
         length_count = self.length_count_var.get()
+        # Add: get original news content from a new input field or from loaded file
+        try:
+            original_news = self.original_news_text.get(1.0, tk.END).strip()
+        except Exception:
+            original_news = ""
+        # If not present, fallback to user_facts
+        if not original_news:
+            original_news = user_facts
         def generation_worker():
             try:
                 import html
@@ -2218,10 +2235,11 @@ ID: {item_data['id']}
                     search_query = f"{topic} {' '.join(keywords)}"
                     logging.info(f"RAG 검색 중: '{search_query}' (상위 {rag_count}개)")
                     search_results = self.system.db_manager.search_relevant_news(search_query, n_results=rag_count)
-                    reference_materials = self.build_enhanced_reference_materials(search_results)
+                    reference_materials = self.system.news_writer._build_comprehensive_reference_materials(search_results)
                 else:
                     reference_materials = "참고 자료를 사용하지 않습니다."
-                enhanced_user_facts = f"{user_facts}\n\n[생성 설정]\n- 스타일: {style}\n- 길이: {length_count} {length_type}"
+                # Compose enhanced_user_facts with original news
+                enhanced_user_facts = f"{user_facts}\n\n[원본 뉴스]\n{original_news}\n\n[생성 설정]\n- 스타일: {style}\n- 길이: {length_count} {length_type}"
                 self.root.after(0, lambda: self.update_generation_status("뉴스 생성 중..."))
                 prompt = self.system.news_writer.get_full_generation_prompt(
                     topic, keywords, enhanced_user_facts, reference_materials, f"{length_count}{length_type}"
@@ -2812,6 +2830,66 @@ ID: {item_data['id']}
         self.facts_text.insert(1.0, user_facts)
         self.notebook.select(2)
         messagebox.showinfo("완료", "프롬프트와 관련 정보가 작성 탭에 채워졌습니다.")
+
+    def show_vector_db_info(self):
+        """Show vector DB backend/path/config info in a popup."""
+        try:
+            db_manager = self.system.db_manager if self.system else None
+            if not db_manager:
+                messagebox.showwarning("경고", "시스템이 초기화되지 않았습니다.")
+                return
+            info = f"DB Path: {getattr(db_manager, 'db_path', 'N/A')}\n"
+            info += f"Collection Name: {getattr(db_manager.collection, 'name', 'N/A')}\n"
+            info += f"Embedding Dimension: {getattr(db_manager, '_embedding_dimension', 'N/A')}\n"
+            info += f"Backend: ChromaDB\n"
+            info += f"Collection Count: {db_manager.collection.count()}\n"
+            messagebox.showinfo("벡터DB 정보", info)
+        except Exception as e:
+            messagebox.showerror("오류", f"DB 정보 표시 실패: {e}")
+
+    def _refresh_vector_tree(self, data):
+        """Refresh the vector tree with the given data list."""
+        for item in self.vector_tree.get_children():
+            self.vector_tree.delete(item)
+        for i, item_data in enumerate(data):
+            doc_id = item_data.get('id', f'unknown_{i}')
+            doc = item_data.get('document', '')
+            metadata = item_data.get('metadata', {})
+            try:
+                topics_raw = metadata.get('topics', '[]')
+                if isinstance(topics_raw, str):
+                    topics = json.loads(topics_raw)
+                else:
+                    topics = topics_raw if isinstance(topics_raw, list) else []
+                topics_str = ', '.join(topics[:2]) if topics else 'N/A'
+            except:
+                topics_str = str(metadata.get('topics', 'N/A'))[:20]
+            try:
+                content_preview = doc[:50] + "..." if len(doc) > 50 else doc
+                content_preview = content_preview.replace('\n', ' ').replace('\r', ' ')
+            except:
+                content_preview = "내용 없음"
+            try:
+                relevance = metadata.get('relevance_score', 'N/A')
+                if isinstance(relevance, (int, float)):
+                    relevance_str = f"{relevance}/10"
+                else:
+                    relevance_str = str(relevance)
+            except:
+                relevance_str = "N/A"
+            date_str = metadata.get('date', metadata.get('created_at', 'N/A'))
+            if isinstance(date_str, str) and 'T' in date_str:
+                date_str = date_str.split('T')[0]
+            self.vector_tree.insert('', 'end',
+                text=str(i+1),
+                values=(
+                    doc_id[:15] + "..." if len(str(doc_id)) > 15 else str(doc_id),
+                    content_preview,
+                    topics_str,
+                    relevance_str,
+                    str(date_str)
+                )
+            )
 
 
 def main():
