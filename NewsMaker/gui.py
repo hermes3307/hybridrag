@@ -3112,7 +3112,7 @@ ID: {item_data['id']}
             if prompt:
                 self.root.clipboard_clear()
                 self.root.clipboard_append(prompt)
-                messagebox.showinfo("성공", "프롬프트가 클립보드에 복사되었습니다.")
+                logging.info("프롬프트가 클립보드에 복사되었습니다.")
             else:
                 messagebox.showwarning("경고", "복사할 프롬프트가 없습니다.")
         except (ValueError, IndexError) as e:
@@ -3133,7 +3133,7 @@ ID: {item_data['id']}
             if news:
                 self.root.clipboard_clear()
                 self.root.clipboard_append(news)
-                messagebox.showinfo("성공", "뉴스가 클립보드에 복사되었습니다.")
+                logging.info("뉴스가 클립보드에 복사되었습니다.")
             else:
                 messagebox.showwarning("경고", "복사할 뉴스가 없습니다.")
         except (ValueError, IndexError) as e:
