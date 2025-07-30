@@ -2272,6 +2272,18 @@ ID: {item_data['id']}
                 # 뉴스 본문은 분석 정보 아래에 표시
                 self.root.after(0, lambda: self.show_generated_news(news, analysis_info))
                 self.root.after(0, lambda: self.evaluate_news_quality(news))
+                
+                # 생성된 뉴스와 프롬프트를 히스토리에 저장
+                meta = {
+                    'topic': topic,
+                    'keywords': ', '.join(keywords),
+                    'style': style,
+                    'length': f"{length_count}{length_type}",
+                    'use_rag': self.use_rag_var.get(),
+                    'model': result.get('model', 'N/A'),
+                    'elapsed': result.get('elapsed', 0)
+                }
+                self.root.after(0, lambda: self.add_news_history(news, prompt, meta))
                 loop.close()
             except Exception as e:
                 self.root.after(0, lambda: messagebox.showerror("오류", f"뉴스 생성 오류: {e}"))
@@ -2550,49 +2562,69 @@ ID: {item_data['id']}
         ttk.Button(top_frame, text="내보내기", command=self.export_history).pack(side=tk.RIGHT, padx=2)
         ttk.Button(top_frame, text="가져오기", command=self.import_history).pack(side=tk.RIGHT, padx=2)
 
-        # Middle: Treeview for history
-        mid_frame = ttk.Frame(history_frame)
-        mid_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=2)
+        # Create a horizontal PanedWindow for 50/50 split
+        paned = tk.PanedWindow(history_frame, orient=tk.HORIZONTAL, sashrelief=tk.RAISED, sashwidth=4)
+        paned.pack(fill=tk.BOTH, expand=True, padx=5, pady=2)
+
+        # Left: Treeview for history (50%)
+        left_frame = ttk.Frame(paned)
+        paned.add(left_frame, stretch='always')
+        
         columns = ("timestamp", "topic", "type")
-        self.history_tree = ttk.Treeview(mid_frame, columns=columns, show="headings", selectmode="browse", height=18)
+        self.history_tree = ttk.Treeview(left_frame, columns=columns, show="headings", selectmode="browse")
         self.history_tree.heading("timestamp", text="날짜/시간")
         self.history_tree.heading("topic", text="토픽")
         self.history_tree.heading("type", text="유형")
         self.history_tree.column("timestamp", width=140, anchor="center")
-        self.history_tree.column("topic", width=220, anchor="w")
+        self.history_tree.column("topic", width=200, anchor="w")
         self.history_tree.column("type", width=60, anchor="center")
         self.history_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.history_tree.bind('<<TreeviewSelect>>', self.on_history_select)
         # Alternating row colors
         self.history_tree.tag_configure('oddrow', background='#f0f0f0')
         self.history_tree.tag_configure('evenrow', background='#e0e0e0')
-        # Scrollbar
-        tree_scroll = ttk.Scrollbar(mid_frame, orient="vertical", command=self.history_tree.yview)
+        # Scrollbar for list
+        tree_scroll = ttk.Scrollbar(left_frame, orient="vertical", command=self.history_tree.yview)
         self.history_tree.configure(yscrollcommand=tree_scroll.set)
         tree_scroll.pack(side=tk.RIGHT, fill=tk.Y)
 
         # Empty state label
-        self.history_empty_label = ttk.Label(mid_frame, text="No news or prompts yet. Generate some news!", foreground="gray")
+        self.history_empty_label = ttk.Label(left_frame, text="뉴스를 생성하면 여기에 표시됩니다!", foreground="gray")
         self.history_empty_label.place(relx=0.5, rely=0.5, anchor="center")
         self.history_empty_label.lower(self.history_tree)
 
-        # Right: Details
-        right_frame = ttk.Frame(history_frame)
-        right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=5, pady=5)
-        self.history_news_text = scrolledtext.ScrolledText(right_frame, height=12, font=("맑은 고딕", 10), foreground="gray")
-        self.history_news_text.pack(fill=tk.BOTH, expand=True, pady=2)
-        self.history_prompt_text = scrolledtext.ScrolledText(right_frame, height=8, font=("Consolas", 9), foreground="gray")
-        self.history_prompt_text.pack(fill=tk.BOTH, expand=True, pady=2)
+        # Right: Content display (50%)
+        right_frame = ttk.Frame(paned)
+        paned.add(right_frame, stretch='always')
+        
+        # Content display with vertical split
+        content_paned = tk.PanedWindow(right_frame, orient=tk.VERTICAL, sashrelief=tk.RAISED, sashwidth=3)
+        content_paned.pack(fill=tk.BOTH, expand=True)
+        
+        # Top: News content
+        news_frame = ttk.Frame(content_paned)
+        content_paned.add(news_frame, stretch='always')
+        ttk.Label(news_frame, text="📰 생성된 뉴스", font=("맑은 고딕", 10, "bold")).pack(anchor="w", padx=5, pady=2)
+        self.history_news_text = scrolledtext.ScrolledText(news_frame, font=("맑은 고딕", 9), foreground="gray", wrap=tk.WORD)
+        self.history_news_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=2)
+        
+        # Bottom: Prompt content
+        prompt_frame = ttk.Frame(content_paned)
+        content_paned.add(prompt_frame, stretch='always')
+        ttk.Label(prompt_frame, text="🔧 사용된 프롬프트", font=("맑은 고딕", 10, "bold")).pack(anchor="w", padx=5, pady=2)
+        self.history_prompt_text = scrolledtext.ScrolledText(prompt_frame, font=("Consolas", 8), foreground="gray", wrap=tk.WORD)
+        self.history_prompt_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=2)
 
+        # Action buttons at the bottom of right frame
         btn_frame = ttk.Frame(right_frame)
-        btn_frame.pack(fill=tk.X, pady=5)
-        self.btn_copy_prompt = ttk.Button(btn_frame, text="프롬프트 복사", command=self.copy_history_prompt)
-        self.btn_copy_prompt.pack(side=tk.LEFT, padx=2)
-        self.btn_copy_news = ttk.Button(btn_frame, text="뉴스 복사", command=self.copy_history_news)
+        btn_frame.pack(fill=tk.X, padx=5, pady=5)
+        self.btn_copy_news = ttk.Button(btn_frame, text="📰 뉴스 복사", command=self.copy_history_news)
         self.btn_copy_news.pack(side=tk.LEFT, padx=2)
-        self.btn_regen = ttk.Button(btn_frame, text="이 프롬프트로 재생성", command=self.regenerate_from_history)
+        self.btn_copy_prompt = ttk.Button(btn_frame, text="🔧 프롬프트 복사", command=self.copy_history_prompt)
+        self.btn_copy_prompt.pack(side=tk.LEFT, padx=2)
+        self.btn_regen = ttk.Button(btn_frame, text="🔄 재생성", command=self.regenerate_from_history)
         self.btn_regen.pack(side=tk.LEFT, padx=2)
-        self.btn_delete = ttk.Button(btn_frame, text="삭제", command=self.delete_history_entry)
+        self.btn_delete = ttk.Button(btn_frame, text="🗑️ 삭제", command=self.delete_history_entry)
         self.btn_delete.pack(side=tk.LEFT, padx=2)
         # Tooltips (simple)
         self.btn_copy_prompt.tooltip = "Copy the full prompt to clipboard"
@@ -2639,7 +2671,7 @@ ID: {item_data['id']}
             for i, entry in enumerate(filtered):
                 topic = entry['meta'].get('topic', '(제목 없음)')
                 ts = entry['timestamp']
-                ntype = entry['meta'].get('type', '일반')
+                ntype = '뉴스'  # 모든 항목은 뉴스 생성 기록
                 tag = 'evenrow' if i % 2 == 0 else 'oddrow'
                 self.history_tree.insert('', 'end', iid=str(i), values=(ts, topic, ntype), tags=(tag,))
             # Restore selection
@@ -2663,22 +2695,26 @@ ID: {item_data['id']}
             for btn in [self.btn_copy_prompt, self.btn_copy_news, self.btn_regen, self.btn_delete]:
                 btn.state(['disabled'])
             return
-        idx = int(sel[0])
-        if idx < 0 or idx >= len(self.news_history):
+        try:
+            idx = int(sel[0])
+            if idx < 0 or idx >= len(self.news_history):
+                for btn in [self.btn_copy_prompt, self.btn_copy_news, self.btn_regen, self.btn_delete]:
+                    btn.state(['disabled'])
+                return
+            entry = self.news_history[idx]
+            self.history_news_text.config(state=tk.NORMAL)
+            self.history_news_text.delete(1.0, tk.END)
+            self.history_news_text.insert(1.0, entry["news"])
+            self.history_news_text.config(state=tk.DISABLED)
+            self.history_prompt_text.config(state=tk.NORMAL)
+            self.history_prompt_text.delete(1.0, tk.END)
+            self.history_prompt_text.insert(1.0, entry["prompt"])
+            self.history_prompt_text.config(state=tk.DISABLED)
+            for btn in [self.btn_copy_prompt, self.btn_copy_news, self.btn_regen, self.btn_delete]:
+                btn.state(['!disabled'])
+        except (ValueError, IndexError):
             for btn in [self.btn_copy_prompt, self.btn_copy_news, self.btn_regen, self.btn_delete]:
                 btn.state(['disabled'])
-            return
-        entry = self.news_history[idx]
-        self.history_news_text.config(state=tk.NORMAL)
-        self.history_news_text.delete(1.0, tk.END)
-        self.history_news_text.insert(1.0, entry["news"])
-        self.history_news_text.config(state=tk.DISABLED)
-        self.history_prompt_text.config(state=tk.NORMAL)
-        self.history_prompt_text.delete(1.0, tk.END)
-        self.history_prompt_text.insert(1.0, entry["prompt"])
-        self.history_prompt_text.config(state=tk.DISABLED)
-        for btn in [self.btn_copy_prompt, self.btn_copy_news, self.btn_regen, self.btn_delete]:
-            btn.state(['!disabled'])
 
     def export_history(self):
         try:
@@ -2753,10 +2789,14 @@ ID: {item_data['id']}
         sel = self.history_tree.selection()
         if not sel:
             return
-        idx = sel[0]
-        del self.news_history[idx]
-        self.save_news_history()
-        self.refresh_history_list()
+        try:
+            idx = int(sel[0])
+            if 0 <= idx < len(self.news_history):
+                del self.news_history[idx]
+                self.save_news_history()
+                self.refresh_history_list()
+        except (ValueError, IndexError) as e:
+            messagebox.showerror("오류", f"삭제할 수 없습니다: {e}")
 
     def add_tooltips(self):
         try:
@@ -2778,15 +2818,18 @@ ID: {item_data['id']}
         if not sel:
             messagebox.showwarning("경고", "선택된 항목이 없습니다.")
             return
-        idx = int(sel[0])
-        if idx < 0 or idx >= len(self.news_history):
-            messagebox.showerror("오류", "유효하지 않은 히스토리 인덱스입니다.")
-            return
-        prompt = self.news_history[idx].get("prompt", "")
-        if prompt:
-            self.root.clipboard_clear()
-            self.root.clipboard_append(prompt)
-            messagebox.showinfo("성공", "프롬프트가 클립보드에 복사되었습니다.")
+        try:
+            idx = int(sel[0])
+            if idx < 0 or idx >= len(self.news_history):
+                messagebox.showerror("오류", "유효하지 않은 히스토리 인덱스입니다.")
+                return
+            prompt = self.news_history[idx].get("prompt", "")
+            if prompt:
+                self.root.clipboard_clear()
+                self.root.clipboard_append(prompt)
+                messagebox.showinfo("성공", "프롬프트가 클립보드에 복사되었습니다.")
+        except (ValueError, IndexError) as e:
+            messagebox.showerror("오류", f"복사할 수 없습니다: {e}")
         else:
             messagebox.showwarning("경고", "복사할 프롬프트가 없습니다.")
 
@@ -2796,17 +2839,20 @@ ID: {item_data['id']}
         if not sel:
             messagebox.showwarning("경고", "선택된 항목이 없습니다.")
             return
-        idx = int(sel[0])
-        if idx < 0 or idx >= len(self.news_history):
-            messagebox.showerror("오류", "유효하지 않은 히스토리 인덱스입니다.")
-            return
-        news = self.news_history[idx].get("news", "")
-        if news:
-            self.root.clipboard_clear()
-            self.root.clipboard_append(news)
-            messagebox.showinfo("성공", "뉴스가 클립보드에 복사되었습니다.")
-        else:
-            messagebox.showwarning("경고", "복사할 뉴스가 없습니다.")
+        try:
+            idx = int(sel[0])
+            if idx < 0 or idx >= len(self.news_history):
+                messagebox.showerror("오류", "유효하지 않은 히스토리 인덱스입니다.")
+                return
+            news = self.news_history[idx].get("news", "")
+            if news:
+                self.root.clipboard_clear()
+                self.root.clipboard_append(news)
+                messagebox.showinfo("성공", "뉴스가 클립보드에 복사되었습니다.")
+            else:
+                messagebox.showwarning("경고", "복사할 뉴스가 없습니다.")
+        except (ValueError, IndexError) as e:
+            messagebox.showerror("오류", f"복사할 수 없습니다: {e}")
 
     def regenerate_from_history(self):
         """Refill the writing tab with the selected prompt and related fields from history"""
@@ -2814,28 +2860,31 @@ ID: {item_data['id']}
         if not sel:
             messagebox.showwarning("경고", "선택된 항목이 없습니다.")
             return
-        idx = int(sel[0])
-        if idx < 0 or idx >= len(self.news_history):
-            messagebox.showerror("오류", "유효하지 않은 히스토리 인덱스입니다.")
-            return
-        entry = self.news_history[idx]
-        prompt = entry.get("prompt", "")
-        meta = entry.get("meta", {})
-        topic = meta.get("topic", "")
-        keywords = meta.get("keywords", "")
-        style = meta.get("style", "기업 보도형")
-        length_type = meta.get("length_type", "줄 수")
-        length_count = meta.get("length_count", 100)
-        user_facts = meta.get("user_facts", prompt)
-        self.topic_var.set(topic)
-        self.keywords_var.set(keywords)
-        self.style_var.set(style)
-        self.length_type_var.set(length_type)
-        self.length_count_var.set(length_count)
-        self.facts_text.delete(1.0, tk.END)
-        self.facts_text.insert(1.0, user_facts)
-        self.notebook.select(2)
-        messagebox.showinfo("완료", "프롬프트와 관련 정보가 작성 탭에 채워졌습니다.")
+        try:
+            idx = int(sel[0])
+            if idx < 0 or idx >= len(self.news_history):
+                messagebox.showerror("오류", "유효하지 않은 히스토리 인덱스입니다.")
+                return
+            entry = self.news_history[idx]
+            prompt = entry.get("prompt", "")
+            meta = entry.get("meta", {})
+            topic = meta.get("topic", "")
+            keywords = meta.get("keywords", "")
+            style = meta.get("style", "기업 보도형")
+            length_type = meta.get("length_type", "줄 수")
+            length_count = meta.get("length_count", 100)
+            user_facts = meta.get("user_facts", prompt)
+            self.topic_var.set(topic)
+            self.keywords_var.set(keywords)
+            self.style_var.set(style)
+            self.length_type_var.set(length_type)
+            self.length_count_var.set(length_count)
+            self.facts_text.delete(1.0, tk.END)
+            self.facts_text.insert(1.0, user_facts)
+            self.notebook.select(2)
+            messagebox.showinfo("완료", "프롬프트와 관련 정보가 작성 탭에 채워졌습니다.")
+        except (ValueError, IndexError) as e:
+            messagebox.showerror("오류", f"재생성할 수 없습니다: {e}")
 
     def show_vector_db_info(self):
         """Show vector DB backend/path/config info in a popup."""
