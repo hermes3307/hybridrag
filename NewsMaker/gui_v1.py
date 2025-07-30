@@ -556,37 +556,20 @@ class EnhancedNewsWriterGUI:
     def view_collection_contents(self):
         """컬렉션 내용 보기 (ENHANCED WITH CONTENT VIEWING & EMBEDDINGS)"""
         try:
-            # Check if system is initialized
             if not self.system:
                 logging.info("시스템이 초기화되지 않았습니다(C).")
-                # messagebox.showwarning("경고", "시스템이 초기화되지 않았습니다. 설정 탭에서 시스템을 초기화해주세요.")
                 return
-            
-            # Check if vector_tree exists
-            if not hasattr(self, 'vector_tree') or self.vector_tree is None:
-                logging.error("vector_tree가 초기화되지 않았습니다.")
-                messagebox.showerror("오류", "벡터 트리 뷰가 초기화되지 않았습니다.")
-                return
-            
-            # Clear existing items
             for item in self.vector_tree.get_children():
                 self.vector_tree.delete(item)
             self.vector_full_data = []
-            
-            # Check collection count
             try:
                 collection_count = self.system.db_manager.collection.count()
                 if collection_count == 0:
                     logging.info("컬렉션이 비어있습니다.")
                     messagebox.showinfo("알림", "벡터 데이터베이스가 비어있습니다.")
                     return
-                logging.info(f"컬렉션에 {collection_count}개 항목이 있습니다.")
             except Exception as e:
                 logging.error(f"컬렉션 카운트 조회 실패: {e}")
-                messagebox.showerror("오류", f"컬렉션 카운트 조회 실패: {e}")
-                return
-            
-            # Get collection data
             try:
                 all_data = self.system.db_manager.collection.get(
                     include=['documents', 'metadatas', 'embeddings']
@@ -595,30 +578,21 @@ class EnhancedNewsWriterGUI:
                 documents = all_data.get('documents', [])
                 metadatas = all_data.get('metadatas', [])
                 embeddings = all_data.get('embeddings', [])
-                
-                logging.info(f"데이터 조회 완료: {len(documents)}개 문서, {len(metadatas)}개 메타데이터")
-                
             except Exception as e:
                 logging.error(f"컬렉션 데이터 조회 실패: {e}")
                 messagebox.showerror("오류", f"컬렉션 데이터 조회 실패: {e}")
                 return
-            
             if not documents:
                 logging.info("컬렉션에 문서가 없습니다.")
                 messagebox.showinfo("알림", "벡터 데이터베이스에 저장된 문서가 없습니다.")
                 return
-            
-            # Process and display documents
             max_display = min(300, len(documents))
-            processed_count = 0
-            
             for i in range(max_display):
                 try:
                     doc = documents[i]
                     metadata = metadatas[i] if i < len(metadatas) else {}
                     embedding = embeddings[i] if i < len(embeddings) else []
                     doc_id = ids[i] if i < len(ids) else f"unknown_{i}"
-                    
                     full_item_data = {
                         'id': doc_id,
                         'document': doc,
@@ -627,8 +601,6 @@ class EnhancedNewsWriterGUI:
                         'index': i
                     }
                     self.vector_full_data.append(full_item_data)
-                    
-                    # Process topics
                     try:
                         topics_raw = metadata.get('topics', '[]')
                         if isinstance(topics_raw, str):
@@ -638,15 +610,11 @@ class EnhancedNewsWriterGUI:
                         topics_str = ', '.join(topics[:2]) if topics else 'N/A'
                     except:
                         topics_str = str(metadata.get('topics', 'N/A'))[:20]
-                    
-                    # Process content preview
                     try:
                         content_preview = doc[:50] + "..." if len(doc) > 50 else doc
                         content_preview = content_preview.replace('\n', ' ').replace('\r', ' ')
                     except:
                         content_preview = "내용 없음"
-                    
-                    # Process relevance score
                     try:
                         relevance = metadata.get('relevance_score', 'N/A')
                         if isinstance(relevance, (int, float)):
@@ -655,13 +623,9 @@ class EnhancedNewsWriterGUI:
                             relevance_str = str(relevance)
                     except:
                         relevance_str = "N/A"
-                    
-                    # Process date
                     date_str = metadata.get('date', metadata.get('created_at', 'N/A'))
                     if isinstance(date_str, str) and 'T' in date_str:
                         date_str = date_str.split('T')[0]
-                    
-                    # Insert into tree
                     self.vector_tree.insert('', 'end',
                         text=str(i+1),
                         values=(
@@ -672,8 +636,6 @@ class EnhancedNewsWriterGUI:
                             str(date_str)
                         )
                     )
-                    processed_count += 1
-                    
                 except Exception as item_error:
                     logging.warning(f"항목 {i} 처리 실패: {item_error}")
                     error_data = {
@@ -688,29 +650,16 @@ class EnhancedNewsWriterGUI:
                         text=str(i+1),
                         values=(f"error_{i}", "처리 오류", "N/A", "N/A", "N/A")
                     )
-            
-            # Bind double-click event
             self.vector_tree.bind('<Double-1>', self.on_vector_item_double_click)
-            
-            # Update statistics
-            self.vector_total_chunks_var.set(str(len(documents)))
-            if hasattr(self.system.db_manager, 'collection'):
-                self.vector_collection_name_var.set(self.system.db_manager.collection.name)
-            
-            logging.info(f"컬렉션 내용 표시 완료: {processed_count}개 항목 처리됨 (전체 {len(documents)}개)")
-            
+            logging.info(f"컬렉션 내용 표시 완료: {max_display}개 항목 (전체 {len(documents)}개)")
             if len(documents) > 300:
                 messagebox.showinfo("알림", f"총 {len(documents)}개 항목 중 처음 300개만 표시됩니다.\n\n💡 팁: 항목을 더블클릭하면 전체 내용을 볼 수 있습니다.")
             else:
                 messagebox.showinfo("표시 완료", f"총 {len(documents)}개 항목이 표시되었습니다.\n\n💡 팁: 항목을 더블클릭하면 전체 내용을 볼 수 있습니다.")
-                
         except Exception as e:
             error_msg = f"컬렉션 내용 조회 실패: {e}"
-            logging.error(error_msg)
             messagebox.showerror("오류", error_msg)
-            # Print full traceback for debugging
-            import traceback
-            logging.error(f"전체 오류 정보: {traceback.format_exc()}")
+            logging.error(error_msg)
 
     def on_vector_item_double_click(self, event):
         """벡터 아이템 더블클릭 이벤트 (NEW FUNCTION)"""
@@ -1002,83 +951,6 @@ ID: {item_data['id']}
         """벡터DB 상태 표시 (NEW FUNCTION)"""
         self.notebook.select(3)  # 벡터DB 탭으로 이동 (0:설정, 1:뉴스수집, 2:뉴스작성, 3:벡터DB)
         self.refresh_vector_stats()
-
-    def repair_vector_db(self):
-        """벡터DB 복구 (NEW METHOD)"""
-        try:
-            if not self.system or not self.system.db_manager:
-                messagebox.showwarning("경고", "시스템이 초기화되지 않았습니다.")
-                return
-            
-            if messagebox.askyesno("확인", "벡터 데이터베이스를 복구하시겠습니까?\n\n이 작업은 손상된 컬렉션을 재생성합니다."):
-                try:
-                    db_manager = self.system.db_manager
-                    
-                    # Check if collection exists and is accessible
-                    try:
-                        collection_count = db_manager.collection.count()
-                        logging.info(f"기존 컬렉션 확인: {collection_count}개 항목")
-                    except Exception as e:
-                        logging.warning(f"기존 컬렉션 접근 실패: {e}")
-                        collection_count = 0
-                    
-                    # Backup existing data if possible
-                    old_data = None
-                    if collection_count > 0:
-                        try:
-                            old_data = db_manager.collection.get(include=['documents', 'metadatas'])
-                            logging.info(f"기존 데이터 백업: {len(old_data.get('documents', []))}개 항목")
-                        except Exception as e:
-                            logging.warning(f"데이터 백업 실패: {e}")
-                    
-                    # Delete and recreate collection
-                    try:
-                        db_manager.client.delete_collection("enhanced_news_collection")
-                        logging.info("기존 컬렉션 삭제 완료")
-                    except Exception as e:
-                        logging.warning(f"컬렉션 삭제 실패: {e}")
-                    
-                    # Create new collection
-                    db_manager.collection = db_manager.client.create_collection(
-                        name="enhanced_news_collection",
-                        metadata={"description": "Enhanced AI News Writer 뉴스 컬렉션 (복구됨)"},
-                        embedding_function=db_manager.embedding_function
-                    )
-                    logging.info("새 컬렉션 생성 완료")
-                    
-                    # Restore data if available
-                    if old_data and old_data.get('documents'):
-                        restored_count = 0
-                        for i, doc in enumerate(old_data['documents']):
-                            try:
-                                metadata = old_data['metadatas'][i] if i < len(old_data['metadatas']) else {}
-                                # Create new embedding for the document
-                                embedding = db_manager.embedding_function([doc])[0] if db_manager.embedding_function else []
-                                db_manager.collection.add(
-                                    documents=[doc],
-                                    metadatas=[metadata],
-                                    embeddings=[embedding]
-                                )
-                                restored_count += 1
-                            except Exception as e:
-                                logging.warning(f"항목 {i} 복원 실패: {e}")
-                        
-                        logging.info(f"데이터 복원 완료: {restored_count}개 항목")
-                        messagebox.showinfo("완료", f"벡터 데이터베이스 복구 완료\n\n복원된 항목: {restored_count}개")
-                    else:
-                        messagebox.showinfo("완료", "벡터 데이터베이스 복구 완료\n\n새 컬렉션이 생성되었습니다.")
-                    
-                    # Refresh the display
-                    self.view_collection_contents()
-                    
-                except Exception as e:
-                    messagebox.showerror("오류", f"벡터DB 복구 실패: {e}")
-                    logging.error(f"벡터DB 복구 실패: {e}")
-                    import traceback
-                    logging.error(f"전체 오류 정보: {traceback.format_exc()}")
-        except Exception as e:
-            messagebox.showerror("오류", f"벡터DB 복구 중 오류 발생: {e}")
-            logging.error(f"벡터DB 복구 중 오류 발생: {e}")
 
     def load_saved_headlines(self):
         """저장된 뉴스 헤드라인 로드"""
@@ -1517,7 +1389,6 @@ ID: {item_data['id']}
         """벡터 데이터베이스 통계 탭 (NEW)"""
         vector_frame = ttk.Frame(parent)
         parent.add(vector_frame, text="📊 벡터DB")
-        
         # --- Search Bar ---
         search_frame = ttk.Frame(vector_frame)
         search_frame.pack(fill=tk.X, padx=10, pady=5)
@@ -1541,7 +1412,6 @@ ID: {item_data['id']}
             if hasattr(self, 'vector_full_data'):
                 self._refresh_vector_tree(self.vector_full_data)
         ttk.Button(search_frame, text="초기화", command=clear_search).pack(side=tk.LEFT, padx=2)
-        
         # Initialize StringVars for vector stats
         self.vector_total_chunks_var = tk.StringVar(value="0")
         self.vector_collection_name_var = tk.StringVar(value="unknown")
@@ -1565,43 +1435,6 @@ ID: {item_data['id']}
         ttk.Label(stats_grid, textvariable=self.vector_last_update_var, foreground="gray").grid(row=1, column=1, sticky=tk.W, padx=5, pady=2)
         ttk.Label(stats_grid, text="평균 관련도:").grid(row=1, column=2, sticky=tk.W, padx=15, pady=2)
         ttk.Label(stats_grid, textvariable=self.vector_avg_relevance_var, foreground="purple").grid(row=1, column=3, sticky=tk.W, padx=5, pady=2)
-        
-        # --- Vector Tree View ---
-        tree_frame = ttk.LabelFrame(vector_frame, text="벡터 데이터베이스 내용", padding=10)
-        tree_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
-        
-        # Create Treeview with scrollbars
-        tree_container = ttk.Frame(tree_frame)
-        tree_container.pack(fill=tk.BOTH, expand=True)
-        
-        # Create the Treeview
-        columns = ('ID', '내용 미리보기', '토픽', '관련도', '날짜')
-        self.vector_tree = ttk.Treeview(tree_container, columns=columns, show='headings', height=15)
-        
-        # Configure column headings
-        self.vector_tree.heading('ID', text='ID')
-        self.vector_tree.heading('내용 미리보기', text='내용 미리보기')
-        self.vector_tree.heading('토픽', text='토픽')
-        self.vector_tree.heading('관련도', text='관련도')
-        self.vector_tree.heading('날짜', text='날짜')
-        
-        # Configure column widths
-        self.vector_tree.column('ID', width=150, minwidth=100)
-        self.vector_tree.column('내용 미리보기', width=300, minwidth=200)
-        self.vector_tree.column('토픽', width=150, minwidth=100)
-        self.vector_tree.column('관련도', width=80, minwidth=60)
-        self.vector_tree.column('날짜', width=100, minwidth=80)
-        
-        # Create scrollbars
-        v_scrollbar = ttk.Scrollbar(tree_container, orient=tk.VERTICAL, command=self.vector_tree.yview)
-        h_scrollbar = ttk.Scrollbar(tree_container, orient=tk.HORIZONTAL, command=self.vector_tree.xview)
-        self.vector_tree.configure(yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set)
-        
-        # Pack the tree and scrollbars
-        self.vector_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        v_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        h_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
-        
         # 벡터DB 탭 선택 시 컬렉션내용보기만 표시, 팝업 없이
         def on_tab_selected(event=None):
             self.view_collection_contents()
@@ -1611,10 +1444,8 @@ ID: {item_data['id']}
         admin_btn_frame = ttk.Frame(vector_frame)
         admin_btn_frame.pack(fill=tk.X, padx=10, pady=5)
         ttk.Button(admin_btn_frame, text="🗑️ 벡터DB 초기화", command=self.clear_vector_db).pack(side=tk.LEFT, padx=5)
-        ttk.Button(admin_btn_frame, text="🔧 벡터DB 복구", command=self.repair_vector_db).pack(side=tk.LEFT, padx=5)
         ttk.Button(admin_btn_frame, text="📊 통계 보기", command=self.show_vector_status).pack(side=tk.LEFT, padx=5)
         ttk.Button(admin_btn_frame, text="ℹ️ DB 정보", command=self.show_vector_db_info).pack(side=tk.LEFT, padx=5)
-        ttk.Button(admin_btn_frame, text="🏥 상태 확인", command=lambda: messagebox.showinfo("ChromaDB 상태", self.check_chromadb_health())).pack(side=tk.LEFT, padx=5)
 
     def setup_writing_tab(self, parent):
         """뉴스 작성 탭 (개선됨)"""
@@ -1891,73 +1722,6 @@ ID: {item_data['id']}
             return True, "시스템이 정상입니다."
         except Exception as e:
             return False, f"시스템 상태 확인 실패: {e}"
-
-    def check_chromadb_health(self):
-        """ChromaDB 상태 상세 확인 (NEW METHOD)"""
-        try:
-            if not self.system or not self.system.db_manager:
-                return "시스템이 초기화되지 않았습니다."
-            
-            db_manager = self.system.db_manager
-            health_report = []
-            
-            # Check client connection
-            try:
-                client = db_manager.client
-                health_report.append("✅ ChromaDB 클라이언트 연결: 정상")
-            except Exception as e:
-                health_report.append(f"❌ ChromaDB 클라이언트 연결 실패: {e}")
-                return "\n".join(health_report)
-            
-            # Check collection existence
-            try:
-                collection = db_manager.collection
-                health_report.append(f"✅ 컬렉션 존재: {collection.name}")
-            except Exception as e:
-                health_report.append(f"❌ 컬렉션 접근 실패: {e}")
-                return "\n".join(health_report)
-            
-            # Check collection count
-            try:
-                count = collection.count()
-                health_report.append(f"✅ 컬렉션 항목 수: {count}개")
-            except Exception as e:
-                health_report.append(f"❌ 컬렉션 카운트 실패: {e}")
-            
-            # Check data retrieval
-            try:
-                if count > 0:
-                    sample_data = collection.get(limit=1, include=['documents', 'metadatas'])
-                    if sample_data.get('documents'):
-                        health_report.append("✅ 데이터 조회: 정상")
-                    else:
-                        health_report.append("⚠️ 데이터 조회: 문서 없음")
-                else:
-                    health_report.append("ℹ️ 데이터 조회: 빈 컬렉션")
-            except Exception as e:
-                health_report.append(f"❌ 데이터 조회 실패: {e}")
-            
-            # Check embedding function
-            try:
-                embedding_function = db_manager.embedding_function
-                if embedding_function:
-                    health_report.append("✅ 임베딩 함수: 정상")
-                else:
-                    health_report.append("⚠️ 임베딩 함수: 없음")
-            except Exception as e:
-                health_report.append(f"❌ 임베딩 함수 확인 실패: {e}")
-            
-            # Check available collections
-            try:
-                collections = [col.name for col in client.list_collections()]
-                health_report.append(f"✅ 사용 가능한 컬렉션: {', '.join(collections)}")
-            except Exception as e:
-                health_report.append(f"❌ 컬렉션 목록 조회 실패: {e}")
-            
-            return "\n".join(health_report)
-            
-        except Exception as e:
-            return f"ChromaDB 상태 확인 중 오류: {e}"
 
     def simple_store_news(self, company, article):
         """간단한 동기 뉴스 저장 (asyncio 없이)"""
@@ -3113,10 +2877,10 @@ ID: {item_data['id']}
                 self.root.clipboard_clear()
                 self.root.clipboard_append(prompt)
                 messagebox.showinfo("성공", "프롬프트가 클립보드에 복사되었습니다.")
-            else:
-                messagebox.showwarning("경고", "복사할 프롬프트가 없습니다.")
         except (ValueError, IndexError) as e:
             messagebox.showerror("오류", f"복사할 수 없습니다: {e}")
+        else:
+            messagebox.showwarning("경고", "복사할 프롬프트가 없습니다.")
 
     def copy_history_news(self):
         """Copy the selected news content from history to clipboard"""
@@ -3172,49 +2936,20 @@ ID: {item_data['id']}
             messagebox.showerror("오류", f"재생성할 수 없습니다: {e}")
 
     def show_vector_db_info(self):
-        """Show vector DB backend/path/config info in the log file."""
+        """Show vector DB backend/path/config info in a popup."""
         try:
             db_manager = self.system.db_manager if self.system else None
             if not db_manager:
-                logging.warning("시스템이 초기화되지 않았습니다(V).")
+                messagebox.showwarning("경고", "시스템이 초기화되지 않았습니다(V).")
                 return
-            
-            # Check if collection exists and is accessible
-            try:
-                collection_count = db_manager.collection.count()
-                collection_name = getattr(db_manager.collection, 'name', 'N/A')
-                collection_status = "정상"
-            except Exception as e:
-                collection_count = "접근 불가"
-                collection_name = "N/A"
-                collection_status = f"오류: {str(e)}"
-            
-            info = f"=== 벡터DB 정보 ===\n"
-            info += f"DB Path: {getattr(db_manager, 'db_path', 'N/A')}\n"
-            info += f"Collection Name: {collection_name}\n"
-            info += f"Collection Status: {collection_status}\n"
+            info = f"DB Path: {getattr(db_manager, 'db_path', 'N/A')}\n"
+            info += f"Collection Name: {getattr(db_manager.collection, 'name', 'N/A')}\n"
             info += f"Embedding Dimension: {getattr(db_manager, '_embedding_dimension', 'N/A')}\n"
             info += f"Backend: ChromaDB\n"
-            info += f"Collection Count: {collection_count}\n"
-            
-            # Add additional diagnostic information
-            try:
-                client = getattr(db_manager, 'client', None)
-                if client:
-                    collections = [col.name for col in client.list_collections()]
-                    info += f"Available Collections: {', '.join(collections) if collections else 'None'}\n"
-            except Exception as e:
-                info += f"Collections List Error: {str(e)}\n"
-            
-            info += f"==================\n"
-            
-            # Log the information instead of showing popup
-            logging.info(info)
-            
+            info += f"Collection Count: {db_manager.collection.count()}\n"
+            messagebox.showinfo("벡터DB 정보", info)
         except Exception as e:
-            logging.error(f"DB 정보 표시 실패: {e}")
-            import traceback
-            logging.error(f"전체 오류 정보: {traceback.format_exc()}")
+            messagebox.showerror("오류", f"DB 정보 표시 실패: {e}")
 
     def _refresh_vector_tree(self, data):
         """Refresh the vector tree with the given data list."""
