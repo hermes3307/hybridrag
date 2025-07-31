@@ -1108,6 +1108,40 @@ ID: {item_data['id']}
                 messagebox.showerror("오류", f"벡터DB 초기화 실패: {e}")
                 logging.error(f"벡터DB 초기화 실패: {e}")
 
+    def initialize_vector_database(self):
+        """벡터 데이터베이스 초기화 (고급 설정용)"""
+        if not self.system:
+            messagebox.showwarning("경고", "시스템이 초기화되지 않았습니다. 먼저 API 키를 설정하고 시스템을 초기화해주세요.")
+            return
+        
+        if messagebox.askyesno("벡터DB 초기화 확인", 
+                              "벡터 데이터베이스의 모든 데이터가 삭제되고 초기화됩니다.\n\n"
+                              f"현재 임베딩 알고리즘: {self.embedding_algorithm_var.get()}\n\n"
+                              "계속하시겠습니까?"):
+            try:
+                # 컬렉션 삭제 후 재생성
+                self.system.db_manager.client.delete_collection("enhanced_news_collection")
+                self.system.db_manager.collection = self.system.db_manager.client.get_or_create_collection(
+                    name="enhanced_news_collection",
+                    metadata={
+                        "description": "Enhanced AI News Writer 뉴스 컬렉션",
+                        "embedding_algorithm": self.embedding_algorithm_var.get()
+                    }
+                )
+                
+                # UI 업데이트
+                self.refresh_vector_stats()
+                self.view_collection_contents()
+                
+                messagebox.showinfo("초기화 완료", 
+                                  f"벡터 데이터베이스가 초기화되었습니다.\n"
+                                  f"임베딩 알고리즘: {self.embedding_algorithm_var.get()}")
+                logging.info(f"벡터 데이터베이스 초기화 완료 (알고리즘: {self.embedding_algorithm_var.get()})")
+                
+            except Exception as e:
+                messagebox.showerror("초기화 실패", f"벡터DB 초기화 실패: {e}")
+                logging.error(f"벡터DB 초기화 실패: {e}")
+
     def show_vector_status(self):
         """벡터DB 상태 표시 (NEW FUNCTION)"""
         self.notebook.select(3)  # 벡터DB 탭으로 이동 (0:설정, 1:뉴스수집, 2:뉴스작성, 3:벡터DB)
@@ -1448,6 +1482,22 @@ ID: {item_data['id']}
         loglevel_combo.pack(side=tk.LEFT, padx=5)
         loglevel_combo.bind("<<ComboboxSelected>>", self.on_log_level_change)
         ttk.Label(loglevel_frame, text="(실시간 변경 가능)").pack(side=tk.LEFT, padx=5)
+        
+        # 시스템 상태 프레임
+        status_frame = ttk.LabelFrame(basic_scrollable, text="시스템 상태", padding=10)
+        status_frame.pack(fill=tk.X, padx=10, pady=5)
+        self.status_var = tk.StringVar(value="시스템이 초기화되지 않았습니다(S).")
+        status_label = ttk.Label(status_frame, textvariable=self.status_var, foreground="green")
+        status_label.pack()
+        self.status_label_widget = status_label
+        
+        # 뉴스 저장 폴더 프레임
+        newsdir_frame = ttk.LabelFrame(basic_scrollable, text="뉴스 저장 폴더", padding=10)
+        newsdir_frame.pack(fill=tk.X, padx=10, pady=5)
+        self.news_dir_var = tk.StringVar(value=self.news_directory)
+        ttk.Entry(newsdir_frame, textvariable=self.news_dir_var, width=40).grid(row=0, column=0, padx=5, pady=2, sticky=tk.W)
+        ttk.Button(newsdir_frame, text="폴더 선택", command=self.select_news_directory).grid(row=0, column=1, padx=5, pady=2)
+        
         # --- ADVANCED SETTINGS ---
         adv_canvas = tk.Canvas(advanced_frame)
         adv_scrollbar = ttk.Scrollbar(advanced_frame, orient="vertical", command=adv_canvas.yview)
@@ -1482,19 +1532,6 @@ ID: {item_data['id']}
         ttk.Button(btn_frame, text="설정 불러오기", command=self.load_config).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text="시스템 초기화", command=self.initialize_system).pack(side=tk.LEFT, padx=5)
         
-        # 상태 표시 프레임
-        status_frame = ttk.LabelFrame(adv_scrollable, text="시스템 상태", padding=10)
-        status_frame.pack(fill=tk.X, padx=10, pady=5)
-        self.status_var = tk.StringVar(value="시스템이 초기화되지 않았습니다(S).")
-        status_label = ttk.Label(status_frame, textvariable=self.status_var, foreground="green")
-        status_label.pack()
-        self.status_label_widget = status_label
-        # 뉴스 저장 위치 (moved)
-        newsdir_frame = ttk.LabelFrame(adv_scrollable, text="뉴스 저장 폴더", padding=10)
-        newsdir_frame.pack(fill=tk.X, padx=10, pady=5)
-        self.news_dir_var = tk.StringVar(value=self.news_directory)
-        ttk.Entry(newsdir_frame, textvariable=self.news_dir_var, width=40).grid(row=0, column=0, padx=5, pady=2, sticky=tk.W)
-        ttk.Button(newsdir_frame, text="폴더 선택", command=self.select_news_directory).grid(row=0, column=1, padx=5, pady=2)
         # 고급 설정 프레임 (RAG 등)
         advanced_frame_inner = ttk.LabelFrame(adv_scrollable, text="고급 설정", padding=10)
         advanced_frame_inner.pack(fill=tk.X, padx=10, pady=5)
@@ -1502,6 +1539,27 @@ ID: {item_data['id']}
         self.rag_news_count_var = tk.IntVar(value=5)
         ttk.Spinbox(advanced_frame_inner, from_=5, to=20, textvariable=self.rag_news_count_var, width=10).grid(row=0, column=1, padx=5, pady=2, sticky=tk.W)
         ttk.Label(advanced_frame_inner, text="개").grid(row=0, column=2, sticky=tk.W)
+        
+        # 벡터데이터베이스 설정 프레임
+        vector_db_frame = ttk.LabelFrame(adv_scrollable, text="벡터데이터베이스 설정", padding=10)
+        vector_db_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        # 임베딩 알고리즘 선택
+        ttk.Label(vector_db_frame, text="임베딩 알고리즘:").grid(row=0, column=0, sticky=tk.W, pady=2)
+        self.embedding_algorithm_var = tk.StringVar(value="default-embed")
+        embedding_algorithms = ["default-embed"]  # Currently only the original one
+        embedding_combo = ttk.Combobox(vector_db_frame, textvariable=self.embedding_algorithm_var, 
+                                     values=embedding_algorithms, state="readonly", width=20)
+        embedding_combo.grid(row=0, column=1, padx=5, pady=2, sticky=tk.W)
+        ttk.Label(vector_db_frame, text="(현재는 기본 알고리즘만 지원)").grid(row=0, column=2, sticky=tk.W, padx=5)
+        
+        # 벡터DB 초기화 버튼
+        vector_db_btn_frame = ttk.Frame(vector_db_frame)
+        vector_db_btn_frame.grid(row=1, column=0, columnspan=3, pady=10)
+        ttk.Button(vector_db_btn_frame, text="🗑️ 벡터DB 초기화", 
+                  command=self.initialize_vector_database).pack(side=tk.LEFT, padx=5)
+        ttk.Label(vector_db_btn_frame, text="(모든 벡터 데이터를 삭제하고 초기화합니다)", 
+                 foreground="red").pack(side=tk.LEFT, padx=10)
 
     def on_log_level_change(self, event=None):
         """로그 레벨 변경 핸들러"""
@@ -1510,6 +1568,20 @@ ID: {item_data['id']}
         root_logger = logging.getLogger()
         root_logger.setLevel(getattr(logging, level, logging.INFO))
         logging.info(f"로그 레벨이 {level}로 변경되었습니다.")
+    
+    def select_all_tree_items(self, tree_widget):
+        """모든 트리 아이템 선택 (Ctrl+A 기능)"""
+        try:
+            # Get all children items
+            all_items = tree_widget.get_children()
+            if all_items:
+                # Select all items
+                tree_widget.selection_set(all_items)
+                # Scroll to show the selection
+                tree_widget.see(all_items[0])
+                logging.info(f"선택된 항목: {len(all_items)}개")
+        except Exception as e:
+            logging.error(f"전체 선택 실패: {e}")
     
     def setup_collection_tab(self, parent):
         """뉴스 수집 탭"""
@@ -1640,6 +1712,13 @@ ID: {item_data['id']}
         self.headlines_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar_headlines.pack(side=tk.RIGHT, fill=tk.Y)
         
+        # Add Ctrl+A functionality for selecting all headlines
+        self.headlines_tree.bind('<Control-a>', lambda e: self.select_all_tree_items(self.headlines_tree))
+        self.headlines_tree.bind('<Control-A>', lambda e: self.select_all_tree_items(self.headlines_tree))
+        
+        # Add double-click functionality to view article content
+        self.headlines_tree.bind('<Double-1>', lambda e: self.view_selected_article())
+        
         # 헤드라인 버튼 (ENHANCED with reload functionality)
         headlines_btn_frame = ttk.Frame(headlines_frame)
         headlines_btn_frame.pack(fill=tk.X, pady=5)
@@ -1747,6 +1826,10 @@ ID: {item_data['id']}
         self.vector_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         v_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         h_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
+        
+        # Add Ctrl+A functionality for selecting all vector items
+        self.vector_tree.bind('<Control-a>', lambda e: self.select_all_tree_items(self.vector_tree))
+        self.vector_tree.bind('<Control-A>', lambda e: self.select_all_tree_items(self.vector_tree))
         
         # 벡터DB 탭 선택 시 컬렉션내용보기만 표시, 팝업 없이
         def on_tab_selected(event=None):
@@ -3011,6 +3094,10 @@ ID: {item_data['id']}
         self.history_tree.column("type", width=60, anchor="center")
         self.history_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.history_tree.bind('<<TreeviewSelect>>', self.on_history_select)
+        
+        # Add Ctrl+A functionality for selecting all history items
+        self.history_tree.bind('<Control-a>', lambda e: self.select_all_tree_items(self.history_tree))
+        self.history_tree.bind('<Control-A>', lambda e: self.select_all_tree_items(self.history_tree))
         # Alternating row colors
         self.history_tree.tag_configure('oddrow', background='#f0f0f0')
         self.history_tree.tag_configure('evenrow', background='#e0e0e0')
