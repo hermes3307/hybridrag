@@ -897,16 +897,55 @@ class EnhancedNewsWriterGUI:
             emb_frame = ttk.LabelFrame(detail_window, text="임베딩 벡터 (Embedding Vector)", padding=10)
             emb_frame.pack(fill=tk.X, padx=10, pady=5)
             emb = item_data.get('embedding', [])
-            emb_str = ', '.join([f"{x:.3f}" for x in emb[:10]]) + (" ..." if len(emb) > 10 else "")
-            emb_label = ttk.Label(emb_frame, text=emb_str, wraplength=800, foreground="blue")
-            emb_label.pack(anchor=tk.W)
+            emb_short = ', '.join([f"{x:.3f}" for x in emb[:10]]) + (" ..." if len(emb) > 10 else "")
+            emb_full = ', '.join([f"{x:.3f}" for x in emb])
+            
+            # State variable for toggle
+            is_expanded = [False]  # Use list to allow modification in nested function
+            
+            # Toggle button (placed at top when expanded)
+            toggle_btn_frame = ttk.Frame(emb_frame)
+            toggle_btn_frame.pack(fill=tk.X, pady=(0, 5))
+            
+            # Use ScrolledText instead of Label for better handling of large vectors
+            emb_text = scrolledtext.ScrolledText(emb_frame, height=10, wrap=tk.WORD, 
+                                               font=("맑은 고딕", 9), foreground="blue",
+                                               state=tk.DISABLED)
+            emb_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+            
+            # Insert initial short text
+            emb_text.config(state=tk.NORMAL)
+            emb_text.insert(tk.END, emb_short)
+            emb_text.config(state=tk.DISABLED)
+            
             def toggle_embedding():
-                if emb_label.cget('text').endswith('...'):
-                    emb_label.config(text=', '.join([f"{x:.3f}" for x in emb]))
+                emb_text.config(state=tk.NORMAL)
+                emb_text.delete(1.0, tk.END)
+                
+                if is_expanded[0]:
+                    # Currently expanded, collapse it
+                    emb_text.insert(tk.END, emb_short)
+                    toggle_btn.config(text="▼ 전체 보기")
+                    is_expanded[0] = False
+                    # Move button back to bottom
+                    toggle_btn_frame.pack_forget()
+                    toggle_btn_frame.pack(fill=tk.X, pady=(5, 0))
                 else:
-                    emb_label.config(text=emb_str)
+                    # Currently collapsed, expand it
+                    emb_text.insert(tk.END, emb_full)
+                    toggle_btn.config(text="▲ 접기")
+                    is_expanded[0] = True
+                    # Move button to top
+                    toggle_btn_frame.pack_forget()
+                    toggle_btn_frame.pack(fill=tk.X, pady=(0, 5))
+                    toggle_btn_frame.tkraise()
+                
+                emb_text.config(state=tk.DISABLED)
+                emb_text.see(1.0)  # Scroll to top
+            
             if len(emb) > 10:
-                ttk.Button(emb_frame, text="전체 보기/접기", command=toggle_embedding).pack(anchor=tk.W, pady=2)
+                toggle_btn = ttk.Button(toggle_btn_frame, text="▼ 전체 보기", command=toggle_embedding)
+                toggle_btn.pack(anchor=tk.W)
             content_frame = ttk.LabelFrame(detail_window, text="전체 내용", padding=10)
             content_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
             content_text = scrolledtext.ScrolledText(content_frame, wrap=tk.WORD, font=("맑은 고딕", 10))
