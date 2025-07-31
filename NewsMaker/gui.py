@@ -130,11 +130,13 @@ class EnhancedNewsWriterGUI:
             tab_text = event.widget.tab(selected_tab, "text")
             
             if "벡터DB" in tab_text:
-                # Show vector DB content in log panel instead of dialog
+                # Show vector DB content in log panel and load chunks in tree view
                 try:
                     content = self.get_vector_db_log_content()
                     self.log_text.insert(tk.END, content + '\n')
                     self.log_text.see(tk.END)
+                    # Auto-load vector DB chunks into the tree view
+                    self.view_collection_contents()
                 except Exception as e:
                     self.log_text.insert(tk.END, f"[벡터DB 표시 오류] {e}\n")
                     self.log_text.see(tk.END)
@@ -1624,7 +1626,7 @@ ID: {item_data['id']}
         
         self.headlines_tree.heading('#0', text='번호')
         self.headlines_tree.heading('title', text='제목')
-        self.headlines_tree.heading('preview', text='미리보기')
+        self.headlines_tree.heading('preview', text='발행일')
         self.headlines_tree.heading('date', text='수집시간 ↓')
         
         self.headlines_tree.column('#0', width=50, minwidth=50)
