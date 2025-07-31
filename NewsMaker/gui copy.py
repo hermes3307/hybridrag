@@ -1198,70 +1198,36 @@ ID: {item_data['id']}
             # collected_news 목록 초기화
             self.collected_news.clear()
             
-            # 뉴스 디렉토리에서 파일 로드 - 파일 정보와 함께 수집
+            # 뉴스 디렉토리에서 파일 로드
             news_files = []
             if os.path.exists(self.news_directory):
                 for filename in os.listdir(self.news_directory):
                     if filename.endswith('.txt') and filename.startswith('news_'):
                         filepath = os.path.join(self.news_directory, filename)
                         try:
-                            # 파일 수정 시간 가져오기
-                            file_mtime = os.path.getmtime(filepath)
-                            
                             with open(filepath, 'r', encoding='utf-8') as f:
                                 content = f.read()
                             
                             # 뉴스 정보 파싱
                             news_info = self.parse_saved_news_file(content, filename)
                             if news_info:
-                                # 파일 정보 추가
-                                news_info['file_mtime'] = file_mtime
-                                news_info['filepath'] = filepath
-                                
-                                # 파일명에서 타임스탬프 추출 (news_YYYYMMDD_HHMMSS_...)
-                                try:
-                                    timestamp_part = filename.split('_')[1] + '_' + filename.split('_')[2]  # YYYYMMDD_HHMMSS
-                                    news_info['file_timestamp'] = timestamp_part
-                                except:
-                                    news_info['file_timestamp'] = '00000000_000000'  # fallback
-                                
                                 self.collected_news.append(news_info)
                                 
                         except Exception as e:
                             logging.warning(f"뉴스 파일 로드 실패 {filename}: {e}")
             
-            # 수집된 뉴스를 파일 생성 시간 기준으로 최신순 정렬 (파일명의 타임스탬프 사용)
-            self.collected_news.sort(key=lambda x: x.get('file_timestamp', '00000000_000000'), reverse=True)
+            # 수집된 뉴스를 최신순으로 정렬
+            self.collected_news.sort(key=lambda x: x.get('pub_date', ''), reverse=True)
             
-            # 디버깅: 정렬 결과 로그
-            if self.collected_news:
-                logging.info(f"뉴스 정렬 완료: 총 {len(self.collected_news)}개")
-                for i, news in enumerate(self.collected_news[:3]):  # 상위 3개만 로그
-                    logging.debug(f"정렬된 뉴스 {i+1}: {news.get('file_timestamp', 'N/A')} - {news.get('title', 'No Title')[:50]}")
-            
-            # 트리뷰에 표시 - 파일 생성 시간 기준으로 정렬된 순서
+            # 트리뷰에 표시
             for i, news in enumerate(self.collected_news):
                 title = news.get('title', 'No Title')
-                
-                # 파일 타임스탬프를 사용하여 더 정확한 날짜 표시
-                file_timestamp = news.get('file_timestamp', '')
-                if file_timestamp and file_timestamp != '00000000_000000':
-                    try:
-                        # YYYYMMDD_HHMMSS 형식을 YYYY-MM-DD HH:MM 형식으로 변환
-                        date_part = file_timestamp.split('_')[0]  # YYYYMMDD
-                        time_part = file_timestamp.split('_')[1]  # HHMMSS
-                        formatted_date = f"{date_part[:4]}-{date_part[4:6]}-{date_part[6:8]} {time_part[:2]}:{time_part[2:4]}"
-                        display_date = formatted_date
-                    except:
-                        display_date = news.get('pub_date', 'N/A')
-                else:
-                    display_date = news.get('pub_date', 'N/A')
-                
-                pub_date_preview = news.get('pub_date', 'No Date')
+                pub_date = news.get('pub_date', 'N/A')
+                description = news.get('description', '')[:100] + '...' if news.get('description', '') else 'No Description'
                 
                 self.headlines_tree.insert('', 'end',
                     text=str(i+1),
-                    values=(title, pub_date_preview, display_date)
+                    values=(title, description, pub_date)
                 )
             
             # 통계 업데이트
@@ -1625,7 +1591,7 @@ ID: {item_data['id']}
         self.headlines_tree.heading('#0', text='번호')
         self.headlines_tree.heading('title', text='제목')
         self.headlines_tree.heading('preview', text='미리보기')
-        self.headlines_tree.heading('date', text='수집시간 ↓')
+        self.headlines_tree.heading('date', text='날짜')
         
         self.headlines_tree.column('#0', width=50, minwidth=50)
         self.headlines_tree.column('title', width=300, minwidth=200)
