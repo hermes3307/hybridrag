@@ -1,0 +1,63 @@
+# AI Coder - Manual-based Code Generation System
+# Requirements file
+
+# Core AI and Vector Database
+anthropic>=0.34.0
+chromadb>=0.4.22
+sentence-transformers>=2.2.2
+
+# Document Processing
+PyPDF2>=3.0.1
+pdfplumber>=0.10.3
+python-docx>=1.1.0
+beautifulsoup4>=4.12.2
+lxml>=4.9.3
+
+# Environment and Configuration
+python-dotenv>=1.0.0
+
+# Data Handling
+pandas>=2.1.0
+numpy>=1.24.0
+
+# GUI Dependencies (Built-in with Python)
+# tkinter (usually comes with Python)
+
+# Optional: Enhanced GUI themes
+# ttkthemes>=3.2.2  # Uncomment if you want better themes
+
+# Async and Threading Support
+asyncio-dgram>=2.2.0
+
+# Logging and Utilities
+pathlib2>=2.3.7  # For older Python versions
+typing-extensions>=4.8.0
+
+# File System Monitoring
+watchdog>=3.0.0
+
+# HTTP Requests
+requests>=2.31.0
+
+# Regular Expressions and Text Processing
+regex>=2023.10.3
+
+# Data Validation
+pydantic>=2.5.0
+
+# Optional: For enhanced PDF processing
+# pymupdf>=1.23.0  # Alternative to pdfplumber
+# pypdf>=3.17.0    # Alternative to PyPDF2
+
+# Optional: For better embeddings
+# openai>=1.3.0    # If you want to use OpenAI embeddings
+# transformers>=4.36.0  # For local transformers
+
+# Development and Testing (Optional)
+# pytest>=7.4.0
+# pytest-asyncio>=0.21.0
+# black>=23.0.0
+# flake8>=6.0.0
+
+# Note: Python 3.8+ required
+# Some packages may require specific versions based on your Python version
