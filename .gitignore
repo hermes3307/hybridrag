@@ -3,6 +3,7 @@ indexer.log
 batch/
 vector/ 
 venv/
+.csv
 .venv/
 vector_config.json
 vector_generator.log
@@ -23,3 +24,4 @@ collected_news/
 *.json
 altibase_rag/
 chroma_db/
+.csv
