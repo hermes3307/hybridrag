@@ -133,17 +133,26 @@ class AICoderGUI:
         left_panel.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 5))
         
         # Upload section
-        ttk.Label(left_panel, text="Select Manual File:").pack(anchor='w')
+        ttk.Label(left_panel, text="Select Manual Files:").pack(anchor='w')
         
         file_frame = ttk.Frame(left_panel)
         file_frame.pack(fill=tk.X, pady=5)
         
-        self.manual_file_var = tk.StringVar()
-        file_entry = ttk.Entry(file_frame, textvariable=self.manual_file_var, width=40)
-        file_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        # Change to listbox for multiple files
+        self.manual_files_listbox = tk.Listbox(file_frame, height=4)
+        self.manual_files_listbox.pack(side=tk.LEFT, fill=tk.X, expand=True)
         
-        browse_btn = ttk.Button(file_frame, text="Browse", command=self.browse_manual_file)
-        browse_btn.pack(side=tk.RIGHT, padx=(5, 0))
+        # Store selected files
+        self.selected_files = []
+        
+        buttons_frame = ttk.Frame(file_frame)
+        buttons_frame.pack(side=tk.RIGHT, padx=(5, 0))
+        
+        browse_btn = ttk.Button(buttons_frame, text="Browse", command=self.browse_manual_file)
+        browse_btn.pack(pady=(0, 2))
+        
+        clear_btn = ttk.Button(buttons_frame, text="Clear", command=self.clear_selected_files)
+        clear_btn.pack()
         
         # Manual type
         ttk.Label(left_panel, text="Manual Type:").pack(anchor='w', pady=(10, 0))
@@ -549,7 +558,7 @@ class AICoderGUI:
                 logging.error(f"Failed to update system stats: {e}")
     
     def browse_manual_file(self):
-        """Browse for manual file"""
+        """Browse for multiple manual files"""
         file_types = [
             ("All supported", "*.pdf;*.docx;*.html;*.htm;*.md;*.txt"),
             ("PDF files", "*.pdf"),
@@ -560,41 +569,53 @@ class AICoderGUI:
             ("All files", "*.*")
         ]
         
-        filename = filedialog.askopenfilename(
-            title="Select Manual File",
+        filenames = filedialog.askopenfilenames(
+            title="Select Manual Files",
             filetypes=file_types
         )
         
-        if filename:
-            self.manual_file_var.set(filename)
-            # Auto-detect manual type from filename
-            filename_lower = os.path.basename(filename).lower()
-            if 'altibase' in filename_lower:
-                self.manual_type_var.set('altibase')
-            elif any(word in filename_lower for word in ['sql', 'database']):
-                self.manual_type_var.set('database')
-            elif 'api' in filename_lower:
-                self.manual_type_var.set('api_reference')
+        if filenames:
+            # Add new files to the selection
+            for filename in filenames:
+                if filename not in self.selected_files:
+                    self.selected_files.append(filename)
+                    self.manual_files_listbox.insert(tk.END, os.path.basename(filename))
+            
+            # Auto-detect manual type from first filename
+            if self.selected_files:
+                first_filename_lower = os.path.basename(self.selected_files[0]).lower()
+                if 'altibase' in first_filename_lower:
+                    self.manual_type_var.set('altibase')
+                elif any(word in first_filename_lower for word in ['sql', 'database']):
+                    self.manual_type_var.set('database')
+                elif 'api' in first_filename_lower:
+                    self.manual_type_var.set('api_reference')
+    
+    def clear_selected_files(self):
+        """Clear all selected files"""
+        self.selected_files.clear()
+        self.manual_files_listbox.delete(0, tk.END)
     
     def upload_manual(self):
-        """Upload manual file to system"""
+        """Upload multiple manual files to system"""
         if not self.system:
             messagebox.showerror("Error", "System not initialized")
             return
         
-        file_path = self.manual_file_var.get()
-        if not file_path:
-            messagebox.showerror("Error", "Please select a manual file")
+        if not self.selected_files:
+            messagebox.showerror("Error", "Please select manual files")
             return
         
-        if not os.path.exists(file_path):
-            messagebox.showerror("Error", "File does not exist")
-            return
+        # Check if all files exist
+        for file_path in self.selected_files:
+            if not os.path.exists(file_path):
+                messagebox.showerror("Error", f"File does not exist: {os.path.basename(file_path)}")
+                return
         
         # Disable upload button and show progress
         self.upload_btn.config(state='disabled')
         self.upload_progress.start()
-        self.status_var.set("Uploading manual...")
+        self.status_var.set(f"Uploading {len(self.selected_files)} manual files...")
         
         # Run upload in separate thread
         def upload_thread():
@@ -602,10 +623,27 @@ class AICoderGUI:
                 manual_type = self.manual_type_var.get()
                 version = self.manual_version_var.get()
                 
-                success = self.system.upload_manual(file_path, manual_type, version)
+                uploaded_files = []
+                failed_files = []
+                
+                for i, file_path in enumerate(self.selected_files):
+                    try:
+                        self.root.after(0, lambda i=i: self.status_var.set(
+                            f"Uploading file {i+1}/{len(self.selected_files)}: {os.path.basename(file_path)}"))
+                        
+                        success = self.system.upload_manual(file_path, manual_type, version)
+                        
+                        if success:
+                            uploaded_files.append(file_path)
+                        else:
+                            failed_files.append(file_path)
+                            
+                    except Exception as e:
+                        logging.error(f"Failed to upload {file_path}: {e}")
+                        failed_files.append(file_path)
                 
                 # Update UI in main thread
-                self.root.after(0, lambda: self.upload_complete(success, file_path, manual_type, version))
+                self.root.after(0, lambda: self.upload_multiple_complete(uploaded_files, failed_files, manual_type, version))
                 
             except Exception as e:
                 error_msg = f"Upload failed: {e}"
@@ -614,8 +652,41 @@ class AICoderGUI:
         self.manual_upload_thread = threading.Thread(target=upload_thread)
         self.manual_upload_thread.start()
     
+    def upload_multiple_complete(self, uploaded_files, failed_files, manual_type, version):
+        """Handle multiple file upload completion"""
+        self.upload_progress.stop()
+        self.upload_btn.config(state='normal')
+        
+        # Add uploaded files to manual list
+        for file_path in uploaded_files:
+            manual_name = os.path.basename(file_path)
+            self.manual_tree.insert('', 'end', text=manual_name, 
+                                   values=(manual_type, version, file_path, "Processing...", "✅ Uploaded"))
+        
+        # Update system stats
+        self.update_system_stats()
+        
+        # Clear selected files
+        self.selected_files.clear()
+        self.manual_files_listbox.delete(0, tk.END)
+        
+        # Show results message
+        if uploaded_files and not failed_files:
+            self.status_var.set(f"All {len(uploaded_files)} manuals uploaded successfully")
+            messagebox.showinfo("Success", f"All {len(uploaded_files)} manual files uploaded successfully!")
+        elif uploaded_files and failed_files:
+            self.status_var.set(f"{len(uploaded_files)} manuals uploaded, {len(failed_files)} failed")
+            failed_names = [os.path.basename(f) for f in failed_files]
+            messagebox.showwarning("Partial Success", 
+                                 f"Uploaded: {len(uploaded_files)} files\n"
+                                 f"Failed: {len(failed_files)} files\n\n"
+                                 f"Failed files:\n" + "\n".join(failed_names))
+        else:
+            self.status_var.set("All manual uploads failed")
+            messagebox.showerror("Error", "Failed to upload any manual files. Check logs for details.")
+    
     def upload_complete(self, success, file_path, manual_type, version):
-        """Handle upload completion"""
+        """Handle single upload completion (legacy method for compatibility)"""
         self.upload_progress.stop()
         self.upload_btn.config(state='normal')
         
@@ -630,9 +701,6 @@ class AICoderGUI:
             
             # Update system stats
             self.update_system_stats()
-            
-            # Clear form
-            self.manual_file_var.set("")
             
         else:
             self.status_var.set("Manual upload failed")
@@ -699,6 +767,17 @@ Modified: {self.get_file_modified(file_path)}
             messagebox.showerror("Error", "System not initialized")
             return
         
+        # Check if Claude API is configured
+        if self.system.claude_client.test_mode:
+            result = messagebox.askyesno(
+                "API Not Configured", 
+                "Claude API key is not configured. Code generation requires a valid API key.\n\n"
+                "Would you like to go to Settings to configure your API key?"
+            )
+            if result:
+                self.notebook.select(4)  # Switch to Settings tab
+            return
+        
         task = self.task_var.get().strip()
         if not task:
             messagebox.showerror("Error", "Please enter a task description")
@@ -744,8 +823,12 @@ Modified: {self.get_file_modified(file_path)}
                 self.root.after(0, lambda: self.generation_complete(result))
                 
             except Exception as e:
-                error_msg = f"Code generation failed: {e}"
-                self.root.after(0, lambda: self.generation_error(error_msg))
+                error_msg = str(e)
+                if "API key not configured" in error_msg or "Claude API not available" in error_msg:
+                    self.root.after(0, lambda: self.api_not_configured_error())
+                else:
+                    full_error = f"Code generation failed: {e}"
+                    self.root.after(0, lambda: self.generation_error(full_error))
         
         self.code_generation_thread = threading.Thread(target=generation_thread)
         self.code_generation_thread.start()
@@ -789,6 +872,25 @@ Modified: {self.get_file_modified(file_path)}
         
         self.confidence_var.set("Confidence: Error")
         self.references_var.set("Manual References: Error")
+    
+    def api_not_configured_error(self):
+        """Handle API not configured error"""
+        self.generation_progress.stop()
+        self.generate_btn.config(state='normal')
+        self.status_var.set("API key required for code generation")
+        
+        result = messagebox.askyesno(
+            "API Configuration Required", 
+            "Claude API key is required for code generation.\n\n"
+            "The system is currently using test mode which only returns simple templates.\n\n"
+            "Would you like to configure your API key now?"
+        )
+        
+        if result:
+            self.notebook.select(4)  # Switch to Settings tab
+        
+        self.confidence_var.set("Confidence: N/A (No API)")
+        self.references_var.set("Manual References: N/A (No API)")
     
     def save_generated_code(self):
         """Save generated code to file"""
