@@ -504,13 +504,19 @@ class EnhancedClaudeClient:
     def __init__(self, api_key: str = None):
         self.api_key = api_key or os.getenv('CLAUDE_API_KEY')
         
-        if self.api_key and self.api_key != "YOUR_CLAUDE_API_KEY":
-            self.client = anthropic.Anthropic(api_key=self.api_key)
-            self.test_mode = False
+        if self.api_key and self.api_key.strip() and self.api_key != "YOUR_CLAUDE_API_KEY":
+            try:
+                self.client = anthropic.Anthropic(api_key=self.api_key)
+                self.test_mode = False
+                logger.info("Claude API client initialized successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize Claude API client: {e}")
+                self.client = None
+                self.test_mode = True
         else:
             self.client = None
             self.test_mode = True
-            logger.warning("Claude API key not set. Running in test mode.")
+            logger.warning("Claude API key not set or invalid. Running in test mode.")
         
         self.request_count = 0
         self.last_call_time = 0
@@ -521,6 +527,10 @@ class EnhancedClaudeClient:
                                               specifications: str = "",
                                               style: str = "professional") -> CodeGenerationResult:
         """Generate code using manual context from RAG"""
+        
+        # Check if API is available
+        if self.test_mode:
+            raise Exception("Claude API key not configured. Please set up your API key in Settings.")
         
         # Create comprehensive prompt
         prompt = self._create_code_generation_prompt(
@@ -639,7 +649,7 @@ Please generate the {language} code that accomplishes the specified task while s
         self.request_count += 1
         
         if self.test_mode:
-            return self._get_test_response(prompt)
+            raise Exception("Claude API not available. Please configure your API key.")
         
         try:
             response = self.client.messages.create(
@@ -656,7 +666,7 @@ Please generate the {language} code that accomplishes the specified task while s
             
         except Exception as e:
             logger.error(f"Claude API call failed: {e}")
-            return self._get_test_response(prompt)
+            raise Exception(f"Claude API call failed: {e}")
     
     def _get_test_response(self, prompt: str) -> str:
         """Generate test response when API is not available"""
