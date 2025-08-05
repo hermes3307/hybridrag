@@ -716,14 +716,15 @@ class AICoderGUI:
             # Log the browser action
             logging.info("Opening file browser for manual selection")
             
+            # Simplified file types for better macOS compatibility
             file_types = [
-                ("All supported", "*.pdf;*.docx;*.html;*.htm;*.md;*.txt"),
                 ("PDF files", "*.pdf"),
                 ("Word documents", "*.docx"),
-                ("HTML files", "*.html;*.htm"),
+                ("HTML files", "*.html"),
+                ("HTML files", "*.htm"),
                 ("Markdown files", "*.md"),
                 ("Text files", "*.txt"),
-                ("All files", "*.*")
+                ("All files", "*")
             ]
             
             # Ensure the widget exists before proceeding
@@ -737,11 +738,20 @@ class AICoderGUI:
                 self.selected_files = []
                 logging.warning("selected_files was not initialized, creating empty list")
             
-            filenames = filedialog.askopenfilenames(
-                title="Select Manual Files",
-                filetypes=file_types,
-                parent=self.root  # Specify parent window
-            )
+            # Use a more compatible approach for macOS
+            try:
+                filenames = filedialog.askopenfilenames(
+                    title="Select Manual Files",
+                    filetypes=file_types,
+                    parent=self.root
+                )
+            except Exception as dialog_error:
+                logging.warning(f"File dialog error, trying without filetypes: {dialog_error}")
+                # Fallback to no file type restrictions
+                filenames = filedialog.askopenfilenames(
+                    title="Select Manual Files",
+                    parent=self.root
+                )
             
             if filenames:
                 logging.info(f"Selected {len(filenames)} files for upload")
