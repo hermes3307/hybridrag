@@ -14,43 +14,129 @@ import json
 import os
 import sys
 import logging
-import traceback
 from datetime import datetime
-from pathlib import Path
-from typing import Dict, List, Optional
 
 # Import main system
 try:
-    from main import AICoderSystem, CodeGenerationResult, ValidationResult
+    from main import AICoderSystem, CodeGenerationResult
 except ImportError as e:
     print(f"main.py file not found: {e}")
     print("Please ensure main.py is in the same directory.")
     sys.exit(1)
 
-# GUI Log Handler
+# Enhanced GUI Log Handler with Progress Tracking
 class GUILogHandler(logging.Handler):
-    """Custom log handler that displays logs in GUI"""
+    """Custom log handler that displays logs in GUI with enhanced color coding and progress tracking"""
     
     def __init__(self, text_widget):
         super().__init__()
         self.text_widget = text_widget
-        # Setup color tags
-        self.text_widget.tag_config('ERROR', foreground='red')
-        self.text_widget.tag_config('WARNING', foreground='orange')
-        self.text_widget.tag_config('INFO', foreground='green')
-        self.text_widget.tag_config('DEBUG', foreground='gray')
+        self.setup_color_tags()
+        self.progress_indicators = {}
+    
+    def setup_color_tags(self):
+        """Setup enhanced color tags for different log levels and progress states"""
+        # Standard log levels with enhanced colors
+        self.text_widget.tag_config('ERROR', foreground='#FF4444', background='#2D1B1B', font=('Consolas', 10, 'bold'))
+        self.text_widget.tag_config('WARNING', foreground='#FFA500', background='#2D2416', font=('Consolas', 10))
+        self.text_widget.tag_config('INFO', foreground='#4CAF50', background='#1B2D1B', font=('Consolas', 10))
+        self.text_widget.tag_config('DEBUG', foreground='#9E9E9E', background='#1E1E1E', font=('Consolas', 9))
+        
+        # Progress and status indicators
+        self.text_widget.tag_config('PROGRESS', foreground='#03DAC6', background='#1A2B2B', font=('Consolas', 10, 'bold'))
+        self.text_widget.tag_config('SUCCESS', foreground='#66BB6A', background='#1B2D1B', font=('Consolas', 10, 'bold'))
+        self.text_widget.tag_config('CRITICAL', foreground='#FFFFFF', background='#B71C1C', font=('Consolas', 10, 'bold'))
+        
+        # Component-specific colors
+        self.text_widget.tag_config('MANUAL_PROC', foreground='#9C27B0', font=('Consolas', 10))
+        self.text_widget.tag_config('VECTOR_DB', foreground='#2196F3', font=('Consolas', 10))
+        self.text_widget.tag_config('CLAUDE_API', foreground='#FF9800', font=('Consolas', 10))
+        self.text_widget.tag_config('GUI_EVENT', foreground='#607D8B', font=('Consolas', 10))
     
     def emit(self, record):
         try:
-            msg = self.format(record)
-            if self.text_widget and self.text_widget.winfo_exists():
-                level = record.levelname
-                tag = level if level in ('ERROR', 'WARNING', 'INFO', 'DEBUG') else None
-                self.text_widget.insert(tk.END, msg + '\n', tag)
-                self.text_widget.see(tk.END)
-                self.text_widget.update()
-        except Exception:
-            pass  # Prevent errors when GUI is closed
+            if not self.text_widget or not self.text_widget.winfo_exists():
+                return
+                
+            # Format message with timestamp and detailed info
+            timestamp = self.formatTime(record, '%H:%M:%S')
+            level = record.levelname
+            name = record.name.split('.')[-1]  # Get last part of logger name
+            msg = record.getMessage()
+            
+            # Create enhanced message format
+            formatted_msg = f"[{timestamp}] {level:8} | {name:12} | {msg}"
+            
+            # Determine tag based on content and level
+            tag = self.determine_tag(record, msg)
+            
+            # Add progress indicators for certain operations
+            if self.is_progress_message(msg):
+                formatted_msg = self.add_progress_indicator(formatted_msg, msg)
+            
+            # Insert with appropriate styling
+            self.text_widget.insert(tk.END, formatted_msg + '\n', tag)
+            self.text_widget.see(tk.END)
+            
+            # Auto-scroll and update display
+            self.text_widget.update_idletasks()
+            
+        except Exception as e:
+            # Fallback to prevent GUI crashes
+            try:
+                self.text_widget.insert(tk.END, f"[LOG ERROR] {str(e)}\n", 'ERROR')
+            except:
+                pass  # Ultimate fallback
+    
+    def determine_tag(self, record, msg):
+        """Determine appropriate tag based on log level and message content"""
+        level = record.levelname
+        msg_lower = msg.lower()
+        
+        # Critical errors
+        if level == 'CRITICAL' or 'critical' in msg_lower or 'fatal' in msg_lower:
+            return 'CRITICAL'
+        
+        # Component-specific tagging
+        if 'manual' in msg_lower and ('processing' in msg_lower or 'parsing' in msg_lower):
+            return 'MANUAL_PROC'
+        elif 'vector' in msg_lower or 'chroma' in msg_lower or 'embedding' in msg_lower:
+            return 'VECTOR_DB'
+        elif 'claude' in msg_lower or 'api' in msg_lower:
+            return 'CLAUDE_API'
+        elif 'gui' in msg_lower or 'button' in msg_lower or 'click' in msg_lower:
+            return 'GUI_EVENT'
+        
+        # Progress indicators
+        elif any(word in msg_lower for word in ['uploading', 'processing', 'generating', 'saving']):
+            return 'PROGRESS'
+        elif any(word in msg_lower for word in ['completed', 'success', 'finished', 'done']):
+            return 'SUCCESS'
+        
+        # Default to log level
+        return level
+    
+    def is_progress_message(self, msg):
+        """Check if message is a progress update"""
+        progress_keywords = ['uploading', 'processing', 'generating', 'parsing', 'storing', 'searching']
+        return any(keyword in msg.lower() for keyword in progress_keywords)
+    
+    def add_progress_indicator(self, formatted_msg, msg):
+        """Add visual progress indicators to progress messages"""
+        msg_lower = msg.lower()
+        
+        if 'uploading' in msg_lower:
+            return f"📤 {formatted_msg}"
+        elif 'processing' in msg_lower or 'parsing' in msg_lower:
+            return f"⚙️ {formatted_msg}"
+        elif 'generating' in msg_lower:
+            return f"🚀 {formatted_msg}"
+        elif 'storing' in msg_lower or 'saving' in msg_lower:
+            return f"💾 {formatted_msg}"
+        elif 'searching' in msg_lower:
+            return f"🔍 {formatted_msg}"
+        else:
+            return f"▶️ {formatted_msg}"
 
 class AICoderGUI:
     """Main AI Coder GUI Application"""
@@ -225,8 +311,8 @@ class AICoderGUI:
         self.manual_details_text = scrolledtext.ScrolledText(details_frame, height=8, wrap=tk.WORD)
         self.manual_details_text.pack(fill=tk.BOTH, expand=True)
         
-        # Bind selection event
-        self.manual_tree.bind('<<TreeviewSelect>>', self.on_manual_select)
+        # Bind selection event with error handling
+        self.manual_tree.bind('<<TreeviewSelect>>', self.on_manual_select_safe)
     
     def setup_code_generation_tab(self):
         """Setup code generation tab"""
@@ -404,7 +490,7 @@ class AICoderGUI:
         ttk.Button(controls_frame, text="🔍 Search", command=self.search_manuals).pack(side=tk.RIGHT)
         
         # Bind Enter key to search
-        search_entry.bind('<Return>', lambda e: self.search_manuals())
+        search_entry.bind('<Return>', lambda _: self.search_manuals())
         
         # Results panel
         results_panel = ttk.LabelFrame(search_frame, text="Search Results", padding=10)
@@ -437,8 +523,8 @@ class AICoderGUI:
         self.search_content_text = scrolledtext.ScrolledText(content_panel, height=10, wrap=tk.WORD)
         self.search_content_text.pack(fill=tk.BOTH, expand=True)
         
-        # Bind selection event
-        self.search_tree.bind('<<TreeviewSelect>>', self.on_search_select)
+        # Bind selection event with error handling
+        self.search_tree.bind('<<TreeviewSelect>>', self.on_search_select_safe)
     
     def setup_settings_tab(self):
         """Setup settings tab"""
@@ -509,92 +595,232 @@ class AICoderGUI:
         self.log_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
     
     def setup_logging(self):
-        """Setup logging to display in GUI"""
-        # Create custom handler
-        gui_handler = GUILogHandler(self.log_text)
-        gui_handler.setLevel(logging.INFO)
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        gui_handler.setFormatter(formatter)
-        
-        # Add handler to root logger
-        root_logger = logging.getLogger()
-        root_logger.addHandler(gui_handler)
-        root_logger.setLevel(logging.INFO)
+        """Setup enhanced logging to display in GUI with color coding and progress tracking"""
+        try:
+            # Create custom handler with enhanced formatting
+            gui_handler = GUILogHandler(self.log_text)
+            gui_handler.setLevel(logging.DEBUG)  # Show all levels
+            
+            # Enhanced formatter with more details
+            formatter = logging.Formatter(
+                '%(name)s | %(funcName)s:%(lineno)d | %(message)s'
+            )
+            gui_handler.setFormatter(formatter)
+            
+            # Configure root logger
+            root_logger = logging.getLogger()
+            
+            # Remove existing handlers to avoid duplicates
+            for handler in root_logger.handlers[:]:
+                if isinstance(handler, GUILogHandler):
+                    root_logger.removeHandler(handler)
+            
+            root_logger.addHandler(gui_handler)
+            root_logger.setLevel(logging.DEBUG)
+            
+            # Set up component-specific loggers
+            logging.getLogger('main').setLevel(logging.DEBUG)
+            logging.getLogger('gui').setLevel(logging.DEBUG)
+            logging.getLogger('manual_processor').setLevel(logging.DEBUG)
+            logging.getLogger('vector_db').setLevel(logging.DEBUG)
+            logging.getLogger('claude_client').setLevel(logging.DEBUG)
+            
+            # Log initialization
+            logging.info("Enhanced logging system initialized with color coding and progress tracking")
+            logging.debug("Debug level logging enabled for detailed progress monitoring")
+            
+        except Exception as e:
+            print(f"Failed to setup enhanced logging: {e}")
+            # Fallback to basic logging
+            logging.basicConfig(level=logging.INFO)
     
     def initialize_system(self):
-        """Initialize the AI Coder system"""
+        """Initialize the AI Coder system with detailed progress logging"""
         try:
+            logging.info("🚀 Starting AI Coder system initialization...")
             self.status_var.set("Initializing AI Coder system...")
             
-            # Initialize system
+            # Step 1: Validate configuration
+            logging.debug("📋 Validating system configuration...")
             claude_api_key = self.api_key_var.get() if self.api_key_var.get() else None
             vector_db_path = self.db_path_var.get()
             
-            self.system = AICoderSystem(claude_api_key=claude_api_key, vector_db_path=vector_db_path)
+            if claude_api_key:
+                logging.info("🔑 Claude API key configured")
+            else:
+                logging.warning("⚠️ Claude API key not configured - system will run in test mode")
             
-            # Update UI with system stats
+            logging.info(f"📁 Vector DB path: {vector_db_path}")
+            
+            # Step 2: Initialize core system
+            logging.info("⚙️ Initializing AI Coder core system...")
+            self.system = AICoderSystem(claude_api_key=claude_api_key, vector_db_path=vector_db_path)
+            logging.info("✅ AI Coder core system initialized successfully")
+            
+            # Step 3: Initialize GUI components
+            logging.debug("🎨 Initializing GUI components...")
+            if not hasattr(self, 'selected_files'):
+                self.selected_files = []
+                logging.debug("📋 Initialized selected_files list")
+            
+            # Step 4: Update UI with system stats
+            logging.debug("📊 Updating system statistics...")
             self.update_system_stats()
             
-            self.status_var.set("AI Coder system initialized successfully")
+            # Step 5: Final status update
+            success_msg = "AI Coder system initialized successfully"
+            logging.info(f"🎉 {success_msg}")
+            self.status_var.set(success_msg)
             
         except Exception as e:
             error_msg = f"Failed to initialize system: {e}"
-            logging.error(error_msg)
+            logging.error(f"❌ {error_msg}")
+            logging.debug(f"💥 Initialization error details: {str(e)}", exc_info=True)
             messagebox.showerror("Initialization Error", error_msg)
             self.status_var.set("System initialization failed")
     
     def update_system_stats(self):
-        """Update system statistics in UI"""
+        """Update system statistics in UI with detailed logging"""
         if self.system:
             try:
+                logging.debug("📊 Updating system statistics...")
                 stats = self.system.get_system_stats()
                 
                 # Update vector DB stats
                 db_stats = stats.get('vector_db', {})
-                self.db_chunks_var.set(str(db_stats.get('total_chunks', 0)))
-                self.db_collection_var.set(db_stats.get('collection_name', 'unknown'))
+                total_chunks = db_stats.get('total_chunks', 0)
+                collection_name = db_stats.get('collection_name', 'unknown')
+                
+                self.db_chunks_var.set(str(total_chunks))
+                self.db_collection_var.set(collection_name)
+                
+                # Log detailed stats
+                logging.info(f"📁 Vector DB: {total_chunks} chunks in collection '{collection_name}'")
+                logging.info(f"🤖 Claude API requests: {stats.get('claude_requests', 0)}")
+                
+                if stats.get('test_mode', False):
+                    logging.warning("⚠️ System running in test mode (API key not configured)")
+                else:
+                    logging.info("🔑 System running with API key configured")
+                
+                logging.debug("✅ System statistics updated successfully")
                 
             except Exception as e:
-                logging.error(f"Failed to update system stats: {e}")
+                error_msg = f"Failed to update system stats: {e}"
+                logging.error(f"❌ {error_msg}")
+                logging.debug("System stats update error details", exc_info=True)
     
     def browse_manual_file(self):
         """Browse for multiple manual files"""
-        file_types = [
-            ("All supported", "*.pdf;*.docx;*.html;*.htm;*.md;*.txt"),
-            ("PDF files", "*.pdf"),
-            ("Word documents", "*.docx"),
-            ("HTML files", "*.html;*.htm"),
-            ("Markdown files", "*.md"),
-            ("Text files", "*.txt"),
-            ("All files", "*.*")
-        ]
-        
-        filenames = filedialog.askopenfilenames(
-            title="Select Manual Files",
-            filetypes=file_types
-        )
-        
-        if filenames:
-            # Add new files to the selection
-            for filename in filenames:
-                if filename not in self.selected_files:
-                    self.selected_files.append(filename)
-                    self.manual_files_listbox.insert(tk.END, os.path.basename(filename))
+        try:
+            # Log the browser action
+            logging.info("Opening file browser for manual selection")
             
-            # Auto-detect manual type from first filename
-            if self.selected_files:
-                first_filename_lower = os.path.basename(self.selected_files[0]).lower()
-                if 'altibase' in first_filename_lower:
-                    self.manual_type_var.set('altibase')
-                elif any(word in first_filename_lower for word in ['sql', 'database']):
-                    self.manual_type_var.set('database')
-                elif 'api' in first_filename_lower:
-                    self.manual_type_var.set('api_reference')
+            file_types = [
+                ("All supported", "*.pdf;*.docx;*.html;*.htm;*.md;*.txt"),
+                ("PDF files", "*.pdf"),
+                ("Word documents", "*.docx"),
+                ("HTML files", "*.html;*.htm"),
+                ("Markdown files", "*.md"),
+                ("Text files", "*.txt"),
+                ("All files", "*.*")
+            ]
+            
+            # Ensure the widget exists before proceeding
+            if not hasattr(self, 'manual_files_listbox') or not self.manual_files_listbox.winfo_exists():
+                logging.error("Manual files listbox not properly initialized")
+                messagebox.showerror("Error", "GUI component not properly initialized. Please restart the application.")
+                return
+            
+            # Initialize selected_files if not exists
+            if not hasattr(self, 'selected_files'):
+                self.selected_files = []
+                logging.warning("selected_files was not initialized, creating empty list")
+            
+            filenames = filedialog.askopenfilenames(
+                title="Select Manual Files",
+                filetypes=file_types,
+                parent=self.root  # Specify parent window
+            )
+            
+            if filenames:
+                logging.info(f"Selected {len(filenames)} files for upload")
+                
+                # Add new files to the selection
+                added_count = 0
+                for filename in filenames:
+                    try:
+                        if filename not in self.selected_files:
+                            # Verify file exists and is readable
+                            if not os.path.exists(filename):
+                                logging.warning(f"Selected file does not exist: {filename}")
+                                continue
+                                
+                            if not os.access(filename, os.R_OK):
+                                logging.warning(f"Selected file is not readable: {filename}")
+                                continue
+                            
+                            self.selected_files.append(filename)
+                            display_name = os.path.basename(filename)
+                            self.manual_files_listbox.insert(tk.END, display_name)
+                            added_count += 1
+                            logging.debug(f"Added file to selection: {display_name}")
+                        else:
+                            logging.debug(f"File already selected: {os.path.basename(filename)}")
+                    except Exception as e:
+                        logging.error(f"Error processing selected file {filename}: {e}")
+                        continue
+                
+                if added_count > 0:
+                    logging.info(f"Successfully added {added_count} new files to selection")
+                    self.status_var.set(f"Added {added_count} files to selection")
+                    
+                    # Auto-detect manual type from first filename
+                    if self.selected_files:
+                        first_filename_lower = os.path.basename(self.selected_files[0]).lower()
+                        if 'altibase' in first_filename_lower:
+                            self.manual_type_var.set('altibase')
+                            logging.info("Auto-detected manual type: altibase")
+                        elif any(word in first_filename_lower for word in ['sql', 'database']):
+                            self.manual_type_var.set('database')
+                            logging.info("Auto-detected manual type: database")
+                        elif 'api' in first_filename_lower:
+                            self.manual_type_var.set('api_reference')
+                            logging.info("Auto-detected manual type: api_reference")
+                else:
+                    logging.warning("No new files were added to selection")
+                    self.status_var.set("No new files added (already selected or invalid)")
+                    
+            else:
+                logging.info("File selection cancelled by user")
+                self.status_var.set("File selection cancelled")
+                
+        except Exception as e:
+            error_msg = f"Error in file browser: {e}"
+            logging.error(error_msg)
+            messagebox.showerror("File Browser Error", error_msg)
+            self.status_var.set("File browser error occurred")
     
     def clear_selected_files(self):
-        """Clear all selected files"""
-        self.selected_files.clear()
-        self.manual_files_listbox.delete(0, tk.END)
+        """Clear all selected files with error handling"""
+        try:
+            if hasattr(self, 'selected_files'):
+                self.selected_files.clear()
+                logging.info("🗑️ Cleared selected files list")
+            else:
+                self.selected_files = []
+                logging.warning("⚠️ selected_files was not initialized, created empty list")
+            
+            if hasattr(self, 'manual_files_listbox') and self.manual_files_listbox.winfo_exists():
+                self.manual_files_listbox.delete(0, tk.END)
+                logging.debug("🗑️ Cleared manual files listbox")
+            
+            self.status_var.set("File selection cleared")
+            
+        except Exception as e:
+            error_msg = f"Error clearing selected files: {e}"
+            logging.error(f"❌ {error_msg}")
+            messagebox.showerror("Clear Files Error", error_msg)
     
     def upload_manual(self):
         """Upload multiple manual files to system"""
@@ -617,29 +843,46 @@ class AICoderGUI:
         self.upload_progress.start()
         self.status_var.set(f"Uploading {len(self.selected_files)} manual files...")
         
-        # Run upload in separate thread
+        # Run upload in separate thread with detailed progress
         def upload_thread():
             try:
                 manual_type = self.manual_type_var.get()
                 version = self.manual_version_var.get()
+                total_files = len(self.selected_files)
+                
+                logging.info(f"📤 Starting batch upload of {total_files} manual files")
+                logging.info(f"🏷️ Manual type: {manual_type}, Version: {version}")
                 
                 uploaded_files = []
                 failed_files = []
                 
                 for i, file_path in enumerate(self.selected_files):
                     try:
-                        self.root.after(0, lambda i=i: self.status_var.set(
-                            f"Uploading file {i+1}/{len(self.selected_files)}: {os.path.basename(file_path)}"))
+                        file_name = os.path.basename(file_path)
+                        progress_msg = f"Uploading file {i+1}/{total_files}: {file_name}"
                         
+                        # Update status in main thread
+                        self.root.after(0, lambda msg=progress_msg: self.status_var.set(msg))
+                        
+                        # Log detailed progress
+                        logging.info(f"📤 [{i+1}/{total_files}] Processing: {file_name}")
+                        file_size = self.get_file_size(file_path)
+                        logging.debug(f"📊 File size: {file_size}")
+                        
+                        # Perform the upload
                         success = self.system.upload_manual(file_path, manual_type, version)
                         
                         if success:
                             uploaded_files.append(file_path)
+                            logging.info(f"✅ [{i+1}/{total_files}] Successfully uploaded: {file_name}")
                         else:
                             failed_files.append(file_path)
+                            logging.error(f"❌ [{i+1}/{total_files}] Failed to upload: {file_name}")
                             
                     except Exception as e:
-                        logging.error(f"Failed to upload {file_path}: {e}")
+                        error_msg = f"Failed to upload {os.path.basename(file_path)}: {e}"
+                        logging.error(f"💥 [{i+1}/{total_files}] {error_msg}")
+                        logging.debug(f"Upload error details for {file_path}", exc_info=True)
                         failed_files.append(file_path)
                 
                 # Update UI in main thread
@@ -713,19 +956,33 @@ class AICoderGUI:
         self.status_var.set("Manual upload failed")
         messagebox.showerror("Upload Error", error_msg)
     
-    def on_manual_select(self, event):
+    def on_manual_select_safe(self, _event):
+        """Handle manual selection in tree with error handling
+        
+        Args:
+            _event: Tkinter event object (unused but required by callback signature)
+        """
+        try:
+            self.on_manual_select()
+        except Exception as e:
+            logging.error(f"❌ Error in manual selection: {e}")
+    
+    def on_manual_select(self):
         """Handle manual selection in tree"""
-        selection = self.manual_tree.selection()
-        if selection:
-            item = self.manual_tree.item(selection[0])
-            manual_name = item['text']
-            values = item['values']
-            
-            if values:
-                manual_type, version, file_path, chunks, status = values
+        try:
+            selection = self.manual_tree.selection()
+            if selection:
+                item = self.manual_tree.item(selection[0])
+                manual_name = item['text']
+                values = item['values']
                 
-                details = f"""Manual Details:
+                logging.debug(f"📋 Selected manual: {manual_name}")
                 
+                if values and len(values) >= 5:
+                    manual_type, version, file_path, chunks, status = values
+                    
+                    details = f"""Manual Details:
+                    
 Name: {manual_name}
 Type: {manual_type}
 Version: {version}
@@ -737,9 +994,14 @@ File Information:
 Size: {self.get_file_size(file_path)}
 Modified: {self.get_file_modified(file_path)}
 """
-                
-                self.manual_details_text.delete(1.0, tk.END)
-                self.manual_details_text.insert(1.0, details)
+                    
+                    if hasattr(self, 'manual_details_text') and self.manual_details_text.winfo_exists():
+                        self.manual_details_text.delete(1.0, tk.END)
+                        self.manual_details_text.insert(1.0, details)
+                else:
+                    logging.warning("⚠️ Manual selection has incomplete data")
+        except Exception as e:
+            logging.error(f"❌ Error handling manual selection: {e}")
     
     def get_file_size(self, file_path):
         """Get file size in human readable format"""
@@ -793,7 +1055,7 @@ Modified: {self.get_file_modified(file_path)}
         self.confidence_var.set("Confidence: Generating...")
         self.references_var.set("Manual References: Generating...")
         
-        # Run generation in separate thread
+        # Run generation in separate thread with detailed progress
         def generation_thread():
             try:
                 language = self.language_var.get()
@@ -802,10 +1064,24 @@ Modified: {self.get_file_modified(file_path)}
                 style = self.style_var.get()
                 specifications = self.specifications_text.get(1.0, tk.END).strip()
                 
+                # Log generation parameters
+                logging.info(f"🚀 Starting code generation process")
+                logging.info(f"📝 Task: {task}")
+                logging.info(f"🔥 Language: {language}")
+                if manual_type:
+                    logging.info(f"📚 Manual type: {manual_type}")
+                if version:
+                    logging.info(f"🏷️ Version: {version}")
+                logging.info(f"🎨 Style: {style}")
+                if specifications:
+                    logging.debug(f"📜 Specifications: {specifications[:100]}...")
+                
                 # Run async function in thread
+                logging.debug("⚙️ Setting up async event loop...")
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 
+                logging.info("🔍 Searching for relevant manual content...")
                 result = loop.run_until_complete(
                     self.system.generate_code(
                         task=task,
@@ -818,6 +1094,7 @@ Modified: {self.get_file_modified(file_path)}
                 )
                 
                 loop.close()
+                logging.info("✅ Code generation completed successfully")
                 
                 # Update UI in main thread
                 self.root.after(0, lambda: self.generation_complete(result))
@@ -1034,13 +1311,25 @@ Modified: {self.get_file_modified(file_path)}
             messagebox.showerror("Search Error", error_msg)
             self.status_var.set("Manual search failed")
     
-    def on_search_select(self, event):
+    def on_search_select_safe(self, _event):
+        """Handle search result selection with error handling
+        
+        Args:
+            _event: Tkinter event object (unused but required by callback signature)
+        """
+        try:
+            self.on_search_select()
+        except Exception as e:
+            logging.error(f"❌ Error in search selection: {e}")
+    
+    def on_search_select(self):
         """Handle search result selection"""
-        selection = self.search_tree.selection()
-        if selection and self.system:
-            try:
-                item = self.search_tree.item(selection[0])
+        try:
+            selection = self.search_tree.selection()
+            if selection and self.system:
                 item_index = self.search_tree.index(selection[0])
+                
+                logging.debug(f"🔍 Selected search result at index {item_index}")
                 
                 # Get the corresponding result from last search
                 query = self.search_var.get().strip()
@@ -1064,11 +1353,15 @@ Modified: {self.get_file_modified(file_path)}
                     content += "-" * 50 + "\n\n"
                     content += result['content']
                     
-                    self.search_content_text.delete(1.0, tk.END)
-                    self.search_content_text.insert(1.0, content)
+                    if hasattr(self, 'search_content_text') and self.search_content_text.winfo_exists():
+                        self.search_content_text.delete(1.0, tk.END)
+                        self.search_content_text.insert(1.0, content)
+                        logging.debug("📄 Displayed search result content")
+                else:
+                    logging.warning(f"⚠️ Search result index {item_index} out of range")
                     
-            except Exception as e:
-                logging.error(f"Failed to display search result: {e}")
+        except Exception as e:
+            logging.error(f"❌ Error handling search result selection: {e}")
     
     def browse_db_path(self):
         """Browse for vector database path"""
@@ -1140,13 +1433,42 @@ Modified: {self.get_file_modified(file_path)}
         self.status_var.set("Logs cleared")
     
 def main():
-    """Main function to run the GUI"""
+    """Main function to run the GUI with enhanced error handling"""
     try:
+        # Check tkinter availability
+        try:
+            import tkinter as tk
+            print("✅ tkinter is available")
+        except ImportError as e:
+            print(f"❌ tkinter not available: {e}")
+            print("Please install tkinter or use a Python distribution that includes it.")
+            return
+        
+        print("🚀 Starting AI Coder GUI...")
         root = tk.Tk()
-        app = AICoderGUI(root)
+        
+        # Set up error handling for tkinter
+        def handle_tk_error(exc, val, tb):
+            print(f"Tkinter error: {exc.__name__}: {val}")
+            import traceback
+            traceback.print_exception(exc, val, tb)
+        
+        root.report_callback_exception = handle_tk_error
+        
+        # Initialize application
+        AICoderGUI(root)
+        print("✅ AI Coder GUI initialized successfully")
+        
+        # Start main loop
         root.mainloop()
+        
+    except ImportError as e:
+        print(f"❌ Import error: {e}")
+        print("Please ensure all required dependencies are installed:")
+        print("pip install -r requirements.txt")
     except Exception as e:
-        print(f"Failed to start AI Coder GUI: {e}")
+        print(f"❌ Failed to start AI Coder GUI: {e}")
+        import traceback
         traceback.print_exc()
 
 if __name__ == "__main__":
