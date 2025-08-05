@@ -30,9 +30,95 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-# Logging setup
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Enhanced Logging setup with color support and detailed formatting
+def setup_enhanced_logging():
+    """Setup enhanced logging with color coding and detailed progress tracking"""
+    
+    class ColoredFormatter(logging.Formatter):
+        """Custom formatter with color coding for console output"""
+        
+        # Color codes for different log levels
+        COLORS = {
+            'DEBUG': '\033[36m',      # Cyan
+            'INFO': '\033[32m',       # Green
+            'WARNING': '\033[33m',    # Yellow
+            'ERROR': '\033[31m',      # Red
+            'CRITICAL': '\033[35m',   # Magenta
+            'RESET': '\033[0m'        # Reset
+        }
+        
+        # Progress indicators with emojis
+        PROGRESS_ICONS = {
+            'processing': '⚙️',
+            'uploading': '📤',
+            'generating': '🚀',
+            'storing': '💾',
+            'searching': '🔍',
+            'parsing': '📄',
+            'embedding': '🧠',
+            'validating': '✅',
+            'initializing': '🔄',
+            'completed': '✅',
+            'failed': '❌',
+            'warning': '⚠️'
+        }
+        
+        def format(self, record):
+            # Get color for log level
+            color = self.COLORS.get(record.levelname, self.COLORS['RESET'])
+            reset = self.COLORS['RESET']
+            
+            # Add progress icon based on message content
+            message = record.getMessage()
+            icon = ''
+            for keyword, emoji in self.PROGRESS_ICONS.items():
+                if keyword in message.lower():
+                    icon = f"{emoji} "
+                    break
+            
+            # Enhanced format with component tracking
+            component = record.name.split('.')[-1] if '.' in record.name else record.name
+            
+            # Create formatted message
+            formatted = f"{color}[{self.formatTime(record, '%H:%M:%S')}] {record.levelname:8} | {component:12} | {icon}{message}{reset}"
+            
+            return formatted
+    
+    # Setup root logger
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
+    
+    # Remove existing handlers
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+    
+    # Create console handler with color formatting
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(ColoredFormatter())
+    logger.addHandler(console_handler)
+    
+    # Create file handler for detailed logging
+    try:
+        log_dir = Path("./logs")
+        log_dir.mkdir(exist_ok=True)
+        
+        file_handler = logging.FileHandler(log_dir / "ai_coder_detailed.log", encoding='utf-8')
+        file_handler.setLevel(logging.DEBUG)
+        file_formatter = logging.Formatter(
+            '%(asctime)s | %(name)s | %(funcName)s:%(lineno)d | %(levelname)s | %(message)s'
+        )
+        file_handler.setFormatter(file_formatter)
+        logger.addHandler(file_handler)
+        
+    except Exception as e:
+        print(f"Warning: Could not setup file logging: {e}")
+    
+    return logger
+
+# Initialize enhanced logging
+logger = setup_enhanced_logging()
+logger.info("🚀 Enhanced logging system initialized with color coding and progress tracking")
 
 @dataclass
 class ManualChunk:
