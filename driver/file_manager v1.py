@@ -770,10 +770,10 @@ class GooglePrivacyManager:
         threading.Thread(target=do_secure, daemon=True).start()
 
     def setup_gui(self):
-        """Setup GUI interface with enhanced search"""
+        """Setup GUI interface"""
         self.root = tk.Tk()
         self.root.title("Google Privacy Manager - Drive Files & Calendars")
-        self.root.geometry("900x700")
+        self.root.geometry("800x600")
         
         # Variables
         self.progress_var = tk.DoubleVar()
@@ -785,7 +785,7 @@ class GooglePrivacyManager:
         
         # Title
         title_label = ttk.Label(main_frame, text="Google Privacy Manager", 
-                            font=("Arial", 16, "bold"))
+                               font=("Arial", 16, "bold"))
         title_label.grid(row=0, column=0, columnspan=3, pady=(0, 20))
         
         # Login section
@@ -796,7 +796,7 @@ class GooglePrivacyManager:
         self.status_label.grid(row=0, column=0, sticky=tk.W)
         
         self.login_button = ttk.Button(login_frame, text="Login to Google", 
-                                    command=self.google_login)
+                                      command=self.google_login)
         self.login_button.grid(row=0, column=1, sticky=tk.E, padx=(10, 0))
         
         # Create notebook for tabs
@@ -832,15 +832,15 @@ class GooglePrivacyManager:
         files_button_frame.grid(row=1, column=0, columnspan=2, pady=(10, 0))
         
         self.scan_files_button = ttk.Button(files_button_frame, text="Scan Drive Files", 
-                                        command=self.scan_drive_files, state=tk.DISABLED)
+                                           command=self.scan_drive_files, state=tk.DISABLED)
         self.scan_files_button.grid(row=0, column=0, padx=(0, 5))
         
         self.make_files_private_button = ttk.Button(files_button_frame, text="Make Selected Private", 
-                                                command=self.make_selected_files_private, state=tk.DISABLED)
+                                                   command=self.make_selected_files_private, state=tk.DISABLED)
         self.make_files_private_button.grid(row=0, column=1, padx=5)
         
         self.make_all_files_private_button = ttk.Button(files_button_frame, text="Make All Private", 
-                                                    command=self.make_all_files_private, state=tk.DISABLED)
+                                                       command=self.make_all_files_private, state=tk.DISABLED)
         self.make_all_files_private_button.grid(row=0, column=2, padx=(5, 0))
         
         # Calendars tab
@@ -874,7 +874,7 @@ class GooglePrivacyManager:
         calendars_button_frame.grid(row=1, column=0, columnspan=2, pady=(10, 0))
         
         self.scan_calendars_button = ttk.Button(calendars_button_frame, text="Scan All Calendars", 
-                                            command=self.scan_all_calendars, state=tk.DISABLED)
+                                               command=self.scan_all_calendars, state=tk.DISABLED)
         self.scan_calendars_button.grid(row=0, column=0, padx=(0, 5))
         
         self.view_events_button = ttk.Button(calendars_button_frame, text="View Events", 
@@ -882,7 +882,7 @@ class GooglePrivacyManager:
         self.view_events_button.grid(row=0, column=1, padx=5)
         
         self.make_calendars_private_button = ttk.Button(calendars_button_frame, text="Make Selected Private", 
-                                                    command=self.make_selected_calendars_private, state=tk.DISABLED)
+                                                       command=self.make_selected_calendars_private, state=tk.DISABLED)
         self.make_calendars_private_button.grid(row=0, column=2, padx=5)
         
         self.make_all_public_private_button = ttk.Button(calendars_button_frame, text="Make All Public Private", 
@@ -894,110 +894,24 @@ class GooglePrivacyManager:
         calendars_button_frame2.grid(row=2, column=0, columnspan=2, pady=(5, 0))
         
         self.secure_events_button = ttk.Button(calendars_button_frame2, text="🔒 Secure All Events (Private/Busy)", 
-                                            command=self.secure_all_calendar_events, state=tk.DISABLED)
+                                              command=self.secure_all_calendar_events, state=tk.DISABLED)
         self.secure_events_button.grid(row=0, column=0, padx=(0, 5))
         
-        self.search_all_events_button = ttk.Button(calendars_button_frame2, text="🔍 Search All Events", 
-                                                command=self.search_all_calendar_events, state=tk.DISABLED)
-        self.search_all_events_button.grid(row=0, column=1, padx=5)
-        
         ttk.Label(calendars_button_frame2, text="⚠️ Makes ALL events in selected calendar private & busy", 
-                font=("Arial", 8), foreground="orange").grid(row=0, column=2, sticky=tk.W, padx=(5, 0))
-        
-        # Event Search tab
-        search_frame = ttk.Frame(notebook, padding="10")
-        notebook.add(search_frame, text="Event Search")
-        
-        # Search controls
-        search_controls_frame = ttk.LabelFrame(search_frame, text="Search Filters", padding="10")
-        search_controls_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
-        
-        # Search term
-        ttk.Label(search_controls_frame, text="Search Term:").grid(row=0, column=0, sticky=tk.W, padx=(0, 5))
-        self.search_entry = ttk.Entry(search_controls_frame, width=30)
-        self.search_entry.grid(row=0, column=1, padx=5)
-        
-        # Date range
-        ttk.Label(search_controls_frame, text="From Date:").grid(row=0, column=2, sticky=tk.W, padx=(10, 5))
-        self.from_date_entry = ttk.Entry(search_controls_frame, width=15)
-        self.from_date_entry.insert(0, "YYYY-MM-DD")
-        self.from_date_entry.grid(row=0, column=3, padx=5)
-        
-        ttk.Label(search_controls_frame, text="To Date:").grid(row=0, column=4, sticky=tk.W, padx=(10, 5))
-        self.to_date_entry = ttk.Entry(search_controls_frame, width=15)
-        self.to_date_entry.insert(0, "YYYY-MM-DD")
-        self.to_date_entry.grid(row=0, column=5, padx=5)
-        
-        # Search options
-        options_frame = ttk.Frame(search_controls_frame)
-        options_frame.grid(row=1, column=0, columnspan=6, pady=(10, 0))
-        
-        self.search_title_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(options_frame, text="Search Titles", variable=self.search_title_var).grid(row=0, column=0, padx=5)
-        
-        self.search_description_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(options_frame, text="Search Descriptions", variable=self.search_description_var).grid(row=0, column=1, padx=5)
-        
-        self.search_location_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(options_frame, text="Search Locations", variable=self.search_location_var).grid(row=0, column=2, padx=5)
-        
-        self.public_only_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(options_frame, text="Public Events Only", variable=self.public_only_var).grid(row=0, column=3, padx=5)
-        
-        # Search button
-        self.search_button = ttk.Button(search_controls_frame, text="Search Events", 
-                                    command=self.perform_event_search, state=tk.DISABLED)
-        self.search_button.grid(row=2, column=0, columnspan=6, pady=(10, 0))
-        
-        # Search results
-        results_frame = ttk.LabelFrame(search_frame, text="Search Results", padding="10")
-        results_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 10))
-        
-        # Results treeview
-        result_columns = ('Calendar', 'Event', 'Date', 'Location', 'Visibility', 'Match')
-        self.search_results_tree = ttk.Treeview(results_frame, columns=result_columns, show='headings', height=10)
-        
-        self.search_results_tree.heading('Calendar', text='Calendar')
-        self.search_results_tree.heading('Event', text='Event Title')
-        self.search_results_tree.heading('Date', text='Date/Time')
-        self.search_results_tree.heading('Location', text='Location')
-        self.search_results_tree.heading('Visibility', text='Visibility')
-        self.search_results_tree.heading('Match', text='Match In')
-        
-        self.search_results_tree.column('Calendar', width=150)
-        self.search_results_tree.column('Event', width=200)
-        self.search_results_tree.column('Date', width=150)
-        self.search_results_tree.column('Location', width=150)
-        self.search_results_tree.column('Visibility', width=80)
-        self.search_results_tree.column('Match', width=100)
-        
-        # Scrollbar for search results
-        search_scrollbar = ttk.Scrollbar(results_frame, orient=tk.VERTICAL, command=self.search_results_tree.yview)
-        self.search_results_tree.configure(yscrollcommand=search_scrollbar.set)
-        
-        self.search_results_tree.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        search_scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
-        
-        # Search summary label
-        self.search_summary_label = ttk.Label(results_frame, text="No search performed yet")
-        self.search_summary_label.grid(row=1, column=0, columnspan=2, pady=(5, 0))
+                 font=("Arial", 8), foreground="orange").grid(row=0, column=1, sticky=tk.W, padx=(5, 0))
         
         # Configure grid weights for tabs
         files_frame.columnconfigure(0, weight=1)
         files_frame.rowconfigure(0, weight=1)
         calendars_frame.columnconfigure(0, weight=1)
         calendars_frame.rowconfigure(0, weight=1)
-        search_frame.columnconfigure(0, weight=1)
-        search_frame.rowconfigure(1, weight=1)
-        results_frame.columnconfigure(0, weight=1)
-        results_frame.rowconfigure(0, weight=1)
         
         # Progress section
         progress_frame = ttk.LabelFrame(main_frame, text="Progress", padding="10")
         progress_frame.grid(row=3, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(0, 10))
         
         self.progress_bar = ttk.Progressbar(progress_frame, variable=self.progress_var, 
-                                        maximum=100, length=400)
+                                           maximum=100, length=400)
         self.progress_bar.grid(row=0, column=0, sticky=(tk.W, tk.E))
         
         self.progress_label = ttk.Label(progress_frame, text="Ready")
@@ -1008,195 +922,18 @@ class GooglePrivacyManager:
         self.root.rowconfigure(0, weight=1)
         main_frame.columnconfigure(0, weight=1)
         main_frame.rowconfigure(2, weight=1)
+        files_frame.columnconfigure(0, weight=1)
+        files_frame.rowconfigure(0, weight=1)
         login_frame.columnconfigure(0, weight=1)
         progress_frame.columnconfigure(0, weight=1)
-
-    def export_search_results(self):
-        """Export search results to CSV"""
-        if not self.search_results_tree.get_children():
-            messagebox.showwarning("Warning", "No search results to export")
-            return
-        
-        from tkinter import filedialog
-        import csv
-        
-        filename = filedialog.asksaveasfilename(
-            defaultextension=".csv",
-            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")]
-        )
-        
-        if filename:
-            with open(filename, 'w', newline='', encoding='utf-8') as file:
-                writer = csv.writer(file)
-                
-                # Write headers
-                writer.writerow(['Calendar', 'Event Title', 'Date/Time', 'Location', 'Visibility', 'Match Location'])
-                
-                # Write data
-                for item in self.search_results_tree.get_children():
-                    values = self.search_results_tree.item(item)['values']
-                    writer.writerow(values)
-            
-            messagebox.showinfo("Export Complete", f"Results exported to {filename}")
-            
-    def perform_event_search(self):
-        """Perform search across all calendar events"""
-        search_term = self.search_entry.get().strip().lower()
-        from_date = self.from_date_entry.get().strip()
-        to_date = self.to_date_entry.get().strip()
-        
-        if not search_term and from_date == "YYYY-MM-DD" and to_date == "YYYY-MM-DD":
-            messagebox.showwarning("Warning", "Please enter search criteria")
-            return
-        
-        def do_search():
-            self.progress_label.config(text="Searching all calendars...")
-            self.progress_var.set(10)
-            
-            # Clear previous results
-            for item in self.search_results_tree.get_children():
-                self.search_results_tree.delete(item)
-            
-            all_results = []
-            total_events_searched = 0
-            calendars_searched = 0
-            
-            # Search through all calendars
-            for i, calendar in enumerate(self.all_calendars):
-                # Update progress
-                progress = 10 + (i / len(self.all_calendars)) * 80
-                self.progress_var.set(progress)
-                self.progress_label.config(text=f"Searching: {calendar['name']}")
-                
-                # Get all events from this calendar
-                events = self.api.get_all_events_from_calendar(calendar['id'])
-                calendars_searched += 1
-                
-                for event in events:
-                    total_events_searched += 1
-                    
-                    # Check date range if specified
-                    if from_date != "YYYY-MM-DD" or to_date != "YYYY-MM-DD":
-                        event_date = event['date'].split()[0]  # Get just the date part
-                        
-                        if from_date != "YYYY-MM-DD" and event_date < from_date:
-                            continue
-                        if to_date != "YYYY-MM-DD" and event_date > to_date:
-                            continue
-                    
-                    # Check visibility filter
-                    if self.public_only_var.get() and event['visibility'] == 'private':
-                        continue
-                    
-                    # Search in specified fields
-                    match_found = False
-                    match_location = []
-                    
-                    if search_term:
-                        if self.search_title_var.get() and search_term in event['title'].lower():
-                            match_found = True
-                            match_location.append("Title")
-                        
-                        if self.search_description_var.get() and search_term in event.get('description', '').lower():
-                            match_found = True
-                            match_location.append("Description")
-                        
-                        if self.search_location_var.get() and search_term in event.get('location', '').lower():
-                            match_found = True
-                            match_location.append("Location")
-                    else:
-                        # If no search term, just date filtering
-                        match_found = True
-                        match_location.append("Date Range")
-                    
-                    if match_found:
-                        # Determine visibility icon
-                        visibility_icon = "🔒" if event['visibility'] == 'private' else "👁️"
-                        
-                        all_results.append({
-                            'calendar': calendar['name'],
-                            'event': event['title'],
-                            'date': event['date'],
-                            'location': event.get('location', '-'),
-                            'visibility': f"{visibility_icon} {event['visibility']}",
-                            'match': ', '.join(match_location),
-                            'calendar_public': calendar['is_public'],
-                            'event_data': event
-                        })
-            
-            # Sort results by date
-            all_results.sort(key=lambda x: x['date'])
-            
-            # Populate treeview with results
-            for result in all_results:
-                # Color code based on privacy
-                tags = []
-                if result['calendar_public']:
-                    tags.append('public_calendar_event')
-                if 'private' in result['visibility'].lower():
-                    tags.append('private_event')
-                
-                self.search_results_tree.insert('', 'end', values=(
-                    result['calendar'],
-                    result['event'],
-                    result['date'],
-                    result['location'],
-                    result['visibility'],
-                    result['match']
-                ), tags=tuple(tags))
-            
-            # Configure tags for visual distinction
-            self.search_results_tree.tag_configure('public_calendar_event', background='#fff0f0')
-            self.search_results_tree.tag_configure('private_event', foreground='#666666')
-            
-            # Update summary
-            self.progress_var.set(100)
-            summary = f"Found {len(all_results)} matching events across {calendars_searched} calendars (searched {total_events_searched} total events)"
-            self.search_summary_label.config(text=summary)
-            self.progress_label.config(text="Search complete")
-            
-            # Show security warnings if public events found
-            public_events = [r for r in all_results if r['calendar_public'] and 'private' not in r['visibility'].lower()]
-            if public_events:
-                self.search_summary_label.config(
-                    text=f"{summary}\n⚠️ WARNING: {len(public_events)} events are publicly visible!",
-                    foreground="red"
-                )
-            
-            # Reset progress after delay
-            self.root.after(2000, lambda: [self.progress_var.set(0), self.progress_label.config(text="Ready")])
-        
-        # Run search in separate thread
-        threading.Thread(target=do_search, daemon=True).start()
-            
-
-    def search_all_calendar_events(self):
-        """Open search dialog for all calendar events"""
-        if not hasattr(self, 'all_calendars') or not self.all_calendars:
-            messagebox.showwarning("Warning", "Please scan calendars first")
-            return
-        
-        # Switch to search tab
-        for tab_id in range(self.root.winfo_children()[0].winfo_children()[2].index("end")):
-            if self.root.winfo_children()[0].winfo_children()[2].tab(tab_id, "text") == "Event Search":
-                self.root.winfo_children()[0].winfo_children()[2].select(tab_id)
-                break
-        
-        # Enable search button
-        self.search_button.config(state=tk.NORMAL)
-        
-        # Focus on search entry
-        self.search_entry.focus()
-
-
-
+    
     def setup_console(self):
         """Setup console interface if GUI not available"""
         print("GUI not available. Using console interface.")
         self.console_main()
     
     def google_login(self):
-        """Handle Google login with search functionality enabled"""
+        """Handle Google login"""
         if self.api.authenticated:
             # Logout
             self.api.authenticated = False
@@ -1206,7 +943,6 @@ class GooglePrivacyManager:
             self.is_logged_in.set(False)
             self.status_label.config(text="Not logged in to Google services")
             self.login_button.config(text="Login to Google")
-            
             # Disable all buttons
             self.scan_files_button.config(state=tk.DISABLED)
             self.make_files_private_button.config(state=tk.DISABLED)
@@ -1216,13 +952,6 @@ class GooglePrivacyManager:
             self.make_calendars_private_button.config(state=tk.DISABLED)
             self.make_all_public_private_button.config(state=tk.DISABLED)
             self.secure_events_button.config(state=tk.DISABLED)
-            self.search_all_events_button.config(state=tk.DISABLED)
-            self.search_button.config(state=tk.DISABLED)
-            
-            # Clear search results
-            for item in self.search_results_tree.get_children():
-                self.search_results_tree.delete(item)
-            self.search_summary_label.config(text="No search performed yet")
             
             # Remove token file
             if os.path.exists('token.json'):
@@ -1246,7 +975,7 @@ class GooglePrivacyManager:
         frame.pack(fill=tk.BOTH, expand=True)
         
         ttk.Label(frame, text="Google Drive Authentication", 
-                font=("Arial", 14, "bold")).pack(pady=(0, 20))
+                 font=("Arial", 14, "bold")).pack(pady=(0, 20))
         
         if GOOGLE_API_AVAILABLE:
             status_text = "Opening browser for Google OAuth authentication...\nPlease complete the login in your browser."
@@ -1271,18 +1000,15 @@ class GooglePrivacyManager:
                         messagebox.showinfo("Demo Mode", "Running in demo mode with sample data.\nOAuth2 authentication has been disabled.")
                     elif GOOGLE_API_AVAILABLE and self.api.service:
                         self.status_label.config(text="Connected to Google services (Real API)")
-                        messagebox.showinfo("Success", "Successfully connected to Google Drive & Calendar APIs!\nUse the tabs to scan files, calendars, or search events.")
+                        messagebox.showinfo("Success", "Successfully connected to Google Drive & Calendar APIs!\nUse the tabs to scan files or calendars.")
                     else:
                         self.status_label.config(text="Connected to Google services (Demo Mode)")
                         messagebox.showinfo("Demo Mode", "Running in demo mode with sample data.\nInstall Google API libraries and configure credentials.json for real API access.")
                     
                     self.login_button.config(text="Logout")
-                    
-                    # Enable all scan and search buttons
+                    # Enable all scan buttons
                     self.scan_files_button.config(state=tk.NORMAL)
                     self.scan_calendars_button.config(state=tk.NORMAL)
-                    self.search_button.config(state=tk.NORMAL)  # Enable search immediately after login
-                    
                 else:
                     progress_window.destroy()
                     messagebox.showerror("Error", "Authentication failed. Please try again.")
@@ -1295,8 +1021,8 @@ class GooglePrivacyManager:
         
         # Add cancel button
         ttk.Button(frame, text="Cancel", 
-                command=progress_window.destroy).pack(pady=(20, 0))
-        
+                  command=progress_window.destroy).pack(pady=(20, 0))
+    
     def scan_drive_files(self):
         """Scan Google Drive for shared files"""
         def do_scan():
@@ -1375,7 +1101,7 @@ class GooglePrivacyManager:
             self.root.after(2000, lambda: [self.progress_var.set(0), self.progress_label.config(text="Ready")])
         
         threading.Thread(target=do_scan, daemon=True).start()
-     
+    
     def scan_all_calendars(self):
         """Scan ALL calendars (both public and private) to show schedules and security risks"""
         def do_scan():
@@ -1427,9 +1153,6 @@ class GooglePrivacyManager:
                 self.view_events_button.config(state=tk.NORMAL)
                 self.make_calendars_private_button.config(state=tk.NORMAL)
                 self.secure_events_button.config(state=tk.NORMAL)
-                # Enable search button if you have the search functionality
-                if hasattr(self, 'search_all_events_button'):
-                    self.search_all_events_button.config(state=tk.NORMAL)
             if public_count > 0:
                 self.make_all_public_private_button.config(state=tk.NORMAL)
             
@@ -1437,7 +1160,7 @@ class GooglePrivacyManager:
             self.root.after(3000, lambda: [self.progress_var.set(0), self.progress_label.config(text="Ready")])
         
         threading.Thread(target=do_scan, daemon=True).start()
-
+    
     def view_calendar_events(self):
         """Show events for selected calendar"""
         selected_items = self.calendars_tree.selection()
@@ -1583,277 +1306,6 @@ class GooglePrivacyManager:
         
         ttk.Button(button_frame, text="Close", 
                   command=events_window.destroy).pack(side=tk.RIGHT)
-
-    def quick_search_today_events(self):
-        """Quick search for today's events across all calendars"""
-        from datetime import datetime
-        today = datetime.now().strftime("%Y-%m-%d")
-        
-        # Set search parameters for today
-        self.search_entry.delete(0, tk.END)
-        self.from_date_entry.delete(0, tk.END)
-        self.from_date_entry.insert(0, today)
-        self.to_date_entry.delete(0, tk.END)
-        self.to_date_entry.insert(0, today)
-        
-        # Perform search
-        self.perform_event_search()
-
-    def quick_search_this_week_events(self):
-        """Quick search for this week's events"""
-        from datetime import datetime, timedelta
-        today = datetime.now()
-        start_of_week = today - timedelta(days=today.weekday())
-        end_of_week = start_of_week + timedelta(days=6)
-        
-        # Set search parameters for this week
-        self.search_entry.delete(0, tk.END)
-        self.from_date_entry.delete(0, tk.END)
-        self.from_date_entry.insert(0, start_of_week.strftime("%Y-%m-%d"))
-        self.to_date_entry.delete(0, tk.END)
-        self.to_date_entry.insert(0, end_of_week.strftime("%Y-%m-%d"))
-        
-        # Perform search
-        self.perform_event_search()
-
-    def search_sensitive_events(self):
-        """Search for potentially sensitive events that might be exposed"""
-        sensitive_keywords = [
-            "medical", "doctor", "hospital", "clinic", "therapy",
-            "personal", "private", "confidential", "secret",
-            "salary", "review", "performance", "HR",
-            "financial", "bank", "investment", "tax",
-            "lawyer", "legal", "court",
-            "interview", "resignation"
-        ]
-        
-        def do_sensitive_search():
-            self.progress_label.config(text="Searching for sensitive events...")
-            self.progress_var.set(10)
-            
-            # Clear previous results
-            for item in self.search_results_tree.get_children():
-                self.search_results_tree.delete(item)
-            
-            sensitive_results = []
-            total_events_searched = 0
-            public_sensitive_count = 0
-            
-            # Search through all calendars
-            for i, calendar in enumerate(self.all_calendars):
-                # Update progress
-                progress = 10 + (i / len(self.all_calendars)) * 80
-                self.progress_var.set(progress)
-                self.progress_label.config(text=f"Scanning: {calendar['name']}")
-                
-                # Get all events from this calendar
-                events = self.api.get_all_events_from_calendar(calendar['id'])
-                
-                for event in events:
-                    total_events_searched += 1
-                    
-                    # Check if event contains sensitive keywords
-                    event_text = f"{event['title']} {event.get('description', '')} {event.get('location', '')}".lower()
-                    
-                    matched_keywords = []
-                    for keyword in sensitive_keywords:
-                        if keyword in event_text:
-                            matched_keywords.append(keyword)
-                    
-                    if matched_keywords:
-                        # This is a potentially sensitive event
-                        is_exposed = calendar['is_public'] and event['visibility'] != 'private'
-                        
-                        if is_exposed:
-                            public_sensitive_count += 1
-                        
-                        sensitive_results.append({
-                            'calendar': calendar['name'],
-                            'event': event['title'],
-                            'date': event['date'],
-                            'location': event.get('location', '-'),
-                            'visibility': event['visibility'],
-                            'keywords': matched_keywords,
-                            'is_exposed': is_exposed,
-                            'calendar_public': calendar['is_public']
-                        })
-            
-            # Sort by exposure risk (exposed events first)
-            sensitive_results.sort(key=lambda x: (not x['is_exposed'], x['date']))
-            
-            # Populate treeview with results
-            for result in sensitive_results:
-                # Determine risk level
-                if result['is_exposed']:
-                    risk_icon = "🚨 HIGH RISK"
-                    tags = ('high_risk',)
-                elif result['calendar_public']:
-                    risk_icon = "⚠️ Medium Risk"
-                    tags = ('medium_risk',)
-                else:
-                    risk_icon = "✅ Low Risk"
-                    tags = ('low_risk',)
-                
-                self.search_results_tree.insert('', 'end', values=(
-                    result['calendar'],
-                    result['event'],
-                    result['date'],
-                    result['location'],
-                    f"{risk_icon} - {result['visibility']}",
-                    f"Keywords: {', '.join(result['keywords'][:3])}"
-                ), tags=tags)
-            
-            # Configure tags for visual distinction
-            self.search_results_tree.tag_configure('high_risk', background='#ffcccc', foreground='#cc0000')
-            self.search_results_tree.tag_configure('medium_risk', background='#fff8cc', foreground='#cc6600')
-            self.search_results_tree.tag_configure('low_risk', background='#ccffcc', foreground='#006600')
-            
-            # Update summary with security warning
-            self.progress_var.set(100)
-            if public_sensitive_count > 0:
-                self.search_summary_label.config(
-                    text=f"🚨 SECURITY ALERT: Found {len(sensitive_results)} sensitive events, {public_sensitive_count} are PUBLICLY EXPOSED!",
-                    foreground="red"
-                )
-                
-                # Show alert dialog
-                messagebox.showwarning(
-                    "Security Risk Detected",
-                    f"Found {public_sensitive_count} sensitive events that are publicly visible!\n\n"
-                    f"These events contain keywords like: medical, personal, financial, etc.\n\n"
-                    f"Recommended Action: Make these calendars or events private immediately."
-                )
-            else:
-                self.search_summary_label.config(
-                    text=f"Found {len(sensitive_results)} potentially sensitive events (none publicly exposed)",
-                    foreground="green"
-                )
-            
-            self.progress_label.config(text="Sensitive event scan complete")
-            
-            # Reset progress after delay
-            self.root.after(2000, lambda: [self.progress_var.set(0), self.progress_label.config(text="Ready")])
-        
-        # Run search in separate thread
-        threading.Thread(target=do_sensitive_search, daemon=True).start()
-
-    def show_event_details_from_search(self, event):
-        """Show detailed information for a selected search result"""
-        selected_items = self.search_results_tree.selection()
-        if not selected_items:
-            return
-        
-        event_values = self.search_results_tree.item(selected_items[0])['values']
-        
-        # Create detail window
-        detail_window = tk.Toplevel(self.root)
-        detail_window.title("Event Details - Security Analysis")
-        detail_window.geometry("600x500")
-        detail_window.transient(self.root)
-        
-        # Main frame
-        main_frame = ttk.Frame(detail_window, padding="20")
-        main_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Title
-        ttk.Label(main_frame, text="Event Security Analysis", 
-                font=("Arial", 14, "bold")).pack(anchor=tk.W, pady=(0, 10))
-        
-        # Event info frame
-        info_frame = ttk.LabelFrame(main_frame, text="Event Information", padding="10")
-        info_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        ttk.Label(info_frame, text=f"Calendar: {event_values[0]}", font=("Arial", 10)).pack(anchor=tk.W)
-        ttk.Label(info_frame, text=f"Event: {event_values[1]}", font=("Arial", 10, "bold")).pack(anchor=tk.W)
-        ttk.Label(info_frame, text=f"Date/Time: {event_values[2]}", font=("Arial", 10)).pack(anchor=tk.W)
-        ttk.Label(info_frame, text=f"Location: {event_values[3]}", font=("Arial", 10)).pack(anchor=tk.W)
-        
-        # Security analysis frame
-        security_frame = ttk.LabelFrame(main_frame, text="Security Analysis", padding="10")
-        security_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        # Determine security status
-        if "HIGH RISK" in str(event_values[4]):
-            security_status = "🚨 HIGH RISK - Event is publicly visible"
-            status_color = "red"
-            recommendation = "IMMEDIATE ACTION REQUIRED: Make this event or calendar private"
-        elif "Medium Risk" in str(event_values[4]):
-            security_status = "⚠️ MEDIUM RISK - Calendar is public but event is private"
-            status_color = "orange"
-            recommendation = "Consider making the entire calendar private for better security"
-        else:
-            security_status = "✅ LOW RISK - Event and calendar are private"
-            status_color = "green"
-            recommendation = "No immediate action needed - event is properly secured"
-        
-        status_label = ttk.Label(security_frame, text=security_status, font=("Arial", 11, "bold"))
-        status_label.pack(anchor=tk.W)
-        
-        ttk.Label(security_frame, text=f"\nVisibility: {event_values[4]}", font=("Arial", 10)).pack(anchor=tk.W)
-        ttk.Label(security_frame, text=f"Match found in: {event_values[5]}", font=("Arial", 10)).pack(anchor=tk.W)
-        
-        # Recommendations frame
-        rec_frame = ttk.LabelFrame(main_frame, text="Security Recommendations", padding="10")
-        rec_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
-        
-        rec_text = tk.Text(rec_frame, height=8, width=50, wrap=tk.WORD)
-        rec_text.pack(fill=tk.BOTH, expand=True)
-        
-        rec_text.insert(tk.END, f"{recommendation}\n\n")
-        rec_text.insert(tk.END, "General Security Tips:\n")
-        rec_text.insert(tk.END, "• Keep personal calendars completely private\n")
-        rec_text.insert(tk.END, "• Use 'busy' visibility for sensitive work events\n")
-        rec_text.insert(tk.END, "• Avoid putting sensitive details in event titles\n")
-        rec_text.insert(tk.END, "• Regularly audit your calendar sharing settings\n")
-        rec_text.insert(tk.END, "• Use separate calendars for different privacy levels")
-        
-        rec_text.config(state=tk.DISABLED)
-        
-        # Action buttons
-        button_frame = ttk.Frame(main_frame)
-        button_frame.pack(fill=tk.X)
-        
-        ttk.Button(button_frame, text="Close", 
-                command=detail_window.destroy).pack(side=tk.RIGHT)
-        
-        if "HIGH RISK" in str(event_values[4]) or "Medium Risk" in str(event_values[4]):
-            ttk.Button(button_frame, text="Make Calendar Private", 
-                    command=lambda: self.make_calendar_private_from_search(event_values[0], detail_window)).pack(side=tk.LEFT, padx=(0, 5))
-
-    def make_calendar_private_from_search(self, calendar_name, parent_window):
-        """Make a calendar private directly from search results"""
-        # Find the calendar
-        target_calendar = None
-        for cal in self.all_calendars:
-            if cal['name'] == calendar_name:
-                target_calendar = cal
-                break
-        
-        if not target_calendar:
-            messagebox.showerror("Error", "Calendar not found")
-            return
-        
-        if not target_calendar['is_public']:
-            messagebox.showinfo("Info", "This calendar is already private")
-            return
-        
-        # Confirm action
-        result = messagebox.askyesno(
-            "Confirm Privacy Change",
-            f"Make calendar '{calendar_name}' private?\n\n"
-            f"This will prevent others from seeing any events in this calendar."
-        )
-        
-        if result:
-            # Make calendar private
-            if self.api.make_calendar_private(target_calendar['id']):
-                messagebox.showinfo("Success", f"Calendar '{calendar_name}' is now private!")
-                parent_window.destroy()
-                # Refresh search results
-                self.perform_event_search()
-            else:
-                messagebox.showerror("Error", "Failed to make calendar private")
-                
 
     def make_selected_files_private(self):
         """Make selected files private"""
