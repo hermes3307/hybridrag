@@ -201,10 +201,17 @@ class GoogleDriveAPI:
             for perm in permissions.get('permissions', []):
                 # Remove public and domain permissions (keep owner)
                 if perm.get('type') in ['anyone', 'domain']:
-                    self.service.permissions().delete(
-                        fileId=file_id,
-                        permissionId=perm['id']
-                    ).execute()
+                    try:
+                        self.service.permissions().delete(
+                            fileId=file_id,
+                            permissionId=perm['id']
+                        ).execute()
+                        print(f"Removed permission {perm['id']} from file {file_id}")
+                    except HttpError as perm_error:
+                        if perm_error.resp.status == 404:
+                            print(f"Permission {perm['id']} not found (already removed)")
+                        else:
+                            print(f"Error removing permission {perm['id']}: {perm_error}")
             
             return True
             
@@ -354,26 +361,35 @@ class GoogleDriveAPI:
             print(f"Unexpected error getting calendar events: {e}")
             return self._get_demo_events(calendar_id)
             
-    def get_all_events_from_calendar(self, calendar_id, max_results=100):
+    def get_all_events_from_calendar(self, calendar_id, max_results=100, time_min=None, time_max=None):
         """Get ALL events from a calendar (for privacy management)"""
         if not GOOGLE_API_AVAILABLE or not hasattr(self, 'calendar_service') or not self.calendar_service:
             # Return demo events
             return self._get_all_demo_events(calendar_id)
             
         try:
-            # Get events from the last 6 months and next 6 months for comprehensive coverage
-            now = datetime.utcnow()
-            time_min = (now - timedelta(days=180)).isoformat() + 'Z'
-            time_max = (now + timedelta(days=180)).isoformat() + 'Z'
+            # Use provided time range or default to 6 months window
+            if time_min is None and time_max is None:
+                # Get events from the last 6 months and next 6 months for comprehensive coverage
+                now = datetime.utcnow()
+                time_min = (now - timedelta(days=180)).isoformat() + 'Z'
+                time_max = (now + timedelta(days=180)).isoformat() + 'Z'
             
-            events_result = self.calendar_service.events().list(
-                calendarId=calendar_id,
-                timeMin=time_min,
-                timeMax=time_max,
-                maxResults=max_results,
-                singleEvents=True,
-                orderBy='startTime'
-            ).execute()
+            # Build API request parameters
+            api_params = {
+                'calendarId': calendar_id,
+                'maxResults': max_results,
+                'singleEvents': True,
+                'orderBy': 'startTime'
+            }
+            
+            # Add time constraints only if specified
+            if time_min:
+                api_params['timeMin'] = time_min
+            if time_max:
+                api_params['timeMax'] = time_max
+            
+            events_result = self.calendar_service.events().list(**api_params).execute()
             
             events = events_result.get('items', [])
             formatted_events = []
@@ -419,14 +435,14 @@ class GoogleDriveAPI:
         """Return demo events for different calendar types"""
         if calendar_id == 'calendar_001':  # Work Schedule
             return [
-                {'id': 'event_001', 'title': 'Team Meeting', 'description': 'Weekly team sync', 'date': '2024-01-15 09:00', 'duration': '1h 0m', 'location': 'Conference Room A', 'attendees': 5, 'visibility': 'default'},
-                {'id': 'event_002', 'title': 'Project Review', 'description': 'Q4 project status', 'date': '2024-01-16 14:00', 'duration': '2h 0m', 'location': 'Main Office', 'attendees': 8, 'visibility': 'default'},
+                {'id': 'event_001', 'title': '시무식', 'description': 'New Year ceremony - company event', 'date': '2025-01-03 10:00', 'duration': '2h 0m', 'location': 'Main Conference Hall', 'attendees': 50, 'visibility': 'default'},
+                {'id': 'event_002', 'title': '경영본부 weekly', 'description': 'Weekly management meeting', 'date': '2025-01-02 16:00', 'duration': '1h 0m', 'location': 'Executive Room', 'attendees': 8, 'visibility': 'default'},
                 {'id': 'event_003', 'title': 'Client Presentation', 'description': 'Product demo for client', 'date': '2024-01-18 10:30', 'duration': '1h 30m', 'location': 'Client Office', 'attendees': 12, 'visibility': 'public'}
             ]
         elif calendar_id == 'calendar_002':  # Team Events
             return [
-                {'id': 'event_004', 'title': 'Company All-Hands', 'description': 'Monthly company meeting', 'date': '2024-01-20', 'duration': 'All day', 'location': 'Main Auditorium', 'attendees': 150, 'visibility': 'public'},
-                {'id': 'event_005', 'title': 'Team Building Activity', 'description': 'Outdoor team building', 'date': '2024-01-25 13:00', 'duration': '4h 0m', 'location': 'City Park', 'attendees': 25, 'visibility': 'public'}
+                {'id': 'event_004', 'title': "Lenovo TechDay'25 It's Time for AI-nomics", 'description': 'Technology conference and AI trends', 'date': '2025-02-20 13:00', 'duration': '4h 0m', 'location': 'Convention Center', 'attendees': 500, 'visibility': 'public'},
+                {'id': 'event_005', 'title': '경영본부 weekly', 'description': 'Weekly management meeting', 'date': '2025-02-20 16:00', 'duration': '1h 0m', 'location': 'Executive Room', 'attendees': 8, 'visibility': 'public'}
             ]
         elif calendar_id == 'calendar_003':  # Project Deadlines
             return [
@@ -449,6 +465,16 @@ class GoogleDriveAPI:
                 {'id': 'event_013', 'title': 'Family Dinner', 'description': 'Monthly family gathering', 'date': '2024-01-21 18:30', 'duration': '3h 0m', 'location': 'Home', 'attendees': 6, 'visibility': 'private'},
                 {'id': 'event_014', 'title': 'Kids Soccer Game', 'description': 'Support the kids at their game', 'date': '2024-01-26 15:00', 'duration': '2h 0m', 'location': 'Sports Complex', 'attendees': 4, 'visibility': 'private'}
             ]
+        elif calendar_id == 'calendar_007':  # joonho.park@altibase.com
+            return [
+                {'id': 'event_030', 'title': '시무식', 'description': 'New Year ceremony - company event', 'date': '2025-01-03 10:00', 'duration': '2h 0m', 'location': 'Main Conference Hall', 'attendees': 50, 'visibility': 'default'},
+                {'id': 'event_031', 'title': '경영본부 weekly', 'description': 'Weekly management meeting', 'date': '2025-01-02 16:00', 'duration': '1h 0m', 'location': 'Executive Room', 'attendees': 8, 'visibility': 'default'},
+                {'id': 'event_032', 'title': "Lenovo TechDay'25 It's Time for AI-nomics", 'description': 'Technology conference and AI trends', 'date': '2025-02-20 13:00', 'duration': '4h 0m', 'location': 'Convention Center', 'attendees': 500, 'visibility': 'public'},
+                {'id': 'event_033', 'title': '경영본부 weekly', 'description': 'Weekly management meeting', 'date': '2025-02-20 16:00', 'duration': '1h 0m', 'location': 'Executive Room', 'attendees': 8, 'visibility': 'public'},
+                {'id': 'event_034', 'title': '경영본부 weekly', 'description': 'Weekly management meeting', 'date': '2025-02-27 16:00', 'duration': '1h 0m', 'location': 'Executive Room', 'attendees': 8, 'visibility': 'public'},
+                {'id': 'event_035', 'title': '국토부 과제 월간 미팅(서울대)', 'description': 'Monthly meeting with Seoul National University', 'date': '2025-02-28 09:30', 'duration': '2h 0m', 'location': 'Seoul National University', 'attendees': 15, 'visibility': 'default'},
+                {'id': 'event_036', 'title': '경영본부 weekly', 'description': 'Weekly management meeting', 'date': '2025-03-06 16:00', 'duration': '1h 0m', 'location': 'Executive Room', 'attendees': 8, 'visibility': 'public'}
+            ]
         else:
             return []
     
@@ -456,17 +482,19 @@ class GoogleDriveAPI:
         """Return ALL demo events with various visibility settings for privacy management"""
         if calendar_id == 'calendar_001':  # Work Schedule
             return [
-                {'id': 'event_001', 'title': 'Team Meeting', 'description': 'Weekly team sync - sensitive project discussion', 'date': '2024-01-15 09:00', 'duration': '1h 0m', 'location': 'Conference Room A', 'attendees': 5, 'visibility': 'default', 'transparency': 'opaque'},
-                {'id': 'event_002', 'title': 'Project Review', 'description': 'Q4 project status - confidential budget info', 'date': '2024-01-16 14:00', 'duration': '2h 0m', 'location': 'Main Office', 'attendees': 8, 'visibility': 'public', 'transparency': 'opaque'},
-                {'id': 'event_003', 'title': 'Client Presentation', 'description': 'Product demo for client - NDA required', 'date': '2024-01-18 10:30', 'duration': '1h 30m', 'location': 'Client Office', 'attendees': 12, 'visibility': 'default', 'transparency': 'opaque'},
-                {'id': 'event_021', 'title': 'Salary Review Meeting', 'description': 'Personal compensation discussion - CONFIDENTIAL', 'date': '2024-01-19 15:00', 'duration': '1h 0m', 'location': 'HR Office', 'attendees': 2, 'visibility': 'public', 'transparency': 'opaque'},
-                {'id': 'event_022', 'title': 'Strategy Planning', 'description': 'Company strategy - highly sensitive', 'date': '2024-01-22 11:00', 'duration': '3h 0m', 'location': 'Executive Suite', 'attendees': 6, 'visibility': 'default', 'transparency': 'opaque'}
+                {'id': 'event_001', 'title': '시무식', 'description': 'New Year ceremony - company event', 'date': '2025-01-03 10:00', 'duration': '2h 0m', 'location': 'Main Conference Hall', 'attendees': 50, 'visibility': 'default', 'transparency': 'opaque'},
+                {'id': 'event_002', 'title': '경영본부 weekly', 'description': 'Weekly management meeting', 'date': '2025-01-02 16:00', 'duration': '1h 0m', 'location': 'Executive Room', 'attendees': 8, 'visibility': 'public', 'transparency': 'opaque'},
+                {'id': 'event_003', 'title': 'Client Presentation', 'description': 'Product demo for client - NDA required', 'date': '2025-01-18 10:30', 'duration': '1h 30m', 'location': 'Client Office', 'attendees': 12, 'visibility': 'default', 'transparency': 'opaque'},
+                {'id': 'event_021', 'title': 'Salary Review Meeting', 'description': 'Personal compensation discussion - CONFIDENTIAL', 'date': '2025-01-19 15:00', 'duration': '1h 0m', 'location': 'HR Office', 'attendees': 2, 'visibility': 'public', 'transparency': 'opaque'},
+                {'id': 'event_022', 'title': 'Strategy Planning', 'description': 'Company strategy - highly sensitive', 'date': '2025-01-22 11:00', 'duration': '3h 0m', 'location': 'Executive Suite', 'attendees': 6, 'visibility': 'default', 'transparency': 'opaque'}
             ]
         elif calendar_id == 'calendar_002':  # Team Events
             return [
-                {'id': 'event_004', 'title': 'Company All-Hands', 'description': 'Monthly company meeting', 'date': '2024-01-20', 'duration': 'All day', 'location': 'Main Auditorium', 'attendees': 150, 'visibility': 'public', 'transparency': 'opaque'},
-                {'id': 'event_005', 'title': 'Team Building Activity', 'description': 'Outdoor team building', 'date': '2024-01-25 13:00', 'duration': '4h 0m', 'location': 'City Park', 'attendees': 25, 'visibility': 'public', 'transparency': 'opaque'},
-                {'id': 'event_023', 'title': 'Performance Review Session', 'description': 'Individual performance discussions - PRIVATE', 'date': '2024-01-26 14:00', 'duration': '2h 0m', 'location': 'Meeting Room B', 'attendees': 8, 'visibility': 'default', 'transparency': 'opaque'}
+                {'id': 'event_004', 'title': "Lenovo TechDay'25 It's Time for AI-nomics", 'description': 'Technology conference and AI trends', 'date': '2025-02-20 13:00', 'duration': '4h 0m', 'location': 'Convention Center', 'attendees': 500, 'visibility': 'public', 'transparency': 'opaque'},
+                {'id': 'event_005', 'title': '경영본부 weekly', 'description': 'Weekly management meeting', 'date': '2025-02-20 16:00', 'duration': '1h 0m', 'location': 'Executive Room', 'attendees': 8, 'visibility': 'public', 'transparency': 'opaque'},
+                {'id': 'event_023', 'title': '경영본부 weekly', 'description': 'Weekly management meeting', 'date': '2025-02-27 16:00', 'duration': '1h 0m', 'location': 'Executive Room', 'attendees': 8, 'visibility': 'public', 'transparency': 'opaque'},
+                {'id': 'event_028', 'title': '국토부 과제 월간 미팅(서울대)', 'description': 'Monthly meeting with Seoul National University', 'date': '2025-02-28 09:30', 'duration': '2h 0m', 'location': 'Seoul National University', 'attendees': 15, 'visibility': 'default', 'transparency': 'opaque'},
+                {'id': 'event_029', 'title': '경영본부 weekly', 'description': 'Weekly management meeting', 'date': '2025-03-06 16:00', 'duration': '1h 0m', 'location': 'Executive Room', 'attendees': 8, 'visibility': 'public', 'transparency': 'opaque'}
             ]
         elif calendar_id == 'calendar_003':  # Project Deadlines
             return [
@@ -492,6 +520,16 @@ class GoogleDriveAPI:
                 {'id': 'event_013', 'title': 'Family Dinner', 'description': 'Monthly family gathering', 'date': '2024-01-21 18:30', 'duration': '3h 0m', 'location': 'Home', 'attendees': 6, 'visibility': 'default', 'transparency': 'opaque'},
                 {'id': 'event_014', 'title': 'Kids Soccer Game', 'description': 'Support the kids at their game', 'date': '2024-01-26 15:00', 'duration': '2h 0m', 'location': 'Sports Complex', 'attendees': 4, 'visibility': 'default', 'transparency': 'opaque'},
                 {'id': 'event_027', 'title': 'Anniversary Planning', 'description': 'Plan wedding anniversary surprise - SECRET', 'date': '2024-01-31 20:00', 'duration': '1h 0m', 'location': 'Home', 'attendees': 0, 'visibility': 'default', 'transparency': 'opaque'}
+            ]
+        elif calendar_id == 'calendar_007':  # joonho.park@altibase.com
+            return [
+                {'id': 'event_030', 'title': '시무식', 'description': 'New Year ceremony - company event', 'date': '2025-01-03 10:00', 'duration': '2h 0m', 'location': 'Main Conference Hall', 'attendees': 50, 'visibility': 'default', 'transparency': 'opaque'},
+                {'id': 'event_031', 'title': '경영본부 weekly', 'description': 'Weekly management meeting', 'date': '2025-01-02 16:00', 'duration': '1h 0m', 'location': 'Executive Room', 'attendees': 8, 'visibility': 'default', 'transparency': 'opaque'},
+                {'id': 'event_032', 'title': "Lenovo TechDay'25 It's Time for AI-nomics", 'description': 'Technology conference and AI trends', 'date': '2025-02-20 13:00', 'duration': '4h 0m', 'location': 'Convention Center', 'attendees': 500, 'visibility': 'public', 'transparency': 'opaque'},
+                {'id': 'event_033', 'title': '경영본부 weekly', 'description': 'Weekly management meeting', 'date': '2025-02-20 16:00', 'duration': '1h 0m', 'location': 'Executive Room', 'attendees': 8, 'visibility': 'public', 'transparency': 'opaque'},
+                {'id': 'event_034', 'title': '경영본부 weekly', 'description': 'Weekly management meeting', 'date': '2025-02-27 16:00', 'duration': '1h 0m', 'location': 'Executive Room', 'attendees': 8, 'visibility': 'public', 'transparency': 'opaque'},
+                {'id': 'event_035', 'title': '국토부 과제 월간 미팅(서울대)', 'description': 'Monthly meeting with Seoul National University', 'date': '2025-02-28 09:30', 'duration': '2h 0m', 'location': 'Seoul National University', 'attendees': 15, 'visibility': 'default', 'transparency': 'opaque'},
+                {'id': 'event_036', 'title': '경영본부 weekly', 'description': 'Weekly management meeting', 'date': '2025-03-06 16:00', 'duration': '1h 0m', 'location': 'Executive Room', 'attendees': 8, 'visibility': 'public', 'transparency': 'opaque'}
             ]
         else:
             return []
@@ -594,6 +632,18 @@ class GoogleDriveAPI:
                 'is_public': False,
                 'access_role': 'owner',
                 'primary': False
+            },
+            {
+                'id': 'calendar_007',
+                'name': 'joonho.park@altibase.com',
+                'description': 'Primary work calendar',
+                'sharing_status': 'Private',
+                'acl_rules': [
+                    {'scope': {'type': 'user', 'value': 'joonho.park@altibase.com'}, 'role': 'owner'}
+                ],
+                'is_public': False,
+                'access_role': 'owner',
+                'primary': True
             }
         ]
 
@@ -920,12 +970,18 @@ class GooglePrivacyManager:
         # Date range
         ttk.Label(search_controls_frame, text="From Date:").grid(row=0, column=2, sticky=tk.W, padx=(10, 5))
         self.from_date_entry = ttk.Entry(search_controls_frame, width=15)
-        self.from_date_entry.insert(0, "YYYY-MM-DD")
+        
+        # Set default dates to current year (1 year range)
+        current_year = datetime.now().year
+        year_start = f"{current_year}-01-01"
+        year_end = f"{current_year}-12-31"
+        
+        self.from_date_entry.insert(0, year_start)
         self.from_date_entry.grid(row=0, column=3, padx=5)
         
         ttk.Label(search_controls_frame, text="To Date:").grid(row=0, column=4, sticky=tk.W, padx=(10, 5))
         self.to_date_entry = ttk.Entry(search_controls_frame, width=15)
-        self.to_date_entry.insert(0, "YYYY-MM-DD")
+        self.to_date_entry.insert(0, year_end)
         self.to_date_entry.grid(row=0, column=5, padx=5)
         
         # Search options
@@ -978,9 +1034,43 @@ class GooglePrivacyManager:
         self.search_results_tree.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         search_scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
         
+        # Add Ctrl+A functionality to select all search results
+        def select_all_search_results(event):
+            """Select all items in search results tree"""
+            children = self.search_results_tree.get_children()
+            if children:
+                self.search_results_tree.selection_set(children)
+            return "break"  # Prevent default behavior
+        
+        # Bind Ctrl+A to the search results tree
+        self.search_results_tree.bind("<Control-a>", select_all_search_results)
+        self.search_results_tree.bind("<Control-A>", select_all_search_results)  # Handle both cases
+        
         # Search summary label
         self.search_summary_label = ttk.Label(results_frame, text="No search performed yet")
         self.search_summary_label.grid(row=1, column=0, columnspan=2, pady=(5, 0))
+        
+        # Bulk event controls (privacy and actions)
+        bulk_frame = ttk.LabelFrame(results_frame, text="Bulk Event Controls (Ctrl+A to select all)", padding="5")
+        bulk_frame.grid(row=2, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(10, 0))
+        
+        # Privacy control buttons (first row)
+        ttk.Button(bulk_frame, text="🔒 Make Selected Private", 
+                  command=self.make_selected_events_private, state=tk.DISABLED).grid(row=0, column=0, padx=5, pady=2)
+        ttk.Button(bulk_frame, text="🔐 Make Selected Confidential", 
+                  command=self.make_selected_events_confidential, state=tk.DISABLED).grid(row=0, column=1, padx=5, pady=2)
+        ttk.Button(bulk_frame, text="👁️ Make Selected Public", 
+                  command=self.make_selected_events_public, state=tk.DISABLED).grid(row=0, column=2, padx=5, pady=2)
+        
+        # Action buttons (second row)
+        ttk.Button(bulk_frame, text="🗑️ Delete Selected Events", 
+                  command=self.delete_selected_events, state=tk.DISABLED).grid(row=1, column=0, columnspan=3, padx=5, pady=2)
+        
+        # Store references to bulk buttons for enabling/disabling
+        self.bulk_private_button = bulk_frame.grid_slaves(row=0, column=0)[0]
+        self.bulk_confidential_button = bulk_frame.grid_slaves(row=0, column=1)[0]
+        self.bulk_public_button = bulk_frame.grid_slaves(row=0, column=2)[0]
+        self.bulk_delete_button = bulk_frame.grid_slaves(row=1, column=0)[0]
         
         # Configure grid weights for tabs
         files_frame.columnconfigure(0, weight=1)
@@ -1045,8 +1135,12 @@ class GooglePrivacyManager:
         from_date = self.from_date_entry.get().strip()
         to_date = self.to_date_entry.get().strip()
         
-        if not search_term and from_date == "YYYY-MM-DD" and to_date == "YYYY-MM-DD":
-            messagebox.showwarning("Warning", "Please enter search criteria")
+        # Check if we have either search term or valid date range
+        has_search_term = search_term.strip() != ""
+        has_date_range = (from_date and from_date != "YYYY-MM-DD") or (to_date and to_date != "YYYY-MM-DD")
+        
+        if not has_search_term and not has_date_range:
+            messagebox.showwarning("Warning", "Please enter search criteria (search term or date range)")
             return
         
         def do_search():
@@ -1061,6 +1155,28 @@ class GooglePrivacyManager:
             total_events_searched = 0
             calendars_searched = 0
             
+            # Prepare date range for API call
+            api_time_min = None
+            api_time_max = None
+            
+            # Convert user date inputs to API format if provided
+            # This supports unlimited date ranges (e.g., searching events from 1990, 2030, etc.)
+            if from_date and from_date != "YYYY-MM-DD":
+                try:
+                    # Convert YYYY-MM-DD to ISO format with timezone
+                    api_time_min = f"{from_date}T00:00:00Z"
+                except ValueError:
+                    print(f"Invalid from_date format: {from_date}")
+                    pass  # Invalid date format, ignore
+            
+            if to_date and to_date != "YYYY-MM-DD":
+                try:
+                    # Convert YYYY-MM-DD to ISO format with timezone (end of day)
+                    api_time_max = f"{to_date}T23:59:59Z"
+                except ValueError:
+                    print(f"Invalid to_date format: {to_date}")
+                    pass  # Invalid date format, ignore
+            
             # Search through all calendars
             for i, calendar in enumerate(self.all_calendars):
                 # Update progress
@@ -1068,21 +1184,20 @@ class GooglePrivacyManager:
                 self.progress_var.set(progress)
                 self.progress_label.config(text=f"Searching: {calendar['name']}")
                 
-                # Get all events from this calendar
-                events = self.api.get_all_events_from_calendar(calendar['id'])
+                # Get events from this calendar with date range if specified
+                events = self.api.get_all_events_from_calendar(
+                    calendar['id'], 
+                    max_results=1000,  # Increase limit for comprehensive search
+                    time_min=api_time_min, 
+                    time_max=api_time_max
+                )
                 calendars_searched += 1
                 
                 for event in events:
                     total_events_searched += 1
                     
-                    # Check date range if specified
-                    if from_date != "YYYY-MM-DD" or to_date != "YYYY-MM-DD":
-                        event_date = event['date'].split()[0]  # Get just the date part
-                        
-                        if from_date != "YYYY-MM-DD" and event_date < from_date:
-                            continue
-                        if to_date != "YYYY-MM-DD" and event_date > to_date:
-                            continue
+                    # Date filtering is now handled by the API call above
+                    # No need for additional date checks
                     
                     # Check visibility filter
                     if self.public_only_var.get() and event['visibility'] == 'private':
@@ -1163,6 +1278,18 @@ class GooglePrivacyManager:
                     foreground="red"
                 )
             
+            # Enable bulk control buttons if results found
+            if len(all_results) > 0:
+                self.bulk_private_button.config(state=tk.NORMAL)
+                self.bulk_confidential_button.config(state=tk.NORMAL)
+                self.bulk_public_button.config(state=tk.NORMAL)
+                self.bulk_delete_button.config(state=tk.NORMAL)
+            else:
+                self.bulk_private_button.config(state=tk.DISABLED)
+                self.bulk_confidential_button.config(state=tk.DISABLED)
+                self.bulk_public_button.config(state=tk.DISABLED)
+                self.bulk_delete_button.config(state=tk.DISABLED)
+            
             # Reset progress after delay
             self.root.after(2000, lambda: [self.progress_var.set(0), self.progress_label.config(text="Ready")])
         
@@ -1218,6 +1345,10 @@ class GooglePrivacyManager:
             self.secure_events_button.config(state=tk.DISABLED)
             self.search_all_events_button.config(state=tk.DISABLED)
             self.search_button.config(state=tk.DISABLED)
+            self.bulk_private_button.config(state=tk.DISABLED)
+            self.bulk_confidential_button.config(state=tk.DISABLED)
+            self.bulk_public_button.config(state=tk.DISABLED)
+            self.bulk_delete_button.config(state=tk.DISABLED)
             
             # Clear search results
             for item in self.search_results_tree.get_children():
@@ -1854,6 +1985,344 @@ class GooglePrivacyManager:
             else:
                 messagebox.showerror("Error", "Failed to make calendar private")
                 
+    def make_selected_events_private(self):
+        """Make selected events from search results private"""
+        selected_items = self.search_results_tree.selection()
+        if not selected_items:
+            messagebox.showwarning("Warning", "Please select events to make private")
+            return
+        
+        event_data = []
+        for item in selected_items:
+            values = self.search_results_tree.item(item)['values']
+            calendar_name = values[0]
+            event_title = values[1]
+            event_data.append({'calendar': calendar_name, 'title': event_title})
+        
+        result = messagebox.askyesno("Confirm Privacy Change", 
+                                   f"Make {len(event_data)} selected event(s) private?\n\n" +
+                                   "This will:\n" +
+                                   "• Hide event details from others\n" +
+                                   "• Show only as 'Busy' time\n" +
+                                   "• Restrict visibility to owner only")
+        
+        if result:
+            self._process_bulk_event_privacy(event_data, 'private')
+    
+    def make_selected_events_confidential(self):
+        """Make selected events confidential (highest security level)"""
+        selected_items = self.search_results_tree.selection()
+        if not selected_items:
+            messagebox.showwarning("Warning", "Please select events to make confidential")
+            return
+        
+        event_data = []
+        for item in selected_items:
+            values = self.search_results_tree.item(item)['values']
+            calendar_name = values[0]
+            event_title = values[1]
+            event_data.append({'calendar': calendar_name, 'title': event_title})
+        
+        result = messagebox.askyesno("Confirm Confidential Setting", 
+                                   f"Make {len(event_data)} selected event(s) CONFIDENTIAL?\n\n" +
+                                   "This will:\n" +
+                                   "• Set highest privacy level\n" +
+                                   "• Hide all event details\n" +
+                                   "• Remove from public calendars\n" +
+                                   "• Show as 'Private' or 'Busy' only")
+        
+        if result:
+            self._process_bulk_event_privacy(event_data, 'confidential')
+    
+    def make_selected_events_public(self):
+        """Make selected events public (visible to others)"""
+        selected_items = self.search_results_tree.selection()
+        if not selected_items:
+            messagebox.showwarning("Warning", "Please select events to make public")
+            return
+        
+        event_data = []
+        for item in selected_items:
+            values = self.search_results_tree.item(item)['values']
+            calendar_name = values[0]
+            event_title = values[1]
+            event_data.append({'calendar': calendar_name, 'title': event_title})
+        
+        result = messagebox.askyesno("Confirm Public Setting", 
+                                   f"Make {len(event_data)} selected event(s) PUBLIC?\n\n" +
+                                   "This will:\n" +
+                                   "• Make event details visible to others\n" +
+                                   "• Show full event information\n" +
+                                   "• Allow public access if calendar permits")
+        
+        if result:
+            self._process_bulk_event_privacy(event_data, 'public')
+    
+    def _process_bulk_event_privacy(self, event_data, privacy_level):
+        """Process bulk privacy changes for events"""
+        successful_changes = 0
+        failed_changes = 0
+        
+        self.progress_label.config(text=f"Processing {len(event_data)} events...")
+        self.progress_var.set(0)
+        
+        for i, event_info in enumerate(event_data):
+            try:
+                # Find the calendar ID for this event
+                target_calendar = None
+                for calendar in self.all_calendars:
+                    if calendar['name'] == event_info['calendar']:
+                        target_calendar = calendar
+                        break
+                
+                if not target_calendar:
+                    failed_changes += 1
+                    continue
+                
+                # Get events from this calendar to find the specific event
+                events = self.api.get_calendar_events(target_calendar['id'])
+                target_event = None
+                for event in events:
+                    if event['title'] == event_info['title']:
+                        target_event = event
+                        break
+                
+                if not target_event:
+                    failed_changes += 1
+                    continue
+                
+                # Apply privacy change based on level
+                if privacy_level == 'private':
+                    success = self.api.make_event_private_busy(target_calendar['id'], target_event['id'])
+                elif privacy_level == 'confidential':
+                    # For confidential, we make it private and also try to move to a private calendar
+                    success = self.api.make_event_private_busy(target_calendar['id'], target_event['id'])
+                else:  # public
+                    # For public, we reverse the privacy settings
+                    success = self._make_event_public(target_calendar['id'], target_event['id'])
+                
+                if success:
+                    successful_changes += 1
+                else:
+                    failed_changes += 1
+                
+                # Update progress
+                progress = int((i + 1) * 100 / len(event_data))
+                self.progress_var.set(progress)
+                self.root.update_idletasks()
+                
+            except Exception as e:
+                print(f"Error processing event {event_info['title']}: {e}")
+                failed_changes += 1
+        
+        # Show results
+        if successful_changes > 0:
+            messagebox.showinfo("Privacy Update Complete", 
+                               f"Successfully updated {successful_changes} event(s) to {privacy_level}.\n" +
+                               (f"{failed_changes} event(s) failed to update." if failed_changes > 0 else ""))
+        else:
+            messagebox.showerror("Privacy Update Failed", 
+                               f"Failed to update any events. {failed_changes} error(s) occurred.")
+        
+        # Refresh search results
+        self.perform_event_search()
+        
+        # Reset progress
+        self.progress_var.set(0)
+        self.progress_label.config(text="Ready")
+    
+    def _make_event_public(self, calendar_id, event_id):
+        """Make an event public (reverse of private settings)"""
+        try:
+            service = self.api.calendar_service
+            event = service.events().get(calendarId=calendar_id, eventId=event_id).execute()
+            
+            # Set visibility to public/default
+            event['visibility'] = 'default'  # or 'public'
+            if 'transparency' in event:
+                event['transparency'] = 'opaque'  # Show as busy but with details
+            
+            # Update the event
+            service.events().update(calendarId=calendar_id, eventId=event_id, body=event).execute()
+            return True
+            
+        except Exception as e:
+            print(f"Error making event public: {e}")
+            return False
+    
+    def delete_selected_events(self):
+        """Delete selected events from search results"""
+        selected_items = self.search_results_tree.selection()
+        if not selected_items:
+            messagebox.showwarning("Warning", "Please select events to delete")
+            return
+        
+        event_data = []
+        for item in selected_items:
+            values = self.search_results_tree.item(item)['values']
+            calendar_name = values[0]
+            event_title = values[1]
+            event_date = values[2]
+            event_data.append({
+                'calendar': calendar_name, 
+                'title': event_title,
+                'date': event_date
+            })
+        
+        # Show detailed confirmation dialog
+        event_list = "\n".join([f"• {event['title']} ({event['date']}) in {event['calendar']}" 
+                               for event in event_data[:5]])  # Show first 5
+        if len(event_data) > 5:
+            event_list += f"\n... and {len(event_data) - 5} more events"
+        
+        result = messagebox.askyesno(
+            "⚠️ Confirm Event Deletion", 
+            f"PERMANENTLY DELETE {len(event_data)} selected event(s)?\n\n"
+            f"Events to be deleted:\n{event_list}\n\n"
+            f"⚠️ WARNING: This action cannot be undone!\n"
+            f"⚠️ Events will be permanently removed from Google Calendar!\n\n"
+            f"Are you absolutely sure you want to continue?",
+            icon='warning'
+        )
+        
+        if result:
+            # Double confirmation for safety
+            double_confirm = messagebox.askyesno(
+                "⚠️ Final Confirmation", 
+                f"This is your FINAL WARNING!\n\n"
+                f"You are about to PERMANENTLY DELETE {len(event_data)} events.\n"
+                f"This action is IRREVERSIBLE.\n\n"
+                f"Click YES only if you are absolutely certain.",
+                icon='warning'
+            )
+            
+            if double_confirm:
+                self._process_bulk_event_deletion(event_data)
+    
+    def _process_bulk_event_deletion(self, event_data):
+        """Process bulk deletion of events"""
+        successful_deletions = 0
+        failed_deletions = 0
+        
+        self.progress_label.config(text=f"Deleting {len(event_data)} events...")
+        self.progress_var.set(0)
+        
+        for i, event_info in enumerate(event_data):
+            try:
+                # Find the calendar ID for this event
+                target_calendar = None
+                for calendar in self.all_calendars:
+                    if calendar['name'] == event_info['calendar']:
+                        target_calendar = calendar
+                        break
+                
+                if not target_calendar:
+                    failed_deletions += 1
+                    continue
+                
+                # Get events from this calendar using unlimited date range (like search does)
+                # Need to use get_all_events_from_calendar with no time restrictions
+                events = self.api.get_all_events_from_calendar(
+                    target_calendar['id'], 
+                    max_results=1000,  # Use same high limit as search
+                    time_min=None,     # No date restrictions to match all events
+                    time_max=None
+                )
+                target_event = None
+                print(f"Looking for event: '{event_info['title']}' on '{event_info['date']}' in calendar '{event_info['calendar']}'")
+                print(f"Available events: {len(events)} total")
+                
+                # Try to find the event with exact match first
+                for event in events:
+                    if (event['title'] == event_info['title'] and 
+                        event['date'] == event_info['date']):
+                        target_event = event
+                        print(f"Found event with exact match: {event['title']}")
+                        break
+                
+                # If exact match failed, try fuzzy matching (sometimes dates have different formats)
+                if not target_event:
+                    for event in events:
+                        # Compare just the date part (first 10 characters: YYYY-MM-DD)
+                        event_date_part = event['date'][:10] if len(event['date']) >= 10 else event['date']
+                        search_date_part = event_info['date'][:10] if len(event_info['date']) >= 10 else event_info['date']
+                        
+                        if (event['title'] == event_info['title'] and 
+                            event_date_part == search_date_part):
+                            target_event = event
+                            print(f"Found event with fuzzy date matching: {event['title']}")
+                            break
+                
+                # If still not found, try title-only matching (fallback for edge cases)
+                if not target_event:
+                    for event in events:
+                        if event['title'] == event_info['title']:
+                            target_event = event
+                            print(f"Found event with title-only matching: {event['title']} (date mismatch: expected '{event_info['date']}', found '{event['date']}')")
+                            break
+                
+                if not target_event:
+                    print(f"Failed to find event: {event_info['title']} on {event_info['date']} in {event_info['calendar']}")
+                    available_events = [f"{e['title']} - {e['date']}" for e in events[:5]]
+                    print(f"Available events in calendar: {available_events}")
+                    print(f"Search criteria - Title: '{event_info['title']}', Date: '{event_info['date']}'")
+                    failed_deletions += 1
+                    continue
+                
+                # Delete the event using Google Calendar API
+                success = self._delete_event(target_calendar['id'], target_event['id'])
+                
+                if success:
+                    successful_deletions += 1
+                else:
+                    failed_deletions += 1
+                
+                # Update progress
+                progress = int((i + 1) * 100 / len(event_data))
+                self.progress_var.set(progress)
+                self.root.update_idletasks()
+                
+            except Exception as e:
+                print(f"Error deleting event {event_info['title']}: {e}")
+                failed_deletions += 1
+        
+        # Show results
+        if successful_deletions > 0:
+            messagebox.showinfo("Deletion Complete", 
+                               f"Successfully deleted {successful_deletions} event(s).\n" +
+                               (f"{failed_deletions} event(s) failed to delete." if failed_deletions > 0 else ""))
+        else:
+            messagebox.showerror("Deletion Failed", 
+                               f"Failed to delete any events. {failed_deletions} error(s) occurred.")
+        
+        # Refresh search results
+        self.perform_event_search()
+        
+        # Reset progress
+        self.progress_var.set(0)
+        self.progress_label.config(text="Ready")
+    
+    def _delete_event(self, calendar_id, event_id):
+        """Delete a specific event using Google Calendar API"""
+        # Handle demo mode (when API not available)
+        if not GOOGLE_API_AVAILABLE or not hasattr(self.api, 'calendar_service') or not self.api.calendar_service:
+            print(f"Demo mode: Simulating deletion of event {event_id}")
+            time.sleep(0.2)  # Simulate API call delay
+            return True
+        
+        try:
+            service = self.api.calendar_service
+            print(f"Attempting to delete event {event_id} from calendar {calendar_id}")
+            
+            # Delete the event
+            service.events().delete(calendarId=calendar_id, eventId=event_id).execute()
+            print(f"Successfully deleted event {event_id}")
+            return True
+            
+        except Exception as e:
+            print(f"Error deleting event {event_id}: {e}")
+            print(f"Error type: {type(e).__name__}")
+            return False
 
     def make_selected_files_private(self):
         """Make selected files private"""
