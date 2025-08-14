@@ -10,7 +10,7 @@ import os
 # Add the current directory to the path so we can import file_manager
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from file_manager import GoogleDrivePermissionManager
+from file_manager import GooglePrivacyManager
 
 def main():
     print("=" * 60)
@@ -27,7 +27,7 @@ def main():
     print()
     
     # Create the app with force_demo_mode=True
-    app = GoogleDrivePermissionManager(force_demo_mode=True)
+    app = GooglePrivacyManager(force_demo_mode=True)
     
     print("Starting application in demo mode...")
     app.run()
