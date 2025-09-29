@@ -34,7 +34,7 @@ def main():
         # Get sample data
         sample = collection.get(limit=min(5, total_count), include=["embeddings", "metadatas", "documents"])
 
-        if sample["embeddings"]:
+        if sample["embeddings"] is not None and len(sample["embeddings"]) > 0:
             embeddings = np.array(sample["embeddings"])
 
             print(f"\n🔢 VECTOR ANALYSIS:")
@@ -56,7 +56,7 @@ def main():
             print(f"   Average norm: {np.mean(norms):.6f}")
 
         print(f"\n📋 SAMPLE METADATA:")
-        if sample["metadatas"]:
+        if sample["metadatas"] is not None and len(sample["metadatas"]) > 0:
             for i, metadata in enumerate(sample["metadatas"][:3]):
                 print(f"   Sample {i+1}:")
                 for key, value in metadata.items():
@@ -64,7 +64,7 @@ def main():
                         print(f"      {key}: {value}")
 
         print(f"\n📝 SAMPLE DOCUMENTS:")
-        if sample["documents"]:
+        if sample["documents"] is not None and len(sample["documents"]) > 0:
             for i, doc in enumerate(sample["documents"][:2]):
                 print(f"   Doc {i+1}: {doc[:100]}...")
 
