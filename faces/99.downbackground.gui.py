@@ -13,6 +13,7 @@ import json
 from datetime import datetime
 from typing import Optional
 import sys
+import shutil
 
 # Import the download system components
 from importlib import import_module
@@ -164,6 +165,8 @@ class DownloadGUI:
         self.stats_labels = {}
         stats_names = [
             ("Total Files in Directory", "total_files"),
+            ("Directory Size", "directory_size"),
+            ("Available Disk Space", "available_space"),
             ("Total Attempts", "total_attempts"),
             ("Successful Downloads", "successful_downloads"),
             ("Duplicates Skipped", "duplicates_skipped"),
@@ -442,15 +445,71 @@ class DownloadGUI:
         except Exception:
             return 0
 
+    def get_directory_size(self):
+        """Get the total size of the faces directory in bytes"""
+        try:
+            faces_dir = self.faces_dir_var.get()
+            if not os.path.exists(faces_dir):
+                return 0
+
+            total_size = 0
+            for dirpath, dirnames, filenames in os.walk(faces_dir):
+                for filename in filenames:
+                    if filename.lower().endswith(('.jpg', '.jpeg', '.png')):
+                        filepath = os.path.join(dirpath, filename)
+                        try:
+                            total_size += os.path.getsize(filepath)
+                        except (OSError, IOError):
+                            continue
+            return total_size
+        except Exception:
+            return 0
+
+    def format_file_size(self, size_bytes):
+        """Format file size in human readable format"""
+        if size_bytes == 0:
+            return "0 B"
+
+        for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+            if size_bytes < 1024.0:
+                if unit == 'B':
+                    return f"{size_bytes:.0f} {unit}"
+                else:
+                    return f"{size_bytes:.2f} {unit}"
+            size_bytes /= 1024.0
+        return f"{size_bytes:.2f} PB"
+
+    def get_available_disk_space(self):
+        """Get available disk space for the download location"""
+        try:
+            faces_dir = self.faces_dir_var.get()
+            if not faces_dir:
+                return 0
+
+            # Create directory if it doesn't exist to get disk space
+            if not os.path.exists(faces_dir):
+                os.makedirs(faces_dir, exist_ok=True)
+
+            # Get disk usage statistics
+            total, used, free = shutil.disk_usage(faces_dir)
+            return free
+        except Exception:
+            return 0
+
     def update_stats(self):
         """Update statistics display"""
         if not self.update_thread_running:
             return
 
         try:
-            # Always update total files count
+            # Always update total files count, directory size, and available space
             total_files = self.get_faces_count()
+            directory_size = self.get_directory_size()
+            available_space = self.get_available_disk_space()
+
             self.stats_labels["total_files"].config(text=str(total_files))
+            self.stats_labels["directory_size"].config(text=self.format_file_size(directory_size))
+            self.stats_labels["available_space"].config(text=self.format_file_size(available_space))
 
             if self.downloader and self.is_downloading:
                 stats = self.downloader.stats.get_stats()
@@ -489,10 +548,16 @@ class DownloadGUI:
         try:
             # Update faces directory info if it exists
             face_count = self.get_faces_count()
+            directory_size = self.get_directory_size()
+            available_space = self.get_available_disk_space()
+
             if face_count > 0:
-                self.log(f"Found {face_count} existing faces in directory")
+                self.log(f"Found {face_count} existing faces in directory ({self.format_file_size(directory_size)})")
+
             # Update the stats display immediately
             self.stats_labels["total_files"].config(text=str(face_count))
+            self.stats_labels["directory_size"].config(text=self.format_file_size(directory_size))
+            self.stats_labels["available_space"].config(text=self.format_file_size(available_space))
         except Exception as e:
             self.log(f"Error updating display: {e}")
 
