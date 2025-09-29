@@ -48,6 +48,18 @@ class ImageDisplayWindow:
         try:
             # Load and display image
             pil_image = Image.open(image_path)
+
+            # Convert to RGB if necessary (fixes many display issues)
+            if pil_image.mode in ('RGBA', 'LA', 'P'):
+                # Create white background for transparency
+                background = Image.new('RGB', pil_image.size, (255, 255, 255))
+                if pil_image.mode == 'P':
+                    pil_image = pil_image.convert('RGBA')
+                background.paste(pil_image, mask=pil_image.split()[-1] if pil_image.mode == 'RGBA' else None)
+                pil_image = background
+            elif pil_image.mode != 'RGB':
+                pil_image = pil_image.convert('RGB')
+
             original_size = pil_image.size
 
             # Calculate resize dimensions to fit in window while maintaining aspect ratio
@@ -56,32 +68,51 @@ class ImageDisplayWindow:
             height_ratio = max_height / original_size[1]
             scale_ratio = min(width_ratio, height_ratio)
 
-            new_width = int(original_size[0] * scale_ratio)
-            new_height = int(original_size[1] * scale_ratio)
+            # Only resize if image is larger than max dimensions
+            if scale_ratio < 1.0:
+                new_width = int(original_size[0] * scale_ratio)
+                new_height = int(original_size[1] * scale_ratio)
+                # Resize image with high quality
+                pil_image = pil_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            else:
+                new_width, new_height = original_size
 
-            # Resize image
-            pil_image = pil_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
-
-            # Convert to PhotoImage
+            # Convert to PhotoImage with proper error handling
             self.photo = ImageTk.PhotoImage(pil_image)
 
-            # Create canvas for better image display
-            canvas = tk.Canvas(image_frame, width=new_width, height=new_height,
-                             highlightthickness=0, relief='ridge', bd=2)
+            # Create a canvas for better image display control
+            canvas = tk.Canvas(image_frame, width=new_width+20, height=new_height+20,
+                             highlightthickness=0, relief='ridge', bd=2, bg='lightgray')
             canvas.pack(pady=10)
 
-            # Add image to canvas
-            canvas.create_image(new_width//2, new_height//2, image=self.photo)
+            # Center the image in the canvas
+            x_center = (new_width + 20) // 2
+            y_center = (new_height + 20) // 2
+            canvas.create_image(x_center, y_center, image=self.photo, anchor=tk.CENTER)
 
             # Add size info
-            size_label = ttk.Label(image_frame,
-                                 text=f"Size: {original_size[0]}×{original_size[1]} → {new_width}×{new_height}")
+            size_info = f"Original: {original_size[0]}×{original_size[1]}"
+            if scale_ratio < 1.0:
+                size_info += f" | Displayed: {new_width}×{new_height} ({scale_ratio*100:.1f}%)"
+            else:
+                size_info += " | Full size"
+
+            size_label = ttk.Label(image_frame, text=size_info)
             size_label.pack(pady=5)
 
         except Exception as e:
-            error_label = ttk.Label(image_frame, text=f"Error loading image: {e}")
+            error_text = f"Error loading image: {str(e)}"
+            error_label = ttk.Label(image_frame, text=error_text, foreground='red')
             error_label.pack(pady=20)
             logger.error(f"Error displaying image {image_path}: {e}")
+
+            # Try to show basic file info even if image failed
+            try:
+                file_size = os.path.getsize(image_path)
+                info_label = ttk.Label(image_frame, text=f"File size: {file_size:,} bytes")
+                info_label.pack(pady=5)
+            except:
+                pass
 
         # Info frame
         info_frame = ttk.LabelFrame(main_frame, text="Image Information")
@@ -316,13 +347,32 @@ class SimilaritySearchGUI:
         summary_label = ttk.Label(results_frame, textvariable=self.results_summary_var)
         summary_label.pack(pady=5)
 
+        # Results display frame
+        results_display_frame = ttk.Frame(results_frame)
+        results_display_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
         # Results table
-        results_table_frame = ttk.LabelFrame(results_frame, text="Similar Faces Found")
-        results_table_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        results_table_frame = ttk.LabelFrame(results_display_frame, text="Similar Faces Found")
+        results_table_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
 
         # Create treeview for results
         result_columns = ("Rank", "Similarity", "File", "Age Group", "Skin Tone", "Quality")
         self.results_tree = ttk.Treeview(results_table_frame, columns=result_columns, show="headings", height=12)
+
+        # Preview frame for selected result
+        preview_frame = ttk.LabelFrame(results_display_frame, text="Selected Result Preview")
+        preview_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=(5, 0))
+
+        # Result preview canvas
+        self.result_preview_canvas = tk.Canvas(preview_frame, width=150, height=150,
+                                             highlightthickness=1, relief='ridge', bd=1, bg='white')
+        self.result_preview_canvas.pack(pady=10, padx=10)
+        self.result_preview_photo = None
+
+        # Result info label
+        self.result_info_var = tk.StringVar(value="Select a result to preview")
+        result_info_label = ttk.Label(preview_frame, textvariable=self.result_info_var, wraplength=140)
+        result_info_label.pack(pady=5, padx=5)
 
         # Configure columns
         self.results_tree.heading("Rank", text="Rank")
@@ -349,6 +399,10 @@ class SimilaritySearchGUI:
 
         # Double-click to view result image
         self.results_tree.bind("<Double-1>", self.view_result_image)
+
+        # Single-click to update preview
+        self.results_tree.bind("<Button-1>", self.on_result_select)
+        self.results_tree.bind("<KeyRelease>", self.on_result_select)
 
         # Results buttons
         results_btn_frame = ttk.Frame(results_frame)
@@ -552,23 +606,46 @@ class SimilaritySearchGUI:
         if not self.current_query_file or not os.path.exists(self.current_query_file):
             # Clear preview
             self.query_preview_canvas.delete("all")
+            self.query_preview_canvas.configure(bg='white')
             self.query_preview_photo = None
             return
 
         try:
             # Load and resize image for preview
             pil_image = Image.open(self.current_query_file)
-            pil_image.thumbnail((75, 75), Image.Resampling.LANCZOS)
+
+            # Convert to RGB if necessary (fixes some image format issues)
+            if pil_image.mode != 'RGB':
+                pil_image = pil_image.convert('RGB')
+
+            # Calculate dimensions to fit in 75x75 while maintaining aspect ratio
+            original_size = pil_image.size
+            size = 75
+
+            # Calculate scale to fit in square
+            scale = min(size / original_size[0], size / original_size[1])
+            new_width = int(original_size[0] * scale)
+            new_height = int(original_size[1] * scale)
+
+            # Resize with high quality
+            pil_image = pil_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
             self.query_preview_photo = ImageTk.PhotoImage(pil_image)
 
             # Clear and update canvas
             self.query_preview_canvas.delete("all")
-            self.query_preview_canvas.create_image(40, 40, image=self.query_preview_photo)
+            self.query_preview_canvas.configure(bg='lightgray')
+
+            # Center the image in the canvas
+            x_center = 40
+            y_center = 40
+            self.query_preview_canvas.create_image(x_center, y_center, image=self.query_preview_photo)
 
         except Exception as e:
             logger.error(f"Error updating query preview: {e}")
-            # Clear preview on error
+            # Clear preview on error and show error indicator
             self.query_preview_canvas.delete("all")
+            self.query_preview_canvas.configure(bg='lightcoral')
+            self.query_preview_canvas.create_text(40, 40, text="Error", fill="white", font=("Arial", 8))
             self.query_preview_photo = None
 
     def use_for_search(self):
@@ -779,6 +856,90 @@ class SimilaritySearchGUI:
                           f"Found {len(self.search_results)} similar faces!\n"
                           f"Results displayed in the Results tab.")
 
+    def on_result_select(self, event):
+        """Handle result selection for preview update"""
+        # Use after_idle to ensure selection is updated
+        self.root.after_idle(self.update_result_preview)
+
+    def update_result_preview(self):
+        """Update the result preview"""
+        selection = self.results_tree.selection()
+        if not selection:
+            # Clear preview
+            self.result_preview_canvas.delete("all")
+            self.result_preview_canvas.configure(bg='white')
+            self.result_preview_photo = None
+            self.result_info_var.set("Select a result to preview")
+            return
+
+        try:
+            # Get selected item
+            item = self.results_tree.item(selection[0])
+            rank = int(item['values'][0])
+
+            # Find the result info
+            result_info = None
+            for r in self.search_results:
+                if r['rank'] == rank:
+                    result_info = r
+                    break
+
+            if not result_info:
+                self.result_info_var.set("Result not found")
+                return
+
+            file_path = result_info['file_path']
+            if not file_path or not os.path.exists(file_path):
+                self.result_preview_canvas.delete("all")
+                self.result_preview_canvas.configure(bg='lightcoral')
+                self.result_preview_canvas.create_text(75, 75, text="File\nNot Found",
+                                                     fill="white", font=("Arial", 10), justify=tk.CENTER)
+                self.result_info_var.set("File not found")
+                return
+
+            # Load and resize image for preview
+            pil_image = Image.open(file_path)
+
+            # Convert to RGB if necessary
+            if pil_image.mode != 'RGB':
+                pil_image = pil_image.convert('RGB')
+
+            # Calculate dimensions to fit in 145x145 while maintaining aspect ratio
+            original_size = pil_image.size
+            size = 145
+
+            # Calculate scale to fit in square
+            scale = min(size / original_size[0], size / original_size[1])
+            new_width = int(original_size[0] * scale)
+            new_height = int(original_size[1] * scale)
+
+            # Resize with high quality
+            pil_image = pil_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            self.result_preview_photo = ImageTk.PhotoImage(pil_image)
+
+            # Clear and update canvas
+            self.result_preview_canvas.delete("all")
+            self.result_preview_canvas.configure(bg='lightgray')
+
+            # Center the image in the canvas
+            x_center = 75
+            y_center = 75
+            self.result_preview_canvas.create_image(x_center, y_center, image=self.result_preview_photo)
+
+            # Update info
+            filename = os.path.basename(file_path)
+            similarity = result_info['similarity'] * 100
+            self.result_info_var.set(f"Rank #{rank}\n{filename}\n{similarity:.1f}% similar")
+
+        except Exception as e:
+            logger.error(f"Error updating result preview: {e}")
+            # Clear preview on error and show error indicator
+            self.result_preview_canvas.delete("all")
+            self.result_preview_canvas.configure(bg='lightcoral')
+            self.result_preview_canvas.create_text(75, 75, text="Error", fill="white", font=("Arial", 10))
+            self.result_preview_photo = None
+            self.result_info_var.set("Preview error")
+
     def view_result_image(self, event):
         """View selected result image on double-click"""
         self.view_selected_result()
@@ -855,6 +1016,12 @@ class SimilaritySearchGUI:
         # Clear treeview
         for item in self.results_tree.get_children():
             self.results_tree.delete(item)
+
+        # Clear preview
+        self.result_preview_canvas.delete("all")
+        self.result_preview_canvas.configure(bg='white')
+        self.result_preview_photo = None
+        self.result_info_var.set("Select a result to preview")
 
         # Update summary
         self.results_summary_var.set("No search performed yet")
