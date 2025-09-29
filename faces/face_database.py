@@ -225,7 +225,8 @@ class FaceDatabase:
             duplicates = []
             processed_ids = set()
 
-            if not all_faces["ids"] or not all_faces["embeddings"]:
+            if (not all_faces["ids"] or len(all_faces["ids"]) == 0 or
+                not all_faces["embeddings"] or len(all_faces["embeddings"]) == 0):
                 return duplicates
 
             embeddings = np.array(all_faces["embeddings"])

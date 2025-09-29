@@ -81,7 +81,7 @@ def get_collection_info(client, collection_name: str) -> Dict[str, Any]:
             try:
                 # Get a small sample to inspect
                 results = collection.peek(limit=1)
-                if results['embeddings'] and len(results['embeddings']) > 0:
+                if results['embeddings'] is not None and len(results['embeddings']) > 0:
                     dimensions = len(results['embeddings'][0])
                     sample_data = {
                         'ids': results['ids'][:3] if results['ids'] else [],
@@ -146,7 +146,7 @@ def create_sample_collection(client):
         return False
 
 def display_database_info(client):
-    """Display comprehensive database information"""
+    """Display comprehensive database information with enhanced details"""
     print("\n" + "="*80)
     print("📊 CHROMADB DATABASE INFORMATION")
     print("="*80)
@@ -162,10 +162,11 @@ def display_database_info(client):
             return
 
         total_documents = 0
+        total_vectors = 0
 
         for collection in collections:
             print(f"\n🗂️  Collection: {collection.name}")
-            print("-" * 50)
+            print("-" * 70)
 
             info = get_collection_info(client, collection.name)
 
@@ -174,15 +175,50 @@ def display_database_info(client):
                 continue
 
             print(f"   📄 Document Count: {info['count']:,}")
+            print(f"   🔢 Vector Count: {info['count']:,}")
             total_documents += info['count']
+            total_vectors += info['count']
 
             if info['dimensions']:
                 print(f"   📐 Vector Dimensions: {info['dimensions']}")
+                vector_size_mb = (info['count'] * info['dimensions'] * 4) / (1024 * 1024)  # 4 bytes per float
+                print(f"   💾 Estimated Vector Storage: {vector_size_mb:.2f} MB")
 
             if info['metadata']:
                 print(f"   🏷️  Collection Metadata:")
                 for key, value in info['metadata'].items():
                     print(f"      • {key}: {value}")
+
+            # Get feature analysis for face collections
+            if collection.name == "faces" and info['count'] > 0:
+                print(f"   🎭 Face Collection Analysis:")
+                try:
+                    # Sample larger set for better analysis
+                    sample_size = min(100, info['count'])
+                    results = collection.get(limit=sample_size, include=['metadatas'])
+
+                    if results['metadatas']:
+                        # Analyze age groups
+                        age_groups = {}
+                        skin_tones = {}
+                        qualities = {}
+
+                        for metadata in results['metadatas']:
+                            age_group = metadata.get('estimated_age_group', 'unknown')
+                            age_groups[age_group] = age_groups.get(age_group, 0) + 1
+
+                            skin_tone = metadata.get('estimated_skin_tone', 'unknown')
+                            skin_tones[skin_tone] = skin_tones.get(skin_tone, 0) + 1
+
+                            quality = metadata.get('image_quality', 'unknown')
+                            qualities[quality] = qualities.get(quality, 0) + 1
+
+                        print(f"      🎂 Age Groups: {dict(sorted(age_groups.items()))}")
+                        print(f"      🎨 Skin Tones: {dict(sorted(skin_tones.items()))}")
+                        print(f"      📸 Qualities: {dict(sorted(qualities.items()))}")
+
+                except Exception as e:
+                    print(f"      ⚠️  Could not analyze face features: {e}")
 
             if info['sample_data']:
                 print(f"   🔍 Sample Data:")
@@ -200,22 +236,54 @@ def display_database_info(client):
                 if sample['metadata_sample']:
                     print(f"      • Sample Metadata: {sample['metadata_sample']}")
 
-        print(f"\n📊 SUMMARY")
-        print("-" * 30)
-        print(f"Total Collections: {len(collections)}")
-        print(f"Total Documents: {total_documents:,}")
+        print(f"\n📊 COMPREHENSIVE SUMMARY")
+        print("=" * 50)
+        print(f"🗂️  Total Collections: {len(collections)}")
+        print(f"📄 Total Documents: {total_documents:,}")
+        print(f"🔢 Total Vectors: {total_vectors:,}")
 
-        # Database size estimation
+        # Database size estimation with detailed breakdown
         db_path = "./chroma_db"
         if os.path.exists(db_path):
             total_size = 0
+            file_counts = {}
+
             for dirpath, dirnames, filenames in os.walk(db_path):
                 for filename in filenames:
                     filepath = os.path.join(dirpath, filename)
-                    total_size += os.path.getsize(filepath)
+                    file_size = os.path.getsize(filepath)
+                    total_size += file_size
+
+                    # Categorize file types
+                    ext = os.path.splitext(filename)[1].lower()
+                    if ext in file_counts:
+                        file_counts[ext] += 1
+                    else:
+                        file_counts[ext] = 1
 
             size_mb = total_size / (1024 * 1024)
-            print(f"Database Size: {size_mb:.2f} MB ({total_size:,} bytes)")
+            size_gb = size_mb / 1024
+
+            print(f"💾 Database Size: {size_mb:.2f} MB ({size_gb:.3f} GB)")
+            print(f"📁 Database Path: {os.path.abspath(db_path)}")
+
+            if file_counts:
+                print(f"📋 File Breakdown:")
+                for ext, count in sorted(file_counts.items()):
+                    print(f"   • {ext or 'no extension'}: {count} files")
+
+        # Memory usage estimation
+        if total_vectors > 0:
+            avg_dimension = 512  # Estimate for face embeddings
+            estimated_memory_mb = (total_vectors * avg_dimension * 4) / (1024 * 1024)
+            print(f"🧠 Estimated Memory Usage: {estimated_memory_mb:.2f} MB")
+
+        # Available collections for selection
+        print(f"\n🎯 AVAILABLE COLLECTIONS FOR SELECTION")
+        print("-" * 50)
+        for i, collection in enumerate(collections, 1):
+            info = get_collection_info(client, collection.name)
+            print(f"{i}. {collection.name} ({info['count']:,} vectors)")
 
     except Exception as e:
         print(f"❌ Error displaying database info: {e}")
