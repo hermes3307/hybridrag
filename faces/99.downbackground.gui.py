@@ -239,7 +239,6 @@ class DownloadGUI:
             # Save to file
             self.config.save_to_file()
             self.log("Configuration saved successfully")
-            messagebox.showinfo("Success", "Configuration saved successfully!")
         except Exception as e:
             self.log(f"Error saving configuration: {e}")
             messagebox.showerror("Error", f"Error saving configuration: {e}")
