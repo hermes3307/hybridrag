@@ -952,6 +952,12 @@ class DownloadGUI:
                         os.remove(file_path)
                         removed_count += 1
                         self.log(f"✅ Removed duplicate: {filename}")
+
+                        # Also remove corresponding JSON metadata file
+                        json_path = os.path.splitext(file_path)[0] + '.json'
+                        if os.path.exists(json_path):
+                            os.remove(json_path)
+                            self.log(f"✅ Removed metadata: {os.path.basename(json_path)}")
                     else:
                         self.log(f"⚠️ File not found: {filename}")
 
@@ -1194,6 +1200,12 @@ class DownloadGUI:
                     os.remove(file_path)
                     removed_count += 1
                     self.log(f"✅ Removed: {filename}")
+
+                    # Also remove corresponding JSON metadata file
+                    json_path = os.path.splitext(file_path)[0] + '.json'
+                    if os.path.exists(json_path):
+                        os.remove(json_path)
+                        self.log(f"✅ Removed metadata: {os.path.basename(json_path)}")
                 else:
                     self.log(f"⚠️ File not found: {filename}")
 
