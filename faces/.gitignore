@@ -3,6 +3,7 @@ faces/
 chroma_db/
 indexer.log
 batch/
+test_images/
 vector/ 
 venv/
 .csv
