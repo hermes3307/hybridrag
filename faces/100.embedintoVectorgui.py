@@ -188,6 +188,8 @@ class EmbeddingGUI:
             ("Files to Process", "total_files"),
             ("Files Processed", "processed_files"),
             ("Successful Embeddings", "successful_embeddings"),
+            ("Metadata Loaded", "metadata_loaded"),
+            ("Metadata Missing", "metadata_missing"),
             ("Duplicates Skipped", "duplicates_skipped"),
             ("Errors", "errors"),
             ("Elapsed Time", "elapsed_time"),
@@ -441,6 +443,8 @@ class EmbeddingGUI:
                 text_widget.insert(tk.END, "-" * 30 + "\n")
                 text_widget.insert(tk.END, f"📁 Files Processed: {stats.get('processed_files', 0):,}\n")
                 text_widget.insert(tk.END, f"✅ Successful Embeddings: {stats.get('successful_embeddings', 0):,}\n")
+                text_widget.insert(tk.END, f"📋 Metadata Loaded: {stats.get('metadata_loaded', 0):,}\n")
+                text_widget.insert(tk.END, f"⚠️  Metadata Missing: {stats.get('metadata_missing', 0):,}\n")
                 text_widget.insert(tk.END, f"⏭️  Duplicates Skipped: {stats.get('duplicates_skipped', 0):,}\n")
                 text_widget.insert(tk.END, f"❌ Errors: {stats.get('errors', 0):,}\n")
                 text_widget.insert(tk.END, f"⏱️  Total Time: {stats.get('elapsed_time', 0):.1f} seconds\n")
@@ -870,8 +874,14 @@ class EmbeddingGUI:
         try:
             # Run database info command
             import subprocess
-            result = subprocess.run(['python3', 'run_chroma_info.py'],
-                                  capture_output=True, text=True, timeout=30)
+            import sys
+
+            # Use the same python interpreter that's running this script
+            python_exe = sys.executable
+
+            result = subprocess.run([python_exe, 'run_chroma_info.py'],
+                                  capture_output=True, text=True, timeout=30,
+                                  encoding='utf-8', errors='replace')
 
             if result.returncode == 0:
                 # Show in a new window with enhanced layout
@@ -939,9 +949,14 @@ class EmbeddingGUI:
                 self._generate_statistics(stats_text)
 
             else:
-                self.log("Error getting database info")
-                messagebox.showerror("Error", "Could not retrieve database information")
+                # Show error details
+                error_msg = f"Failed to retrieve database information.\n\nReturn code: {result.returncode}\n\nError output:\n{result.stderr}"
+                self.log(f"Error getting database info: {result.stderr}")
+                messagebox.showerror("Error", error_msg)
 
+        except subprocess.TimeoutExpired:
+            self.log("Database info command timed out")
+            messagebox.showerror("Error", "Database info command timed out after 30 seconds")
         except Exception as e:
             self.log(f"Error showing database info: {e}")
             messagebox.showerror("Error", f"Error showing database info: {e}")
@@ -1130,6 +1145,8 @@ class EmbeddingGUI:
                 self.stats_labels["total_files"].config(text=str(stats.get("total_files", 0)))
                 self.stats_labels["processed_files"].config(text=str(stats.get("processed_files", 0)))
                 self.stats_labels["successful_embeddings"].config(text=str(stats.get("successful_embeddings", 0)))
+                self.stats_labels["metadata_loaded"].config(text=str(stats.get("metadata_loaded", 0)))
+                self.stats_labels["metadata_missing"].config(text=str(stats.get("metadata_missing", 0)))
                 self.stats_labels["duplicates_skipped"].config(text=str(stats.get("duplicates_skipped", 0)))
                 self.stats_labels["errors"].config(text=str(stats.get("errors", 0)))
                 self.stats_labels["elapsed_time"].config(text=f"{stats.get('elapsed_time', 0):.1f}s")
@@ -1145,7 +1162,8 @@ class EmbeddingGUI:
                 # Reset stats when not processing
                 if not self.is_processing:
                     for key in ["total_files", "processed_files", "successful_embeddings",
-                               "duplicates_skipped", "errors", "remaining_files"]:
+                               "metadata_loaded", "metadata_missing", "duplicates_skipped",
+                               "errors", "remaining_files"]:
                         self.stats_labels[key].config(text="0")
                     self.stats_labels["elapsed_time"].config(text="0.0s")
                     self.stats_labels["processing_rate"].config(text="0.00/s")

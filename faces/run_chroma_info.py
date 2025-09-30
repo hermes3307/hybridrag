@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Simple ChromaDB Information Display Script
 Shows database info without interactive menu
@@ -6,6 +7,12 @@ Shows database info without interactive menu
 
 import sys
 import os
+import io
+
+# Fix Windows console encoding for emojis
+if sys.platform == 'win32':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 # Add the current directory to Python path to import our setup module
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

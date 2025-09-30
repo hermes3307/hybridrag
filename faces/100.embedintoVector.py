@@ -35,6 +35,8 @@ class EmbeddingStats:
     successful_embeddings: int = 0
     duplicates_skipped: int = 0
     errors: int = 0
+    metadata_loaded: int = 0
+    metadata_missing: int = 0
     start_time: float = 0
     elapsed_time: float = 0
 
@@ -98,7 +100,7 @@ class VectorEmbeddingProcessor:
         return existing_hashes
 
     def extract_face_features(self, image_path: str) -> Dict[str, Any]:
-        """Extract basic features from face image"""
+        """Extract comprehensive features from face image"""
         try:
             with Image.open(image_path) as img:
                 # Get basic image info
@@ -112,6 +114,7 @@ class VectorEmbeddingProcessor:
                 # Get basic color statistics
                 img_array = np.array(img)
 
+                # Basic features
                 features = {
                     'width': width,
                     'height': height,
@@ -122,13 +125,53 @@ class VectorEmbeddingProcessor:
                     'color_channels': img_array.shape[2] if len(img_array.shape) > 2 else 1
                 }
 
+                # Use FaceAnalyzer for advanced features
+                try:
+                    from face_collector import FaceAnalyzer
+                    analyzer = FaceAnalyzer()
+                    advanced_features = analyzer.estimate_basic_features(image_path)
+
+                    # Merge advanced features
+                    if advanced_features:
+                        features.update(advanced_features)
+                        logger.debug(f"Added advanced features: age={advanced_features.get('estimated_age_group')}, "
+                                   f"skin_tone={advanced_features.get('estimated_skin_tone')}, "
+                                   f"quality={advanced_features.get('image_quality')}")
+                except Exception as e:
+                    logger.debug(f"Could not extract advanced features: {e}")
+                    # Add default values if analyzer fails
+                    features.update({
+                        'estimated_age_group': 'adult',
+                        'estimated_skin_tone': 'medium',
+                        'image_quality': 'medium'
+                    })
+
                 return features
         except Exception as e:
             logger.warning(f"Could not extract features from {image_path}: {e}")
             return {}
 
+    def load_json_metadata(self, image_path: str) -> Optional[Dict[str, Any]]:
+        """Load JSON metadata file for an image"""
+        try:
+            # Get base filename without extension
+            base_name = os.path.splitext(image_path)[0]
+            json_path = f"{base_name}.json"
+
+            if os.path.exists(json_path):
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    metadata = json.load(f)
+                logger.debug(f"Loaded metadata from {os.path.basename(json_path)}")
+                return metadata
+            else:
+                logger.debug(f"No metadata file found: {os.path.basename(json_path)}")
+                return None
+        except Exception as e:
+            logger.warning(f"Error loading metadata for {image_path}: {e}")
+            return None
+
     def process_single_face(self, file_path: str, face_id: str) -> Optional[FaceData]:
-        """Process a single face image"""
+        """Process a single face image with metadata"""
         try:
             # Calculate image hash
             image_hash = self.get_file_hash(file_path)
@@ -138,13 +181,42 @@ class VectorEmbeddingProcessor:
             # Check if already processed
             if image_hash in self.processed_hashes:
                 self.stats.duplicates_skipped += 1
-                logger.info(f"Duplicate detected, skipping: {os.path.basename(file_path)}")
+                logger.info(f"⏭️  Duplicate detected, skipping: {os.path.basename(file_path)}")
                 return None
+
+            # Load JSON metadata
+            json_metadata = self.load_json_metadata(file_path)
 
             # Extract features
             features = self.extract_face_features(file_path)
             if not features:
                 return None
+
+            # Merge JSON metadata into features
+            if json_metadata:
+                # Add important metadata fields
+                features['source_metadata'] = {
+                    'filename': json_metadata.get('filename'),
+                    'md5_hash': json_metadata.get('md5_hash'),
+                    'download_timestamp': json_metadata.get('download_timestamp'),
+                    'download_date': json_metadata.get('download_date'),
+                    'source_url': json_metadata.get('source_url'),
+                    'file_size_kb': json_metadata.get('file_size_kb'),
+                    'http_status_code': json_metadata.get('http_status_code')
+                }
+
+                # Add image properties
+                if 'image_properties' in json_metadata:
+                    features['json_image_properties'] = json_metadata['image_properties']
+
+                # Add downloader config
+                if 'downloader_config' in json_metadata:
+                    features['downloader_config'] = json_metadata['downloader_config']
+
+                self.stats.metadata_loaded += 1
+                logger.info(f"📋 Loaded metadata for {os.path.basename(file_path)}")
+            else:
+                self.stats.metadata_missing += 1
 
             # Generate embedding using face collector
             from face_collector import FaceEmbedder
@@ -167,7 +239,7 @@ class VectorEmbeddingProcessor:
             return face_data
 
         except Exception as e:
-            logger.error(f"Error processing {file_path}: {e}")
+            logger.error(f"❌ Error processing {file_path}: {e}")
             self.stats.errors += 1
             return None
 
@@ -247,6 +319,8 @@ class VectorEmbeddingProcessor:
             'successful_embeddings': self.stats.successful_embeddings,
             'duplicates_skipped': self.stats.duplicates_skipped,
             'errors': self.stats.errors,
+            'metadata_loaded': self.stats.metadata_loaded,
+            'metadata_missing': self.stats.metadata_missing,
             'elapsed_time': self.stats.elapsed_time,
             'processing_rate': self.stats.get_rate(),
             'progress_percentage': (self.stats.processed_files / max(self.stats.total_files, 1)) * 100,
@@ -325,12 +399,18 @@ class VectorEmbeddingProcessor:
 
             # Final statistics
             final_stats = self.get_stats()
-            logger.info("Embedding process completed!")
-            logger.info(f"Total processed: {final_stats['processed_files']}")
-            logger.info(f"Successful embeddings: {final_stats['successful_embeddings']}")
-            logger.info(f"Duplicates skipped: {final_stats['duplicates_skipped']}")
-            logger.info(f"Errors: {final_stats['errors']}")
-            logger.info(f"Processing rate: {final_stats['processing_rate']:.2f} files/second")
+            logger.info("=" * 60)
+            logger.info("✅ Embedding process completed!")
+            logger.info("=" * 60)
+            logger.info(f"📊 Total processed: {final_stats['processed_files']}")
+            logger.info(f"✅ Successful embeddings: {final_stats['successful_embeddings']}")
+            logger.info(f"📋 Metadata loaded: {final_stats['metadata_loaded']}")
+            logger.info(f"⚠️  Metadata missing: {final_stats['metadata_missing']}")
+            logger.info(f"⏭️  Duplicates skipped: {final_stats['duplicates_skipped']}")
+            logger.info(f"❌ Errors: {final_stats['errors']}")
+            logger.info(f"⚡ Processing rate: {final_stats['processing_rate']:.2f} files/second")
+            logger.info(f"⏱️  Total time: {final_stats['elapsed_time']:.2f} seconds")
+            logger.info("=" * 60)
 
             return True
 
