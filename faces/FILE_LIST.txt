@@ -1,0 +1,63 @@
+# Face Recognition System - Complete File List
+
+## Main Components (Numbered 0-10)
+0_launcher.py                 - Interactive launcher menu
+1_setup_database.py          - Setup ChromaDB database
+2_database_info.py           - View database statistics
+3_download_faces.py          - Download faces (CLI)
+4_download_faces_gui.py      - Download faces (GUI)
+5_embed_faces.py             - Embed faces (CLI)
+6_embed_faces_gui.py         - Embed faces (GUI)
+7_search_faces_gui.py        - Unified search interface
+8_validate_embeddings.py     - Validate embeddings
+9_test_features.py           - Test feature extraction
+10_complete_demo.py          - Complete pipeline demo
+
+## Shell Launchers
+run.bat                      - Windows batch launcher
+run.sh                       - Unix shell launcher
+
+## Core Libraries
+face_collector.py            - Face collection & feature extraction
+face_database.py             - Database operations & search
+setup_chroma.py              - ChromaDB setup utilities
+run_chroma_info.py          - Database info utilities
+
+## Documentation
+START_HERE.md               - ⭐ Start here!
+QUICK_START.md              - Quick reference guide
+README.md                   - Complete system guide
+SYSTEM_MAP.md               - Visual system overview
+UNIFIED_SEARCH_GUIDE.md     - Search interface details
+INDEX.md                    - Complete documentation index
+REFACTORING_SUMMARY.md      - Refactoring details
+FIXES_SUMMARY.md            - Bug fixes & improvements
+FILE_LIST.txt               - This file
+
+## Legacy Files (Still supported)
+99.downbackground.py         - Original download CLI
+99.downbackground.gui.py     - Original download GUI
+100.embedintoVector.py       - Original embed CLI
+100.embedintoVectorgui.py    - Original embed GUI
+101.test_searchgui.py        - Old search GUI (deprecated)
+102.unified_search_gui.py    - Unified search (original)
+
+## Utility Scripts
+validate_embeddings.py       - Original validation script
+test_feature_extraction.py   - Original feature test
+expand_face_dataset.py       - Dataset expansion
+find_missing_simple.py       - Find missing files
+face_pipeline_gui.py         - Pipeline GUI
+run_face_demo.py            - Face demo
+test_face_system.py         - System tests
+test_new_face_comparison.py - Comparison tests
+
+## Data Directories
+faces/                      - Downloaded face images
+chroma_db/                  - ChromaDB database
+test_images/                - Test images (optional)
+
+## Quick Access Summary
+- ⭐⭐⭐ START_HERE.md: Best starting point
+- ⭐⭐ 0_launcher.py: Interactive menu
+- ⭐ 7_search_faces_gui.py: Main search interface
