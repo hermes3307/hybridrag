@@ -18,6 +18,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 import argparse
+from PIL import Image
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -184,12 +185,62 @@ class BackgroundDownloader:
                 return None
 
             # Save image
+            download_time = datetime.now()
             image_hash = hashlib.md5(response.content).hexdigest()
             filename = f"face_{face_id}_{image_hash[:8]}.jpg"
             file_path = os.path.join(self.config.faces_dir, filename)
 
+            # Prepare metadata filename
+            json_filename = f"face_{face_id}_{image_hash[:8]}.json"
+            json_path = os.path.join(self.config.faces_dir, json_filename)
+
+            # Save image file
             with open(file_path, 'wb') as f:
                 f.write(response.content)
+
+            # Extract image properties and save metadata
+            try:
+                with Image.open(file_path) as img:
+                    image_width, image_height = img.size
+                    image_format = img.format
+                    image_mode = img.mode
+
+                # Collect metadata
+                metadata = {
+                    'filename': filename,
+                    'file_path': file_path,
+                    'face_id': face_id,
+                    'file_size_bytes': len(response.content),
+                    'file_size_kb': round(len(response.content) / 1024, 2),
+                    'md5_hash': image_hash,
+                    'download_timestamp': download_time.isoformat(),
+                    'download_date': download_time.strftime("%Y-%m-%d %H:%M:%S"),
+                    'source_url': url,
+                    'http_status_code': response.status_code,
+                    'http_headers': dict(response.headers),
+                    'image_properties': {
+                        'width': image_width,
+                        'height': image_height,
+                        'format': image_format,
+                        'mode': image_mode,
+                        'dimensions': f"{image_width}x{image_height}"
+                    },
+                    'downloader_config': {
+                        'faces_dir': self.config.faces_dir,
+                        'delay': self.config.delay,
+                        'max_workers': self.config.max_workers,
+                        'check_duplicates': self.config.check_duplicates
+                    }
+                }
+
+                # Save metadata as JSON
+                with open(json_path, 'w') as json_file:
+                    json.dump(metadata, json_file, indent=2)
+
+                logger.debug(f"Face {face_id}: Saved metadata to {json_filename}")
+
+            except Exception as meta_error:
+                logger.warning(f"Face {face_id}: Failed to save metadata - {meta_error}")
 
             self.stats.increment_success()
             logger.info(f"Face {face_id}: Downloaded successfully -> {filename}")

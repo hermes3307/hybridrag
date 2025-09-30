@@ -8,8 +8,10 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext
 import requests
 import os
+import sys
 import random
 import threading
+import subprocess
 from PIL import Image, ImageTk
 import io
 import hashlib
@@ -25,6 +27,20 @@ from face_collector import FaceAnalyzer, FaceEmbedder
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+def open_image_with_system_viewer(image_path: str):
+    """Open image with the system's default image viewer"""
+    try:
+        if sys.platform == 'darwin':  # macOS
+            subprocess.run(['open', image_path], check=True)
+        elif sys.platform == 'win32':  # Windows
+            os.startfile(image_path)
+        else:  # Linux and other Unix-like
+            subprocess.run(['xdg-open', image_path], check=True)
+        logger.info(f"Opened image with system viewer: {image_path}")
+    except Exception as e:
+        logger.error(f"Failed to open image with system viewer: {e}")
+        messagebox.showerror("Error", f"Failed to open image:\n{e}")
 
 class ImageDisplayWindow:
     """Separate window for displaying images"""
@@ -50,13 +66,27 @@ class ImageDisplayWindow:
             pil_image = Image.open(image_path)
 
             # Convert to RGB if necessary (fixes many display issues)
-            if pil_image.mode in ('RGBA', 'LA', 'P'):
-                # Create white background for transparency
+            if pil_image.mode == 'RGBA':
+                # Handle transparency with white background
                 background = Image.new('RGB', pil_image.size, (255, 255, 255))
-                if pil_image.mode == 'P':
-                    pil_image = pil_image.convert('RGBA')
-                background.paste(pil_image, mask=pil_image.split()[-1] if pil_image.mode == 'RGBA' else None)
+                background.paste(pil_image, mask=pil_image.split()[3])
                 pil_image = background
+            elif pil_image.mode == 'LA':
+                # Grayscale with alpha - convert to RGB with white background
+                background = Image.new('RGB', pil_image.size, (255, 255, 255))
+                rgb_img = Image.new('RGB', pil_image.size)
+                rgb_img.paste(pil_image.convert('L'))
+                background.paste(rgb_img, mask=pil_image.split()[1])
+                pil_image = background
+            elif pil_image.mode == 'P':
+                # Palette mode - check if it has transparency
+                if 'transparency' in pil_image.info:
+                    pil_image = pil_image.convert('RGBA')
+                    background = Image.new('RGB', pil_image.size, (255, 255, 255))
+                    background.paste(pil_image, mask=pil_image.split()[3])
+                    pil_image = background
+                else:
+                    pil_image = pil_image.convert('RGB')
             elif pil_image.mode != 'RGB':
                 pil_image = pil_image.convert('RGB')
 
@@ -475,29 +505,70 @@ class SimilaritySearchGUI:
                     self.root.after(0, lambda: self.status_var.set(f"Downloading file {i+1}/{count}..."))
 
                     # Download from ThisPersonDoesNotExist
+                    download_time = datetime.now()
                     response = requests.get("https://thispersondoesnotexist.com/", timeout=30)
 
                     if response.status_code == 200:
                         # Generate unique filename
-                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        timestamp = download_time.strftime("%Y%m%d_%H%M%S")
                         hash_suffix = hashlib.md5(response.content).hexdigest()[:8]
                         filename = f"test_face_{timestamp}_{hash_suffix}.jpg"
                         file_path = os.path.join(test_dir, filename)
 
-                        # Save file
+                        # Prepare metadata filename
+                        json_filename = f"test_face_{timestamp}_{hash_suffix}.json"
+                        json_path = os.path.join(test_dir, json_filename)
+
+                        # Save image file
                         with open(file_path, 'wb') as f:
                             f.write(response.content)
 
-                        # Verify it's a valid image
+                        # Verify it's a valid image and extract properties
                         try:
                             with Image.open(file_path) as img:
                                 img.verify()
+
+                            # Re-open to get image properties (verify closes the file)
+                            with Image.open(file_path) as img:
+                                image_width, image_height = img.size
+                                image_format = img.format
+                                image_mode = img.mode
+
+                            # Collect metadata
+                            metadata = {
+                                'filename': filename,
+                                'file_path': file_path,
+                                'file_size_bytes': len(response.content),
+                                'file_size_kb': round(len(response.content) / 1024, 2),
+                                'md5_hash': hashlib.md5(response.content).hexdigest(),
+                                'download_timestamp': download_time.isoformat(),
+                                'download_date': download_time.strftime("%Y-%m-%d %H:%M:%S"),
+                                'source_url': "https://thispersondoesnotexist.com/",
+                                'http_status_code': response.status_code,
+                                'http_headers': dict(response.headers),
+                                'image_properties': {
+                                    'width': image_width,
+                                    'height': image_height,
+                                    'format': image_format,
+                                    'mode': image_mode,
+                                    'dimensions': f"{image_width}x{image_height}"
+                                },
+                                'download_index': i + 1,
+                                'total_downloads': count
+                            }
+
+                            # Save metadata as JSON
+                            with open(json_path, 'w') as json_file:
+                                json.dump(metadata, json_file, indent=2)
+
+                            logger.info(f"Saved metadata to {json_path}")
 
                             file_info = {
                                 'path': file_path,
                                 'filename': filename,
                                 'size': len(response.content),
-                                'downloaded': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                'downloaded': download_time.strftime("%Y-%m-%d %H:%M:%S"),
+                                'metadata_path': json_path
                             }
                             downloaded_files.append(file_info)
 
@@ -505,6 +576,8 @@ class SimilaritySearchGUI:
                             logger.warning(f"Downloaded file is not a valid image: {img_error}")
                             if os.path.exists(file_path):
                                 os.remove(file_path)
+                            if os.path.exists(json_path):
+                                os.remove(json_path)
 
                     # Small delay between downloads
                     import time
@@ -548,14 +621,20 @@ class SimilaritySearchGUI:
             return
 
         result = messagebox.askyesno("Confirm Clear",
-                                   f"Delete {len(self.test_files)} test files from disk?")
+                                   f"Delete {len(self.test_files)} test files (and metadata) from disk?")
         if result:
             deleted_count = 0
             for file_info in self.test_files:
                 try:
+                    # Delete image file
                     if os.path.exists(file_info['path']):
                         os.remove(file_info['path'])
                         deleted_count += 1
+
+                    # Delete metadata JSON file if it exists
+                    if 'metadata_path' in file_info and os.path.exists(file_info['metadata_path']):
+                        os.remove(file_info['metadata_path'])
+                        logger.info(f"Deleted metadata file: {file_info['metadata_path']}")
                 except Exception as e:
                     logger.error(f"Error deleting {file_info['path']}: {e}")
 
@@ -595,9 +674,8 @@ class SimilaritySearchGUI:
                 break
 
         if file_info and os.path.exists(file_info['path']):
-            # Create image display window
-            ImageDisplayWindow(self.root, f"Test File: {filename}",
-                             file_info['path'], file_info)
+            # Open with system default image viewer
+            open_image_with_system_viewer(file_info['path'])
         else:
             messagebox.showerror("File Not Found", f"Test file not found: {filename}")
 
@@ -614,8 +692,29 @@ class SimilaritySearchGUI:
             # Load and resize image for preview
             pil_image = Image.open(self.current_query_file)
 
-            # Convert to RGB if necessary (fixes some image format issues)
-            if pil_image.mode != 'RGB':
+            # Convert to RGB if necessary (fixes many display issues)
+            if pil_image.mode == 'RGBA':
+                # Handle transparency with white background
+                background = Image.new('RGB', pil_image.size, (255, 255, 255))
+                background.paste(pil_image, mask=pil_image.split()[3])
+                pil_image = background
+            elif pil_image.mode == 'LA':
+                # Grayscale with alpha - convert to RGB with white background
+                background = Image.new('RGB', pil_image.size, (255, 255, 255))
+                rgb_img = Image.new('RGB', pil_image.size)
+                rgb_img.paste(pil_image.convert('L'))
+                background.paste(rgb_img, mask=pil_image.split()[1])
+                pil_image = background
+            elif pil_image.mode == 'P':
+                # Palette mode - check if it has transparency
+                if 'transparency' in pil_image.info:
+                    pil_image = pil_image.convert('RGBA')
+                    background = Image.new('RGB', pil_image.size, (255, 255, 255))
+                    background.paste(pil_image, mask=pil_image.split()[3])
+                    pil_image = background
+                else:
+                    pil_image = pil_image.convert('RGB')
+            elif pil_image.mode != 'RGB':
                 pil_image = pil_image.convert('RGB')
 
             # Calculate dimensions to fit in 75x75 while maintaining aspect ratio
@@ -726,8 +825,8 @@ class SimilaritySearchGUI:
             return
 
         if os.path.exists(self.current_query_file):
-            filename = os.path.basename(self.current_query_file)
-            ImageDisplayWindow(self.root, f"Query Image: {filename}", self.current_query_file)
+            # Open with system default image viewer
+            open_image_with_system_viewer(self.current_query_file)
         else:
             messagebox.showerror("File Not Found", "Query image file not found")
 
@@ -900,8 +999,29 @@ class SimilaritySearchGUI:
             # Load and resize image for preview
             pil_image = Image.open(file_path)
 
-            # Convert to RGB if necessary
-            if pil_image.mode != 'RGB':
+            # Convert to RGB if necessary (fixes many display issues)
+            if pil_image.mode == 'RGBA':
+                # Handle transparency with white background
+                background = Image.new('RGB', pil_image.size, (255, 255, 255))
+                background.paste(pil_image, mask=pil_image.split()[3])
+                pil_image = background
+            elif pil_image.mode == 'LA':
+                # Grayscale with alpha - convert to RGB with white background
+                background = Image.new('RGB', pil_image.size, (255, 255, 255))
+                rgb_img = Image.new('RGB', pil_image.size)
+                rgb_img.paste(pil_image.convert('L'))
+                background.paste(rgb_img, mask=pil_image.split()[1])
+                pil_image = background
+            elif pil_image.mode == 'P':
+                # Palette mode - check if it has transparency
+                if 'transparency' in pil_image.info:
+                    pil_image = pil_image.convert('RGBA')
+                    background = Image.new('RGB', pil_image.size, (255, 255, 255))
+                    background.paste(pil_image, mask=pil_image.split()[3])
+                    pil_image = background
+                else:
+                    pil_image = pil_image.convert('RGB')
+            elif pil_image.mode != 'RGB':
                 pil_image = pil_image.convert('RGB')
 
             # Calculate dimensions to fit in 145x145 while maintaining aspect ratio
@@ -965,8 +1085,8 @@ class SimilaritySearchGUI:
         if result_info:
             file_path = result_info['file_path']
             if file_path and os.path.exists(file_path):
-                title = f"Result #{rank}: {result_info['filename']} ({result_info['similarity']*100:.1f}% similar)"
-                ImageDisplayWindow(self.root, title, file_path, result_info['metadata'])
+                # Open with system default image viewer
+                open_image_with_system_viewer(file_path)
             else:
                 messagebox.showerror("File Not Found", f"Result image not found: {file_path}")
         else:
