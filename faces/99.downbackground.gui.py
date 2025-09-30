@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Background Face Download System - GUI Version
 Graphical interface for downloading faces with real-time statistics and controls
@@ -10,25 +11,43 @@ import threading
 import time
 import os
 import json
+import sys
+import io
 from datetime import datetime
 from typing import Optional, List, Tuple
-import sys
 import shutil
 from PIL import Image
 import hashlib
+
+# Fix Windows console encoding for emojis
+if sys.platform == 'win32':
+    try:
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    except:
+        pass  # If already wrapped or not available, skip
 
 # Import the download system components
 from importlib import import_module
 import importlib.util
 
-# Import the BackgroundDownloader from the main script
-spec = importlib.util.spec_from_file_location("downloader", "99.downbackground.py")
-downloader_module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(downloader_module)
+# Add current directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-BackgroundDownloader = downloader_module.BackgroundDownloader
-DownloadConfig = downloader_module.DownloadConfig
-DownloadStats = downloader_module.DownloadStats
+# Import the BackgroundDownloader from the main script
+try:
+    spec = importlib.util.spec_from_file_location("downloader",
+                                                   os.path.join(os.path.dirname(__file__), "99.downbackground.py"))
+    downloader_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(downloader_module)
+
+    BackgroundDownloader = downloader_module.BackgroundDownloader
+    DownloadConfig = downloader_module.DownloadConfig
+    DownloadStats = downloader_module.DownloadStats
+except Exception as e:
+    print(f"Error importing downloader module: {e}")
+    print("Make sure 99.downbackground.py is in the same directory")
+    sys.exit(1)
 
 class DownloadGUI:
     """GUI for the background face download system"""

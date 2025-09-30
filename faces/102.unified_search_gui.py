@@ -20,12 +20,23 @@ import subprocess
 
 # Fix Windows console encoding
 if sys.platform == 'win32':
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    try:
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    except:
+        pass  # If already wrapped or not available, skip
 
-# Import our modules
-from face_database import FaceDatabase, FaceSearchInterface
-from face_collector import FaceAnalyzer, FaceEmbedder
+# Add current directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# Import our modules with error handling
+try:
+    from face_database import FaceDatabase, FaceSearchInterface
+    from face_collector import FaceAnalyzer, FaceEmbedder
+except ImportError as e:
+    print(f"Error importing required modules: {e}")
+    print("Make sure face_database.py and face_collector.py are in the same directory")
+    sys.exit(1)
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

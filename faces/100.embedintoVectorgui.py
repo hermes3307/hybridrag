@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Vector Embedding GUI - GUI Version
 Graphical interface for embedding faces into vector database with real-time progress tracking
@@ -10,21 +11,39 @@ import threading
 import time
 import os
 import json
+import sys
+import io
 from datetime import datetime
 from typing import Optional
-import sys
 import shutil
+
+# Fix Windows console encoding for emojis
+if sys.platform == 'win32':
+    try:
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    except:
+        pass  # If already wrapped or not available, skip
 
 # Import the embedding system components
 from importlib import import_module
 import importlib.util
 
-# Import the VectorEmbeddingProcessor
-spec = importlib.util.spec_from_file_location("embedding", "100.embedintoVector.py")
-embedding_module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(embedding_module)
+# Add current directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-VectorEmbeddingProcessor = embedding_module.VectorEmbeddingProcessor
+# Import the VectorEmbeddingProcessor
+try:
+    spec = importlib.util.spec_from_file_location("embedding",
+                                                   os.path.join(os.path.dirname(__file__), "100.embedintoVector.py"))
+    embedding_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(embedding_module)
+
+    VectorEmbeddingProcessor = embedding_module.VectorEmbeddingProcessor
+except Exception as e:
+    print(f"Error importing embedding module: {e}")
+    print("Make sure 100.embedintoVector.py is in the same directory")
+    sys.exit(1)
 
 class EmbeddingGUI:
     """GUI for the vector embedding system"""
