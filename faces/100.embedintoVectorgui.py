@@ -578,8 +578,8 @@ class EmbeddingGUI:
             # Create selection dialog
             delete_window = tk.Toplevel(self.root)
             delete_window.title("🗑️ Delete Collection")
-            delete_window.geometry("400x300")
-            delete_window.resizable(False, False)
+            delete_window.geometry("550x450")
+            delete_window.resizable(True, True)
 
             # Center the window
             delete_window.transient(self.root)
