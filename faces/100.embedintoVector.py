@@ -71,14 +71,24 @@ class VectorEmbeddingProcessor:
             return ""
 
     def scan_face_files(self) -> List[str]:
-        """Scan faces directory for image files"""
+        """Scan faces directory for image files (including subdirectories)"""
         face_files = []
         supported_extensions = {'.jpg', '.jpeg', '.png'}
 
-        for file_path in Path(self.faces_dir).iterdir():
-            if file_path.suffix.lower() in supported_extensions:
-                face_files.append(str(file_path))
+        faces_path = Path(self.faces_dir)
 
+        # Check if faces_dir exists
+        if not faces_path.exists():
+            logger.error(f"Faces directory does not exist: {self.faces_dir}")
+            return []
+
+        # If faces_dir is a directory, scan it (non-recursively for performance)
+        if faces_path.is_dir():
+            for file_path in faces_path.iterdir():
+                if file_path.is_file() and file_path.suffix.lower() in supported_extensions:
+                    face_files.append(str(file_path))
+
+        logger.info(f"Found {len(face_files)} image files in {self.faces_dir}")
         return sorted(face_files)
 
     def load_existing_embeddings(self) -> Set[str]:
