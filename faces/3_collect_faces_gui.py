@@ -90,14 +90,37 @@ class DownloadGUI:
 
     def create_widgets(self):
         """Create GUI widgets"""
-        # Main frame
-        main_frame = ttk.Frame(self.root, padding="10")
-        main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        # Create canvas and scrollbar for entire window
+        canvas = tk.Canvas(self.root)
+        scrollbar = ttk.Scrollbar(self.root, orient="vertical", command=canvas.yview)
+
+        # Main frame inside canvas
+        main_frame = ttk.Frame(canvas, padding="10")
+
+        # Configure canvas
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        # Pack scrollbar and canvas
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # Create window in canvas
+        canvas_frame = canvas.create_window((0, 0), window=main_frame, anchor="nw")
 
         # Configure grid weights
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
         main_frame.columnconfigure(1, weight=1)
+
+        # Update scrollregion when frame changes size
+        def on_frame_configure(event):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+        main_frame.bind("<Configure>", on_frame_configure)
+
+        # Update canvas window width when canvas is resized
+        def on_canvas_configure(event):
+            canvas.itemconfig(canvas_frame, width=event.width)
+        canvas.bind("<Configure>", on_canvas_configure)
 
         # Title
         title_label = ttk.Label(main_frame, text="🎭 Background Face Downloader",
