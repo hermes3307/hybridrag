@@ -5,7 +5,7 @@ echo "================================="
 echo ""
 
 # Check if required files exist
-required_files=("4_embed_faces.py" "100.embedintoVector.py" "face_collector.py" "face_database.py")
+required_files=("4_embed_faces.py" "4_embed_faces_gui.py" "face_collector.py" "face_database.py")
 
 echo "🔍 Checking required files..."
 for file in "${required_files[@]}"; do
@@ -38,9 +38,9 @@ if [ -d "./chroma_db" ]; then
     echo "✅ ChromaDB found ($db_size)"
 
     # Try to get database info
-    if [ -f "run_chroma_info.py" ]; then
+    if [ -f "2_database_info.py" ]; then
         echo "📊 Current database statistics:"
-        python3 run_chroma_info.py 2>/dev/null | head -10
+        python3 2_database_info.py 2>/dev/null | head -10
     fi
 else
     echo "⚠️  ChromaDB not found - will be created during embedding process"
@@ -98,7 +98,7 @@ echo "🎯 Launching Vector Embedding GUI..."
 echo ""
 
 # Launch the GUI
-python3 100.embedintoVectorgui.py
+python3 4_embed_faces_gui.py
 
 # Show completion message
 echo ""
@@ -106,9 +106,9 @@ echo "🏁 Vector Embedding GUI session ended"
 echo ""
 
 # Show final statistics if database exists
-if [ -f "run_chroma_info.py" ] && [ -d "./chroma_db" ]; then
+if [ -f "2_database_info.py" ] && [ -d "./chroma_db" ]; then
     echo "📊 Final database statistics:"
-    python3 run_chroma_info.py 2>/dev/null
+    python3 2_database_info.py 2>/dev/null
     echo ""
 fi
 
