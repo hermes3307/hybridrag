@@ -751,59 +751,223 @@ class EmbeddingGUI:
 
                     # Update vector display
                     vector_text.delete(1.0, tk.END)
-                    if results['embeddings']:
+                    if results.get('embeddings') is not None and len(results['embeddings']) > 0:
                         vector_text.insert(tk.END, f"🔍 LATEST EMBEDDINGS FROM '{selected_collection}'\n")
-                        vector_text.insert(tk.END, "=" * 60 + "\n\n")
+                        vector_text.insert(tk.END, "=" * 80 + "\n\n")
 
-                        for i, (embedding, metadata) in enumerate(zip(results['embeddings'], results['metadatas'] or [])):
-                            if embedding:
-                                vector_text.insert(tk.END, f"📄 Vector #{i+1}:\n")
+                        for i, embedding in enumerate(results['embeddings']):
+                            if embedding is not None and len(embedding) > 0:
+                                metadata = results['metadatas'][i] if results.get('metadatas') is not None and i < len(results['metadatas']) else {}
+
+                                vector_text.insert(tk.END, f"📄 Vector #{i+1}\n")
+                                vector_text.insert(tk.END, "-" * 80 + "\n")
+
+                                # Show metadata information
                                 if metadata:
                                     file_path = metadata.get('file_path', 'Unknown')
                                     vector_text.insert(tk.END, f"   File: {os.path.basename(file_path) if file_path != 'Unknown' else 'Unknown'}\n")
 
-                                # Show vector preview
-                                if len(embedding) >= 10:
-                                    preview = embedding[:5] + embedding[-5:]
-                                    vector_text.insert(tk.END, f"   Vector: [{', '.join(f'{x:.4f}' for x in embedding[:5])}, ..., {', '.join(f'{x:.4f}' for x in embedding[-5:])}]\n")
-                                else:
-                                    vector_text.insert(tk.END, f"   Vector: [{', '.join(f'{x:.4f}' for x in embedding)}]\n")
+                                    # Show additional metadata if available
+                                    if 'estimated_age_group' in metadata:
+                                        vector_text.insert(tk.END, f"   Age Group: {metadata.get('estimated_age_group', 'N/A')}\n")
+                                    if 'estimated_skin_tone' in metadata:
+                                        vector_text.insert(tk.END, f"   Skin Tone: {metadata.get('estimated_skin_tone', 'N/A')}\n")
+                                    if 'image_quality' in metadata:
+                                        vector_text.insert(tk.END, f"   Quality: {metadata.get('image_quality', 'N/A')}\n")
 
-                                vector_text.insert(tk.END, f"   Dimensions: {len(embedding)}\n")
-                                vector_text.insert(tk.END, f"   Norm: {np.linalg.norm(embedding):.4f}\n\n")
+                                # Vector statistics
+                                vector_array = np.array(embedding)
+                                vector_text.insert(tk.END, f"\n   📊 Vector Properties:\n")
+                                vector_text.insert(tk.END, f"      • Dimensions: {len(embedding)}\n")
+                                vector_text.insert(tk.END, f"      • L2 Norm: {np.linalg.norm(vector_array):.6f}\n")
+                                vector_text.insert(tk.END, f"      • Mean: {np.mean(vector_array):.6f}\n")
+                                vector_text.insert(tk.END, f"      • Std Dev: {np.std(vector_array):.6f}\n")
+                                vector_text.insert(tk.END, f"      • Min: {np.min(vector_array):.6f}\n")
+                                vector_text.insert(tk.END, f"      • Max: {np.max(vector_array):.6f}\n")
+
+                                # Show vector preview with better formatting
+                                vector_text.insert(tk.END, f"\n   🔢 Vector Values (first 10 and last 10 dimensions):\n")
+                                if len(embedding) >= 20:
+                                    vector_text.insert(tk.END, f"      First 10:  [{', '.join(f'{x:7.4f}' for x in embedding[:10])}]\n")
+                                    vector_text.insert(tk.END, f"      Last 10:   [{', '.join(f'{x:7.4f}' for x in embedding[-10:])}]\n")
+                                else:
+                                    vector_text.insert(tk.END, f"      All values: [{', '.join(f'{x:7.4f}' for x in embedding)}]\n")
+
+                                vector_text.insert(tk.END, "\n")
                     else:
-                        vector_text.insert(tk.END, f"No embeddings found in collection '{selected_collection}'\n")
+                        vector_text.insert(tk.END, f"❌ No embeddings found in collection '{selected_collection}'\n")
+                        vector_text.insert(tk.END, "\nThis could mean:\n")
+                        vector_text.insert(tk.END, "  • The collection is empty\n")
+                        vector_text.insert(tk.END, "  • Embeddings were not stored during the embedding process\n")
+                        vector_text.insert(tk.END, "  • The collection name is incorrect\n")
 
                     # Update visualization
                     viz_text.delete(1.0, tk.END)
-                    if results['embeddings']:
-                        viz_text.insert(tk.END, f"📈 EMBEDDING ANALYSIS\n")
-                        viz_text.insert(tk.END, "=" * 40 + "\n\n")
+                    try:
+                        if results.get('embeddings') is not None and len(results['embeddings']) > 0:
+                            viz_text.insert(tk.END, f"📈 EMBEDDING VISUALIZATION\n")
+                            viz_text.insert(tk.END, "=" * 80 + "\n\n")
 
-                        for i, embedding in enumerate(results['embeddings'][:5]):  # Show first 5
-                            if embedding:
-                                # Create simple ASCII bar chart
-                                viz_text.insert(tk.END, f"Vector #{i+1} (first 20 dimensions):\n")
-                                for j, val in enumerate(embedding[:20]):
-                                    bar_length = int(abs(val) * 20)
-                                    bar = "█" * bar_length
-                                    sign = "+" if val >= 0 else "-"
-                                    viz_text.insert(tk.END, f"  {j:2d}: {sign}{bar:<20} {val:6.3f}\n")
-                                viz_text.insert(tk.END, "\n")
+                            for i, embedding in enumerate(results['embeddings'][:5]):  # Show first 5
+                                if embedding is not None and len(embedding) > 0:
+                                    vector_array = np.array(embedding)
+
+                                    # Metadata info
+                                    metadata = results['metadatas'][i] if results.get('metadatas') is not None and i < len(results['metadatas']) else {}
+                                    file_name = "Unknown"
+                                    if metadata:
+                                        file_path = metadata.get('file_path', 'Unknown')
+                                        file_name = os.path.basename(file_path) if file_path != 'Unknown' else 'Unknown'
+
+                                    viz_text.insert(tk.END, f"📊 Vector #{i+1}: {file_name}\n")
+                                    viz_text.insert(tk.END, "-" * 80 + "\n")
+
+                                    # Show overall distribution first
+                                    viz_text.insert(tk.END, f"Overall Statistics:\n")
+                                    viz_text.insert(tk.END, f"  Range: [{np.min(vector_array):.4f}, {np.max(vector_array):.4f}]\n")
+                                    viz_text.insert(tk.END, f"  Mean: {np.mean(vector_array):.4f}, Std: {np.std(vector_array):.4f}\n\n")
+
+                                    # Create scaled ASCII bar chart (first 30 dimensions)
+                                    viz_text.insert(tk.END, f"First 30 dimensions (scaled to max={np.max(np.abs(vector_array[:30])):.3f}):\n")
+
+                                    # Find max absolute value for scaling
+                                    max_abs_val = np.max(np.abs(vector_array[:30])) if len(vector_array) >= 30 else np.max(np.abs(vector_array))
+                                    if max_abs_val == 0:
+                                        max_abs_val = 1.0  # Avoid division by zero
+
+                                    for j, val in enumerate(embedding[:30]):
+                                        # Scale to 40 character width
+                                        normalized_val = val / max_abs_val
+                                        bar_length = int(abs(normalized_val) * 40)
+                                        bar_length = max(1, bar_length) if abs(val) > 0.001 else 0
+
+                                        bar = "█" * bar_length
+                                        sign = "+" if val >= 0 else "-"
+
+                                        # Color coding with text
+                                        magnitude = abs(val)
+                                        if magnitude > max_abs_val * 0.7:
+                                            intensity = "HIGH"
+                                        elif magnitude > max_abs_val * 0.3:
+                                            intensity = "MED "
+                                        else:
+                                            intensity = "LOW "
+
+                                        viz_text.insert(tk.END, f"  [{j:3d}] {sign} {bar:<40} {val:8.4f} ({intensity})\n")
+
+                                    # Show distribution histogram
+                                    viz_text.insert(tk.END, f"\nValue Distribution (all {len(embedding)} dimensions):\n")
+                                    bins = [-float('inf'), -0.5, -0.2, -0.05, 0, 0.05, 0.2, 0.5, float('inf')]
+                                    bin_labels = ["< -0.5", "-0.5 to -0.2", "-0.2 to -0.05", "-0.05 to 0", "0 to 0.05", "0.05 to 0.2", "0.2 to 0.5", "> 0.5"]
+                                    hist, _ = np.histogram(vector_array, bins=bins)
+
+                                    max_count = max(hist) if max(hist) > 0 else 1
+                                    for label, count in zip(bin_labels, hist):
+                                        bar_width = int((count / max_count) * 30)
+                                        bar = "▓" * bar_width
+                                        percentage = (count / len(vector_array)) * 100
+                                        viz_text.insert(tk.END, f"  {label:>15s}: {bar:<30} {count:4d} ({percentage:5.1f}%)\n")
+
+                                    viz_text.insert(tk.END, "\n")
+                        else:
+                            viz_text.insert(tk.END, f"❌ No embeddings available for visualization\n")
+                    except Exception as viz_error:
+                        viz_text.insert(tk.END, f"❌ Error in visualization: {viz_error}\n")
+                        import traceback
+                        viz_text.insert(tk.END, f"\n{traceback.format_exc()}\n")
 
                     # Update statistics
                     stats_text.delete(1.0, tk.END)
-                    if results['embeddings']:
-                        embeddings_array = np.array([emb for emb in results['embeddings'] if emb])
-                        if len(embeddings_array) > 0:
-                            stats_text.insert(tk.END, f"📊 EMBEDDING STATISTICS\n")
-                            stats_text.insert(tk.END, "=" * 40 + "\n\n")
-                            stats_text.insert(tk.END, f"Total Vectors: {len(embeddings_array)}\n")
-                            stats_text.insert(tk.END, f"Vector Dimensions: {embeddings_array.shape[1]}\n")
-                            stats_text.insert(tk.END, f"Mean Values: {np.mean(embeddings_array, axis=0)[:10]}\n")
-                            stats_text.insert(tk.END, f"Std Deviation: {np.std(embeddings_array, axis=0)[:10]}\n")
-                            stats_text.insert(tk.END, f"Min Values: {np.min(embeddings_array, axis=0)[:10]}\n")
-                            stats_text.insert(tk.END, f"Max Values: {np.max(embeddings_array, axis=0)[:10]}\n")
+                    try:
+                        if results.get('embeddings') is not None and len(results['embeddings']) > 0:
+                            embeddings_array = np.array([emb for emb in results['embeddings'] if emb is not None and len(emb) > 0])
+                            if len(embeddings_array) > 0:
+                                stats_text.insert(tk.END, f"📊 COMPREHENSIVE EMBEDDING STATISTICS\n")
+                                stats_text.insert(tk.END, "=" * 80 + "\n\n")
+
+                                # Basic information
+                                stats_text.insert(tk.END, f"🔢 Dataset Overview:\n")
+                                stats_text.insert(tk.END, f"   Total Vectors Analyzed: {len(embeddings_array)}\n")
+                                stats_text.insert(tk.END, f"   Dimensions per Vector: {embeddings_array.shape[1]}\n")
+                                stats_text.insert(tk.END, f"   Total Data Points: {embeddings_array.shape[0] * embeddings_array.shape[1]:,}\n")
+                                stats_text.insert(tk.END, f"   Memory Size: ~{(embeddings_array.nbytes / 1024):.2f} KB\n\n")
+
+                                # Aggregate statistics across all vectors
+                                stats_text.insert(tk.END, f"📈 Global Statistics (across all vectors and dimensions):\n")
+                                all_values = embeddings_array.flatten()
+                                stats_text.insert(tk.END, f"   Mean (overall): {np.mean(all_values):.6f}\n")
+                                stats_text.insert(tk.END, f"   Std Dev (overall): {np.std(all_values):.6f}\n")
+                                stats_text.insert(tk.END, f"   Min (overall): {np.min(all_values):.6f}\n")
+                                stats_text.insert(tk.END, f"   Max (overall): {np.max(all_values):.6f}\n")
+                                stats_text.insert(tk.END, f"   Median (overall): {np.median(all_values):.6f}\n")
+                                stats_text.insert(tk.END, f"   25th Percentile: {np.percentile(all_values, 25):.6f}\n")
+                                stats_text.insert(tk.END, f"   75th Percentile: {np.percentile(all_values, 75):.6f}\n\n")
+
+                                # Per-vector statistics
+                                stats_text.insert(tk.END, f"📊 Per-Vector Statistics:\n")
+                                norms = np.linalg.norm(embeddings_array, axis=1)
+                                stats_text.insert(tk.END, f"   L2 Norms - Mean: {np.mean(norms):.6f}, Std: {np.std(norms):.6f}\n")
+                                stats_text.insert(tk.END, f"   L2 Norms - Min: {np.min(norms):.6f}, Max: {np.max(norms):.6f}\n\n")
+
+                                # Per-dimension statistics summary
+                                stats_text.insert(tk.END, f"📐 Per-Dimension Statistics (aggregated across {embeddings_array.shape[1]} dimensions):\n")
+                                dim_means = np.mean(embeddings_array, axis=0)
+                                dim_stds = np.std(embeddings_array, axis=0)
+                                dim_mins = np.min(embeddings_array, axis=0)
+                                dim_maxs = np.max(embeddings_array, axis=0)
+
+                                stats_text.insert(tk.END, f"   Dimension Means - Avg: {np.mean(dim_means):.6f}, Std: {np.std(dim_means):.6f}\n")
+                                stats_text.insert(tk.END, f"   Dimension Means - Range: [{np.min(dim_means):.6f}, {np.max(dim_means):.6f}]\n")
+                                stats_text.insert(tk.END, f"   Dimension StdDevs - Avg: {np.mean(dim_stds):.6f}, Std: {np.std(dim_stds):.6f}\n")
+                                stats_text.insert(tk.END, f"   Dimension StdDevs - Range: [{np.min(dim_stds):.6f}, {np.max(dim_stds):.6f}]\n\n")
+
+                                # Show detailed statistics for first 10 dimensions
+                                stats_text.insert(tk.END, f"🔍 Detailed Statistics for First 10 Dimensions:\n")
+                                stats_text.insert(tk.END, f"{'Dim':>4} | {'Mean':>10} | {'Std':>10} | {'Min':>10} | {'Max':>10}\n")
+                                stats_text.insert(tk.END, "-" * 70 + "\n")
+                                for i in range(min(10, embeddings_array.shape[1])):
+                                    stats_text.insert(tk.END,
+                                        f"{i:4d} | {dim_means[i]:10.6f} | {dim_stds[i]:10.6f} | "
+                                        f"{dim_mins[i]:10.6f} | {dim_maxs[i]:10.6f}\n")
+
+                                # Distribution analysis
+                                stats_text.insert(tk.END, f"\n📊 Value Distribution Analysis:\n")
+                                positive_count = np.sum(all_values > 0)
+                                negative_count = np.sum(all_values < 0)
+                                zero_count = np.sum(all_values == 0)
+                                total_count = len(all_values)
+
+                                stats_text.insert(tk.END, f"   Positive values: {positive_count:,} ({100*positive_count/total_count:.2f}%)\n")
+                                stats_text.insert(tk.END, f"   Negative values: {negative_count:,} ({100*negative_count/total_count:.2f}%)\n")
+                                stats_text.insert(tk.END, f"   Zero values: {zero_count:,} ({100*zero_count/total_count:.2f}%)\n\n")
+
+                                # Sparsity analysis
+                                near_zero_count = np.sum(np.abs(all_values) < 0.01)
+                                stats_text.insert(tk.END, f"   Near-zero (|x| < 0.01): {near_zero_count:,} ({100*near_zero_count/total_count:.2f}%)\n")
+                                stats_text.insert(tk.END, f"   Sparsity: {100*near_zero_count/total_count:.2f}%\n\n")
+
+                                # Similarity analysis
+                                if len(embeddings_array) > 1:
+                                    stats_text.insert(tk.END, f"🔗 Vector Similarity Analysis:\n")
+                                    # Calculate cosine similarity between pairs
+                                    from sklearn.metrics.pairwise import cosine_similarity
+                                    similarity_matrix = cosine_similarity(embeddings_array)
+                                    # Get upper triangle (excluding diagonal)
+                                    mask = np.triu(np.ones_like(similarity_matrix, dtype=bool), k=1)
+                                    similarities = similarity_matrix[mask]
+
+                                    stats_text.insert(tk.END, f"   Avg Cosine Similarity: {np.mean(similarities):.6f}\n")
+                                    stats_text.insert(tk.END, f"   Std Cosine Similarity: {np.std(similarities):.6f}\n")
+                                    stats_text.insert(tk.END, f"   Min Similarity: {np.min(similarities):.6f}\n")
+                                    stats_text.insert(tk.END, f"   Max Similarity: {np.max(similarities):.6f}\n")
+                            else:
+                                stats_text.insert(tk.END, "❌ No valid embeddings to analyze\n")
+                        else:
+                            stats_text.insert(tk.END, "❌ No embeddings available for statistics\n")
+                    except Exception as stats_error:
+                        stats_text.insert(tk.END, f"❌ Error in statistics: {stats_error}\n")
+                        import traceback
+                        stats_text.insert(tk.END, f"\n{traceback.format_exc()}\n")
 
                 except Exception as e:
                     vector_text.delete(1.0, tk.END)

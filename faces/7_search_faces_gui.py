@@ -55,7 +55,7 @@ class UnifiedSearchGUI:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("🔍 Unified Face Search Interface")
-        self.root.geometry("1200x900")
+        self.root.geometry("1200x500")
 
         # Initialize components
         self.face_db = None
@@ -113,18 +113,12 @@ class UnifiedSearchGUI:
 
         # Create notebook for organized tabs
         notebook = ttk.Notebook(parent)
-        notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        notebook.pack(fill=tk.X, padx=5, pady=5)
 
         # Tab 1: Query Image
         self.setup_query_tab(notebook)
 
-        # Tab 2: Search Mode
-        self.setup_search_mode_tab(notebook)
-
-        # Tab 3: Metadata Filters
-        self.setup_filters_tab(notebook)
-
-        # Search button at bottom
+        # Search button right after query tab
         search_btn_frame = ttk.Frame(parent)
         search_btn_frame.pack(fill=tk.X, padx=5, pady=10)
 
@@ -138,6 +132,12 @@ class UnifiedSearchGUI:
                               command=self.clear_all)
         clear_btn.pack(fill=tk.X, pady=(5, 0))
 
+        # Tab 2: Search Mode
+        self.setup_search_mode_tab(notebook)
+
+        # Tab 3: Metadata Filters
+        self.setup_filters_tab(notebook)
+
     def setup_query_tab(self, notebook):
         """Setup query image tab"""
         query_frame = ttk.Frame(notebook)
@@ -147,7 +147,7 @@ class UnifiedSearchGUI:
         preview_frame = ttk.LabelFrame(query_frame, text="Query Image Preview")
         preview_frame.pack(fill=tk.X, padx=10, pady=10)
 
-        self.query_canvas = tk.Canvas(preview_frame, width=300, height=300,
+        self.query_canvas = tk.Canvas(preview_frame, width=120, height=120,
                                      bg='lightgray', highlightthickness=1,
                                      relief='ridge', bd=2)
         self.query_canvas.pack(pady=10)
@@ -328,7 +328,7 @@ class UnifiedSearchGUI:
         # Create treeview with scrollbar
         columns = ("Rank", "Similarity", "Filename", "Age", "Skin", "Quality", "Brightness", "Download Date")
         self.results_tree = ttk.Treeview(table_frame, columns=columns,
-                                        show="headings", height=15)
+                                        show="headings", height=12)
 
         # Configure columns
         self.results_tree.heading("Rank", text="#")
@@ -515,7 +515,7 @@ class UnifiedSearchGUI:
                 pil_image = pil_image.convert('RGB')
 
             # Resize to fit canvas
-            max_size = 290
+            max_size = 116
             pil_image.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
 
             self.query_photo = ImageTk.PhotoImage(pil_image)
@@ -523,7 +523,7 @@ class UnifiedSearchGUI:
             # Display in canvas
             self.query_canvas.delete("all")
             self.query_canvas.configure(bg='white')
-            self.query_canvas.create_image(150, 150, image=self.query_photo)
+            self.query_canvas.create_image(60, 60, image=self.query_photo)
 
         except Exception as e:
             logger.error(f"Error updating query preview: {e}")
