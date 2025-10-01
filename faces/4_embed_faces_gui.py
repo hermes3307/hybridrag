@@ -899,7 +899,7 @@ class EmbeddingGUI:
             # Use the same python interpreter that's running this script
             python_exe = sys.executable
 
-            result = subprocess.run([python_exe, 'run_chroma_info.py'],
+            result = subprocess.run([python_exe, '2_database_info.py'],
                                   capture_output=True, text=True, timeout=30,
                                   encoding='utf-8', errors='replace')
 
