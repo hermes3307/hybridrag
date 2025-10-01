@@ -5,7 +5,7 @@ echo "================================="
 echo ""
 
 # Check if required files exist
-required_files=("100.embedintoVectorgui.py" "100.embedintoVector.py" "face_collector.py" "face_database.py")
+required_files=("4_embed_faces.py" "100.embedintoVector.py" "face_collector.py" "face_database.py")
 
 echo "🔍 Checking required files..."
 for file in "${required_files[@]}"; do
