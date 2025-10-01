@@ -80,8 +80,35 @@ class UnifiedSearchGUI:
 
     def setup_ui(self):
         """Set up the user interface"""
+        # Create canvas and scrollbar for entire window
+        canvas = tk.Canvas(self.root)
+        scrollbar = ttk.Scrollbar(self.root, orient="vertical", command=canvas.yview)
+
+        # Main container frame inside canvas
+        main_container = ttk.Frame(canvas)
+
+        # Configure canvas
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        # Pack scrollbar and canvas
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # Create window in canvas
+        canvas_frame = canvas.create_window((0, 0), window=main_container, anchor="nw")
+
+        # Update scrollregion when frame changes size
+        def on_frame_configure(event):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+        main_container.bind("<Configure>", on_frame_configure)
+
+        # Update canvas window width when canvas is resized
+        def on_canvas_configure(event):
+            canvas.itemconfig(canvas_frame, width=event.width)
+        canvas.bind("<Configure>", on_canvas_configure)
+
         # Main container with paned window for resizable sections
-        paned = ttk.PanedWindow(self.root, orient=tk.HORIZONTAL)
+        paned = ttk.PanedWindow(main_container, orient=tk.HORIZONTAL)
         paned.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
         # Left panel - Search controls
@@ -100,7 +127,7 @@ class UnifiedSearchGUI:
 
         # Status bar at bottom
         self.status_var = tk.StringVar(value="Ready")
-        status_bar = ttk.Label(self.root, textvariable=self.status_var,
+        status_bar = ttk.Label(main_container, textvariable=self.status_var,
                               relief=tk.SUNKEN, anchor=tk.W)
         status_bar.pack(side=tk.BOTTOM, fill=tk.X)
 
