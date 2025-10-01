@@ -1,10 +1,9 @@
 #!/bin/bash
 
-echo "🎭 Step 3: Face Data Collection from ThisPersonDoesNotExist.com"
-echo "==============================================================="
+echo "🎭 Step 3: Face Data Collection from ThisPersonDoesNotExist.com (GUI)"
+echo "======================================================================"
 
-echo "📥 Downloading synthetic faces with metadata extraction..."
-echo "⏱️  This will take a few minutes (respectful rate limiting)..."
+echo "📥 Starting GUI for downloading synthetic faces with metadata extraction..."
 
 # Clean up any existing face data to start fresh
 if [ -f "face_data.json" ]; then
@@ -19,12 +18,12 @@ if [ -d "faces" ]; then
 fi
 
 echo ""
-echo "🚀 Starting face collection with JSON metadata generation..."
+echo "🚀 Starting face collection GUI with JSON metadata generation..."
 echo "   Each face will have:"
 echo "   • Image file (.jpg)"
 echo "   • Metadata file (.json) with queryable attributes"
 echo ""
-python3 face_collector.py
+python3 3_collect_faces_gui.py
 
 echo ""
 echo "📁 Face collection results:"
