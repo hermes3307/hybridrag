@@ -18,6 +18,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 from dataclasses import dataclass, asdict
+import shutil
 # Try to import cv2, use fallback if not available
 try:
     import cv2
@@ -42,6 +43,148 @@ class FaceData:
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
+
+@dataclass
+class DownloadConfig:
+    """Configuration for background downloader"""
+    faces_dir: str = "./faces"
+    delay: float = 1.0
+    max_workers: int = 2
+    download_limit: Optional[int] = None
+    unlimited_download: bool = True
+    check_duplicates: bool = True
+    config_file: str = "download_config.json"
+
+    @classmethod
+    def from_file(cls, filename: str = "download_config.json") -> 'DownloadConfig':
+        """Load configuration from file"""
+        if os.path.exists(filename):
+            with open(filename, 'r') as f:
+                data = json.load(f)
+                return cls(**data)
+        return cls()
+
+    def save_to_file(self, filename: Optional[str] = None):
+        """Save configuration to file"""
+        if filename is None:
+            filename = self.config_file
+        with open(filename, 'w') as f:
+            json.dump(asdict(self), f, indent=2)
+
+class DownloadStats:
+    """Track download statistics"""
+    def __init__(self):
+        self.total_attempts = 0
+        self.successful_downloads = 0
+        self.duplicates_skipped = 0
+        self.errors = 0
+        self.start_time = time.time()
+        self.lock = threading.Lock()
+
+    def increment_attempts(self):
+        with self.lock:
+            self.total_attempts += 1
+
+    def increment_success(self):
+        with self.lock:
+            self.successful_downloads += 1
+
+    def increment_duplicates(self):
+        with self.lock:
+            self.duplicates_skipped += 1
+
+    def increment_errors(self):
+        with self.lock:
+            self.errors += 1
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Get current statistics"""
+        with self.lock:
+            elapsed_time = time.time() - self.start_time
+            download_rate = self.successful_downloads / elapsed_time if elapsed_time > 0 else 0
+            return {
+                'total_attempts': self.total_attempts,
+                'successful_downloads': self.successful_downloads,
+                'duplicates_skipped': self.duplicates_skipped,
+                'errors': self.errors,
+                'elapsed_time': elapsed_time,
+                'download_rate': download_rate
+            }
+
+class BackgroundDownloader:
+    """Background face downloader with statistics tracking"""
+
+    def __init__(self, config: DownloadConfig):
+        self.config = config
+        self.stats = DownloadStats()
+        self.running = False
+        self.collector = FaceCollector(storage_dir=config.faces_dir, delay=config.delay)
+
+    def start_background_download(self):
+        """Start downloading faces in the background"""
+        self.running = True
+        self.stats = DownloadStats()  # Reset stats
+
+        logger.info("Starting background download...")
+
+        # Determine how many faces to download
+        if self.config.unlimited_download:
+            # Download continuously until stopped
+            face_id_counter = 0
+            while self.running:
+                self._download_single_face(face_id_counter)
+                face_id_counter += 1
+        else:
+            # Download up to limit
+            download_limit = self.config.download_limit or 100
+            with ThreadPoolExecutor(max_workers=self.config.max_workers) as executor:
+                futures = []
+                for i in range(download_limit):
+                    if not self.running:
+                        break
+                    future = executor.submit(self._download_single_face, i)
+                    futures.append(future)
+
+                # Wait for all to complete
+                for future in as_completed(futures):
+                    if not self.running:
+                        break
+                    try:
+                        future.result()
+                    except Exception as e:
+                        logger.error(f"Download error: {e}")
+
+        logger.info("Background download stopped")
+        self.running = False
+
+    def _download_single_face(self, face_id: int) -> Optional[str]:
+        """Download a single face and update statistics"""
+        if not self.running:
+            return None
+
+        self.stats.increment_attempts()
+
+        try:
+            face_id_str = f"{face_id:06d}"
+            result = self.collector.download_face(face_id_str)
+
+            if result is None:
+                # Duplicate detected
+                self.stats.increment_duplicates()
+            else:
+                # Success
+                self.stats.increment_success()
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Error downloading face {face_id}: {e}")
+            self.stats.increment_errors()
+            return None
+
+    def stop(self):
+        """Stop the background download"""
+        self.running = False
 
 class FaceCollector:
     """Downloads and processes faces from ThisPersonDoesNotExist.com"""

@@ -37,7 +37,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # Import the BackgroundDownloader from the main script
 try:
     spec = importlib.util.spec_from_file_location("downloader",
-                                                   os.path.join(os.path.dirname(__file__), "99.downbackground.py"))
+                                                   os.path.join(os.path.dirname(__file__), "3_collect_faces.py"))
     downloader_module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(downloader_module)
 
@@ -46,7 +46,7 @@ try:
     DownloadStats = downloader_module.DownloadStats
 except Exception as e:
     print(f"Error importing downloader module: {e}")
-    print("Make sure 99.downbackground.py is in the same directory")
+    print("Make sure 3_collect_faces.py is in the same directory")
     sys.exit(1)
 
 class DownloadGUI:
@@ -389,7 +389,7 @@ class DownloadGUI:
                     for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
                         try:
                             if (proc.info['name'] == 'python3' and
-                                any('99.downbackground' in cmd for cmd in proc.info['cmdline'] or []) and
+                                any('3_collect_faces' in cmd for cmd in proc.info['cmdline'] or []) and
                                 proc.info['pid'] != current_pid):
                                 proc.terminate()
                                 self.log(f"Terminated background process PID: {proc.info['pid']}")
@@ -399,7 +399,7 @@ class DownloadGUI:
                     # Fallback: use system commands
                     try:
                         # On macOS/Linux, use pkill
-                        subprocess.run(['pkill', '-f', '99.downbackground.py'],
+                        subprocess.run(['pkill', '-f', '3_collect_faces.py'],
                                      capture_output=True, timeout=5)
                         self.log("Terminated background processes using pkill")
                     except Exception:
@@ -1270,9 +1270,9 @@ class DownloadGUI:
 
 def main():
     """Main function"""
-    # Check if 99.downbackground.py exists
-    if not os.path.exists("99.downbackground.py"):
-        print("Error: 99.downbackground.py not found in current directory")
+    # Check if 3_collect_faces.py exists
+    if not os.path.exists("3_collect_faces.py"):
+        print("Error: 3_collect_faces.py not found in current directory")
         print("Please ensure both files are in the same directory")
         sys.exit(1)
 

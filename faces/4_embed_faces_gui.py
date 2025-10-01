@@ -16,6 +16,7 @@ import io
 from datetime import datetime
 from typing import Optional
 import shutil
+import numpy as np
 
 # Fix Windows console encoding for emojis
 if sys.platform == 'win32':
@@ -35,14 +36,14 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # Import the VectorEmbeddingProcessor
 try:
     spec = importlib.util.spec_from_file_location("embedding",
-                                                   os.path.join(os.path.dirname(__file__), "100.embedintoVector.py"))
+                                                   os.path.join(os.path.dirname(__file__), "4_embed_faces.py"))
     embedding_module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(embedding_module)
 
     VectorEmbeddingProcessor = embedding_module.VectorEmbeddingProcessor
 except Exception as e:
     print(f"Error importing embedding module: {e}")
-    print("Make sure 100.embedintoVector.py is in the same directory")
+    print("Make sure 4_embed_faces.py is in the same directory")
     sys.exit(1)
 
 class EmbeddingGUI:
@@ -1230,7 +1231,7 @@ class EmbeddingGUI:
 def main():
     """Main function"""
     # Check if required files exist
-    required_files = ["100.embedintoVector.py", "face_collector.py", "face_database.py"]
+    required_files = ["4_embed_faces.py", "3_collect_faces.py"]
     for file in required_files:
         if not os.path.exists(file):
             print(f"Error: {file} not found in current directory")
