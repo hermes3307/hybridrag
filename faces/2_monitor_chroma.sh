@@ -26,7 +26,7 @@ sleep 2
 REFRESH_RATE=${1:-1.0}
 
 # Run the monitor
-python3 monitor_chroma.py --refresh "$REFRESH_RATE"
+python3 2_monitor_chroma.py --refresh "$REFRESH_RATE"
 
 echo ""
 echo "✅ Monitoring session ended"
