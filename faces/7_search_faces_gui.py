@@ -32,10 +32,17 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # Import our modules with error handling
 try:
     from face_database import FaceDatabase, FaceSearchInterface
-    from face_collector import FaceAnalyzer, FaceEmbedder
+
+    # Import directly from 3_collect_faces.py instead of the wrapper
+    from importlib.util import spec_from_file_location, module_from_spec
+    spec = spec_from_file_location("collect_faces", os.path.join(os.path.dirname(__file__), "3_collect_faces.py"))
+    collect_faces = module_from_spec(spec)
+    spec.loader.exec_module(collect_faces)
+    FaceAnalyzer = collect_faces.FaceAnalyzer
+    FaceEmbedder = collect_faces.FaceEmbedder
 except ImportError as e:
     print(f"Error importing required modules: {e}")
-    print("Make sure face_database.py and face_collector.py are in the same directory")
+    print("Make sure face_database.py and 3_collect_faces.py are in the same directory")
     sys.exit(1)
 
 # Set up logging
