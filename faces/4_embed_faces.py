@@ -14,18 +14,34 @@ import logging
 from pathlib import Path
 import numpy as np
 from PIL import Image
-import threading
 from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import shutil
 
-# Import existing modules
-from face_collector import FaceData
-from face_database import FaceDatabase
-
-# Set up logging
+# Set up logging first (before any imports that use logger)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# Import from 3_collect_faces.py
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# Import classes from the actual existing module
+try:
+    # Try importing from 3_collect_faces module (without .py extension)
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("collect_faces", "./3_collect_faces.py")
+    collect_faces = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(collect_faces)
+    FaceData = collect_faces.FaceData
+    FaceAnalyzer = collect_faces.FaceAnalyzer
+    FaceEmbedder = collect_faces.FaceEmbedder
+except Exception as e:
+    logger.error(f"Failed to import from 3_collect_faces.py: {e}")
+    raise
+
+# Import ChromaDB directly
+import chromadb
 
 @dataclass
 class EmbeddingStats:
@@ -49,13 +65,17 @@ class EmbeddingStats:
 class VectorEmbeddingProcessor:
     """Enhanced processor for embedding faces into vector database"""
 
-    def __init__(self, faces_dir: str = "./faces", batch_size: int = 50, max_workers: int = 4):
+    def __init__(self, faces_dir: str = "./faces", batch_size: int = 50, max_workers: int = 4,
+                 db_path: str = "./chroma_db", collection_name: str = "faces"):
         self.faces_dir = faces_dir
         self.batch_size = batch_size
         self.max_workers = max_workers
+        self.db_path = db_path
+        self.collection_name = collection_name
         self.stats = EmbeddingStats()
         self.running = True
-        self.face_db: Optional[FaceDatabase] = None
+        self.chroma_client = None
+        self.collection = None
         self.processed_hashes: Set[str] = set()
 
         # Ensure faces directory exists
@@ -95,10 +115,9 @@ class VectorEmbeddingProcessor:
         """Load existing embeddings to avoid duplicates"""
         existing_hashes = set()
         try:
-            if self.face_db:
+            if self.collection:
                 # Get all existing face data from database
-                collection = self.face_db.collection
-                results = collection.get()
+                results = self.collection.get()
                 if results and 'metadatas' in results:
                     for metadata in results['metadatas']:
                         if metadata and 'image_hash' in metadata:
@@ -137,7 +156,6 @@ class VectorEmbeddingProcessor:
 
                 # Use FaceAnalyzer for advanced features
                 try:
-                    from face_collector import FaceAnalyzer
                     analyzer = FaceAnalyzer()
                     advanced_features = analyzer.estimate_basic_features(image_path)
 
@@ -228,8 +246,7 @@ class VectorEmbeddingProcessor:
             else:
                 self.stats.metadata_missing += 1
 
-            # Generate embedding using face collector
-            from face_collector import FaceEmbedder
+            # Generate embedding using face embedder
             embedder = FaceEmbedder()
             embedding = embedder.generate_embedding(file_path, features)
 
@@ -301,16 +318,23 @@ class VectorEmbeddingProcessor:
     def initialize_database(self, clear_existing: bool = False):
         """Initialize the face database"""
         try:
-            self.face_db = FaceDatabase()
+            # Initialize ChromaDB client
+            self.chroma_client = chromadb.PersistentClient(path=self.db_path)
 
             if clear_existing:
                 logger.info("Clearing existing faces collection...")
                 try:
-                    self.face_db.client.delete_collection("faces")
-                    self.face_db._initialize_db()  # Recreate collection
-                    logger.info("Collection cleared and recreated")
+                    self.chroma_client.delete_collection(self.collection_name)
+                    logger.info("Collection deleted")
                 except Exception as e:
-                    logger.info(f"Collection creation: {e}")
+                    logger.debug(f"Collection deletion: {e}")
+
+            # Get or create collection
+            self.collection = self.chroma_client.get_or_create_collection(
+                name=self.collection_name,
+                metadata={"description": "Face embeddings collection"}
+            )
+            logger.info(f"Collection '{self.collection_name}' initialized")
 
             # Load existing embeddings for duplicate detection
             self.processed_hashes = self.load_existing_embeddings()
@@ -399,10 +423,50 @@ class VectorEmbeddingProcessor:
                 face_data_list = self.process_batch(batch_files, i)
 
                 # Add to database
-                if face_data_list and self.face_db:
+                if face_data_list and self.collection:
                     try:
-                        added_count = self.face_db.add_faces(face_data_list)
-                        logger.info(f"Added {added_count} embeddings to database")
+                        # Prepare data for ChromaDB
+                        ids = []
+                        embeddings = []
+                        metadatas = []
+                        documents = []
+
+                        for face_data in face_data_list:
+                            if face_data.embedding:
+                                ids.append(face_data.face_id)
+                                embeddings.append(face_data.embedding)
+
+                                # Prepare metadata (must be JSON-serializable)
+                                metadata = {
+                                    'image_hash': face_data.image_hash,
+                                    'file_path': face_data.file_path,
+                                    'timestamp': face_data.timestamp,
+                                }
+
+                                # Add basic features
+                                if face_data.features:
+                                    for key, value in face_data.features.items():
+                                        # Skip nested dicts/objects, only add simple types
+                                        if isinstance(value, (str, int, float, bool)):
+                                            metadata[key] = value
+                                        elif isinstance(value, dict):
+                                            # Store as JSON string for nested dicts
+                                            metadata[f'{key}_json'] = json.dumps(value)
+
+                                metadatas.append(metadata)
+
+                                # Document is the file name
+                                documents.append(os.path.basename(face_data.file_path))
+
+                        # Add to collection
+                        if ids:
+                            self.collection.add(
+                                ids=ids,
+                                embeddings=embeddings,
+                                metadatas=metadatas,
+                                documents=documents
+                            )
+                            logger.info(f"Added {len(ids)} embeddings to database")
                     except Exception as e:
                         logger.error(f"Error adding batch to database: {e}")
                         self.stats.errors += len(face_data_list)

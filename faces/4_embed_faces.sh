@@ -6,7 +6,7 @@ echo "============================================="
 echo "🔄 Scanning and embedding face images from ./faces directory..."
 
 echo "🚀 Running embedding process with image scanning..."
-python3 100.embedintoVector.py --faces-dir ./faces --batch-size 50 --max-workers 4 --clear
+python3 4_embed_faces.py --faces-dir ./faces --batch-size 50 --max-workers 4 --clear
 
 echo ""
 echo "📊 Database status after embedding:"
