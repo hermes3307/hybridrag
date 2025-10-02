@@ -1,3 +1,12 @@
+def _json_numpy_fallback(obj):
+    import numpy as np
+    if isinstance(obj, (np.integer,)):
+        return int(obj)
+    if isinstance(obj, (np.floating,)):
+        return float(obj)
+    if isinstance(obj, (np.ndarray,)):
+        return obj.tolist()
+    return str(obj)
 #!/usr/bin/env python3
 """
 Face Collection and Embedding System
@@ -298,7 +307,7 @@ class FaceCollector:
                 json_path = os.path.join(self.storage_dir, json_filename)
 
                 with open(json_path, 'w') as json_file:
-                    json.dump(metadata, json_file, indent=2)
+                    json.dump(metadata, json_file, indent=2, default=_json_numpy_fallback)
 
                 logger.info(f"Saved face to: {file_path}")
                 logger.info(f"Saved metadata to: {json_filename}")
