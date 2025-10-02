@@ -71,26 +71,6 @@ class UnifiedSearchGUI:
         # Search mode
         self.search_mode = tk.StringVar(value="combined")
 
-        # Initialize filter variables
-        self.age_filter = tk.StringVar(value="any")
-        self.skin_filter = tk.StringVar(value="any")
-        self.quality_filter = tk.StringVar(value="any")
-        self.use_brightness_filter = tk.BooleanVar(value=False)
-        self.min_brightness = tk.DoubleVar(value=0)
-        self.max_brightness = tk.DoubleVar(value=255)
-        self.use_date_filter = tk.BooleanVar(value=False)
-        self.date_from = tk.StringVar()
-        self.date_to = tk.StringVar()
-
-        # Search parameters
-        self.num_results = tk.IntVar(value=10)
-        self.min_similarity = tk.DoubleVar(value=0.0)
-        self.similarity_label_var = tk.StringVar(value="0.0%")
-
-        # Update similarity label when scale changes
-        self.min_similarity.trace_add('write',
-            lambda *args: self.similarity_label_var.set(f"{self.min_similarity.get():.1f}%"))
-
         # Setup UI and initialize database
         self.setup_ui()
         self.initialize_database()
@@ -100,48 +80,47 @@ class UnifiedSearchGUI:
 
     def setup_ui(self):
         """Set up the user interface"""
-        # Create menu bar
-        self.create_menu_bar()
+        # Create canvas and scrollbar for entire window
+        canvas = tk.Canvas(self.root)
+        scrollbar = ttk.Scrollbar(self.root, orient="vertical", command=canvas.yview)
 
-        # Main container
-        main_container = ttk.Frame(self.root)
-        main_container.pack(fill=tk.BOTH, expand=True)
+        # Main container frame inside canvas
+        main_container = ttk.Frame(canvas)
+
+        # Configure canvas
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        # Pack scrollbar and canvas
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        # Create window in canvas
+        canvas_frame = canvas.create_window((0, 0), window=main_container, anchor="nw")
+
+        # Update scrollregion when frame changes size
+        def on_frame_configure(event):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+        main_container.bind("<Configure>", on_frame_configure)
+
+        # Update canvas window width when canvas is resized
+        def on_canvas_configure(event):
+            canvas.itemconfig(canvas_frame, width=event.width)
+        canvas.bind("<Configure>", on_canvas_configure)
 
         # Main container with paned window for resizable sections
         paned = ttk.PanedWindow(main_container, orient=tk.HORIZONTAL)
         paned.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        # Left panel with scrollbar - Simplified search controls
-        left_container = ttk.Frame(paned, width=300)
-        paned.add(left_container, weight=1)
-
-        # Create canvas and scrollbar for left panel
-        left_canvas = tk.Canvas(left_container)
-        left_scrollbar = ttk.Scrollbar(left_container, orient="vertical", command=left_canvas.yview)
-        left_scrollable = ttk.Frame(left_canvas)
-
-        left_scrollable.bind(
-            "<Configure>",
-            lambda e: left_canvas.configure(scrollregion=left_canvas.bbox("all"))
-        )
-
-        left_canvas.create_window((0, 0), window=left_scrollable, anchor="nw")
-        left_canvas.configure(yscrollcommand=left_scrollbar.set)
-
-        left_canvas.pack(side="left", fill="both", expand=True)
-        left_scrollbar.pack(side="right", fill="y")
-
-        # Bind mousewheel to canvas
-        def _on_mousewheel(event):
-            left_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-        left_canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        # Left panel - Search controls (1/3 of space)
+        left_frame = ttk.Frame(paned, width=300)
+        paned.add(left_frame, weight=1)
 
         # Right panel - Results (2/3 of space)
         right_frame = ttk.Frame(paned, width=900)
         paned.add(right_frame, weight=3)
 
         # Setup left panel
-        self.setup_search_controls(left_scrollable)
+        self.setup_search_controls(left_frame)
 
         # Setup right panel
         self.setup_results_panel(right_frame)
@@ -152,162 +131,134 @@ class UnifiedSearchGUI:
                               relief=tk.SUNKEN, anchor=tk.W)
         status_bar.pack(side=tk.BOTTOM, fill=tk.X)
 
-    def create_menu_bar(self):
-        """Create menu bar with search options"""
-        menubar = tk.Menu(self.root)
-        self.root.config(menu=menubar)
-
-        # Search Mode Menu
-        search_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="Search Mode", menu=search_menu)
-
-        search_menu.add_radiobutton(
-            label="🔄 Combined Search (Semantic + Metadata)",
-            variable=self.search_mode,
-            value="combined"
-        )
-        search_menu.add_radiobutton(
-            label="🧠 Semantic Search Only",
-            variable=self.search_mode,
-            value="semantic"
-        )
-        search_menu.add_radiobutton(
-            label="📋 Metadata Search Only",
-            variable=self.search_mode,
-            value="metadata"
-        )
-        search_menu.add_separator()
-        search_menu.add_command(label="⚙️ Search Settings...", command=self.open_search_settings)
-
-        # Filters Menu
-        filters_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="Filters", menu=filters_menu)
-
-        filters_menu.add_command(label="🔍 Metadata Filters...", command=self.open_filter_settings)
-        filters_menu.add_separator()
-        filters_menu.add_command(label="🔄 Reset All Filters", command=self.reset_filters)
-
     def setup_search_controls(self, parent):
-        """Setup simplified search controls panel"""
-        # Title (smaller)
+        """Setup search controls panel"""
+        # Title
         title_label = ttk.Label(parent, text="🔍 Search Controls",
-                               font=("Arial", 12, "bold"))
-        title_label.pack(pady=5)
+                               font=("Arial", 14, "bold"))
+        title_label.pack(pady=10)
 
-        # Query Image Section (more compact)
-        query_frame = ttk.LabelFrame(parent, text="📷 Query Image")
-        query_frame.pack(fill=tk.X, padx=5, pady=5)
+        # Create notebook for organized tabs
+        notebook = ttk.Notebook(parent)
+        notebook.pack(fill=tk.X, padx=5, pady=5)
 
-        # Query image preview (smaller)
-        self.query_canvas = tk.Canvas(query_frame, width=120, height=120,
-                                     bg='lightgray', highlightthickness=1,
-                                     relief='ridge', bd=2)
-        self.query_canvas.pack(pady=5)
-        self.query_photo = None
+        # Tab 1: Query Image
+        self.setup_query_tab(notebook)
 
-        # Query info (smaller font)
-        self.query_info_var = tk.StringVar(value="No query image selected")
-        ttk.Label(query_frame, textvariable=self.query_info_var,
-                 wraplength=200, font=("Arial", 8)).pack(pady=3)
+        # Tab 2: Search Mode
+        self.setup_search_mode_tab(notebook)
 
-        # Query source buttons (more compact)
-        ttk.Button(query_frame, text="📁 Select from File",
-                  command=self.select_query_file).pack(fill=tk.X, padx=5, pady=1)
+        # Tab 3: Metadata Filters
+        self.setup_filters_tab(notebook)
 
-        ttk.Button(query_frame, text="🌐 Download Random",
-                  command=self.download_random_face).pack(fill=tk.X, padx=5, pady=1)
-
-        ttk.Button(query_frame, text="📋 Paste Clipboard",
-                  command=self.paste_from_clipboard).pack(fill=tk.X, padx=5, pady=1)
-
-        ttk.Button(query_frame, text="👁️ Preview Full",
-                  command=self.preview_query_full).pack(fill=tk.X, padx=5, pady=1)
-
-        # Search mode indicator (more compact)
-        mode_frame = ttk.LabelFrame(parent, text="Current Settings")
-        mode_frame.pack(fill=tk.X, padx=5, pady=5)
-
-        self.mode_indicator_var = tk.StringVar(value="Mode: Combined Search")
-        ttk.Label(mode_frame, textvariable=self.mode_indicator_var,
-                 wraplength=200, font=("Arial", 8)).pack(pady=2, padx=5)
-
-        self.filter_indicator_var = tk.StringVar(value="Filters: None")
-        ttk.Label(mode_frame, textvariable=self.filter_indicator_var,
-                 wraplength=200, foreground="blue", font=("Arial", 8)).pack(pady=2, padx=5)
-
-        # Update mode indicator when search mode changes
-        self.search_mode.trace_add('write', lambda *args: self.update_mode_indicator())
-
-        # Search buttons at the bottom (more compact)
+        # Search buttons at the bottom
         search_btn_frame = ttk.Frame(parent)
-        search_btn_frame.pack(fill=tk.X, padx=5, pady=5)
+        search_btn_frame.pack(fill=tk.X, padx=5, pady=10)
 
         self.search_btn = ttk.Button(search_btn_frame, text="🔍 SEARCH",
                                      command=self.perform_search,
                                      style="Accent.TButton")
-        self.search_btn.pack(fill=tk.X, ipady=5)
+        self.search_btn.pack(fill=tk.X, ipady=10)
 
         # Clear button
         clear_btn = ttk.Button(search_btn_frame, text="🗑️ Clear All",
                               command=self.clear_all)
-        clear_btn.pack(fill=tk.X, pady=(3, 0))
+        clear_btn.pack(fill=tk.X, pady=(5, 0))
 
-    def update_mode_indicator(self):
-        """Update the search mode indicator"""
-        mode_map = {
-            "combined": "Mode: Combined Search",
-            "semantic": "Mode: Semantic Search Only",
-            "metadata": "Mode: Metadata Search Only"
-        }
-        self.mode_indicator_var.set(mode_map.get(self.search_mode.get(), "Mode: Unknown"))
+    def setup_query_tab(self, notebook):
+        """Setup query image tab"""
+        query_frame = ttk.Frame(notebook)
+        notebook.add(query_frame, text="📷 Query Image")
 
-        # Update filter indicator
-        filters = self.build_metadata_filter()
-        if filters:
-            filter_count = len(filters)
-            self.filter_indicator_var.set(f"Filters: {filter_count} active")
-        else:
-            self.filter_indicator_var.set("Filters: None")
+        # Query image preview
+        preview_frame = ttk.LabelFrame(query_frame, text="Query Image Preview")
+        preview_frame.pack(fill=tk.X, padx=10, pady=10)
 
-    def open_search_settings(self):
-        """Open search settings dialog"""
-        dialog = tk.Toplevel(self.root)
-        dialog.title("⚙️ Search Settings")
-        dialog.geometry("500x400")
-        dialog.transient(self.root)
-        dialog.grab_set()
+        self.query_canvas = tk.Canvas(preview_frame, width=150, height=150,
+                                     bg='lightgray', highlightthickness=1,
+                                     relief='ridge', bd=2)
+        self.query_canvas.pack(pady=10)
+        self.query_photo = None
+
+        # Query info
+        self.query_info_var = tk.StringVar(value="No query image selected")
+        ttk.Label(preview_frame, textvariable=self.query_info_var,
+                 wraplength=350).pack(pady=5)
+
+        # Query source buttons
+        source_frame = ttk.LabelFrame(query_frame, text="Query Image Source")
+        source_frame.pack(fill=tk.X, padx=10, pady=10)
+
+        ttk.Button(source_frame, text="📁 Select from File",
+                  command=self.select_query_file).pack(fill=tk.X, padx=5, pady=2)
+
+        ttk.Button(source_frame, text="🌐 Download Random Face",
+                  command=self.download_random_face).pack(fill=tk.X, padx=5, pady=2)
+
+        ttk.Button(source_frame, text="📋 Paste from Clipboard",
+                  command=self.paste_from_clipboard).pack(fill=tk.X, padx=5, pady=2)
+
+        ttk.Button(source_frame, text="👁️ Preview Full Size",
+                  command=self.preview_query_full).pack(fill=tk.X, padx=5, pady=2)
+
+    def setup_search_mode_tab(self, notebook):
+        """Setup search mode tab"""
+        mode_frame = ttk.Frame(notebook)
+        notebook.add(mode_frame, text="⚙️ Search Mode")
+
+        # Search mode selection
+        mode_select_frame = ttk.LabelFrame(mode_frame, text="Search Type")
+        mode_select_frame.pack(fill=tk.X, padx=10, pady=10)
+
+        modes = [
+            ("combined", "🔄 Combined Search",
+             "Use both semantic similarity and metadata filters"),
+            ("semantic", "🧠 Semantic Search Only",
+             "Search based on visual similarity only"),
+            ("metadata", "📋 Metadata Search Only",
+             "Search based on metadata filters only")
+        ]
+
+        for value, text, desc in modes:
+            rb = ttk.Radiobutton(mode_select_frame, text=text,
+                                variable=self.search_mode, value=value)
+            rb.pack(anchor=tk.W, padx=5, pady=2)
+
+            desc_label = ttk.Label(mode_select_frame, text=f"  {desc}",
+                                  foreground="gray", font=("Arial", 8))
+            desc_label.pack(anchor=tk.W, padx=20, pady=(0, 5))
 
         # Semantic search parameters
-        semantic_frame = ttk.LabelFrame(dialog, text="Semantic Search Parameters")
-        semantic_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        semantic_frame = ttk.LabelFrame(mode_frame, text="Semantic Search Parameters")
+        semantic_frame.pack(fill=tk.X, padx=10, pady=10)
 
         # Number of results
-        ttk.Label(semantic_frame, text="Number of results:").pack(anchor=tk.W, padx=10, pady=5)
+        ttk.Label(semantic_frame, text="Number of results:").pack(anchor=tk.W, padx=5, pady=2)
+        self.num_results = tk.IntVar(value=10)
         ttk.Spinbox(semantic_frame, from_=1, to=50, textvariable=self.num_results,
                    width=10).pack(anchor=tk.W, padx=20, pady=2)
 
         # Similarity threshold
-        ttk.Label(semantic_frame, text="Minimum similarity (%):").pack(anchor=tk.W, padx=10, pady=5)
+        ttk.Label(semantic_frame, text="Minimum similarity (%):").pack(anchor=tk.W, padx=5, pady=2)
+        self.min_similarity = tk.DoubleVar(value=0.0)
         ttk.Scale(semantic_frame, from_=0, to=100, variable=self.min_similarity,
                  orient=tk.HORIZONTAL).pack(fill=tk.X, padx=20, pady=2)
 
-        similarity_label = ttk.Label(semantic_frame, textvariable=self.similarity_label_var)
-        similarity_label.pack(padx=20)
+        self.similarity_label_var = tk.StringVar(value="0.0%")
+        ttk.Label(semantic_frame, textvariable=self.similarity_label_var).pack(padx=20)
 
-        # Close button
-        ttk.Button(dialog, text="Close", command=dialog.destroy).pack(pady=10)
+        # Update label when scale changes
+        self.min_similarity.trace_add('write',
+            lambda *args: self.similarity_label_var.set(f"{self.min_similarity.get():.1f}%"))
 
-    def open_filter_settings(self):
-        """Open metadata filter settings dialog"""
-        dialog = tk.Toplevel(self.root)
-        dialog.title("🔍 Metadata Filters")
-        dialog.geometry("500x600")
-        dialog.transient(self.root)
-        dialog.grab_set()
+    def setup_filters_tab(self, notebook):
+        """Setup metadata filters tab"""
+        filters_frame = ttk.Frame(notebook)
+        notebook.add(filters_frame, text="🔍 Filters")
 
         # Create canvas with scrollbar for filters
-        canvas = tk.Canvas(dialog)
-        scrollbar = ttk.Scrollbar(dialog, orient="vertical", command=canvas.yview)
+        canvas = tk.Canvas(filters_frame)
+        scrollbar = ttk.Scrollbar(filters_frame, orient="vertical", command=canvas.yview)
         scrollable_frame = ttk.Frame(canvas)
 
         scrollable_frame.bind(
@@ -323,64 +274,68 @@ class UnifiedSearchGUI:
 
         # Age group filter
         age_frame = ttk.LabelFrame(scrollable_frame, text="Age Group")
-        age_frame.pack(fill=tk.X, padx=10, pady=5)
+        age_frame.pack(fill=tk.X, padx=5, pady=5)
 
+        self.age_filter = tk.StringVar(value="any")
         for age in ["any", "young_adult", "adult", "mature_adult"]:
             ttk.Radiobutton(age_frame, text=age.replace("_", " ").title(),
                            variable=self.age_filter, value=age).pack(anchor=tk.W, padx=5)
 
         # Skin tone filter
         skin_frame = ttk.LabelFrame(scrollable_frame, text="Skin Tone")
-        skin_frame.pack(fill=tk.X, padx=10, pady=5)
+        skin_frame.pack(fill=tk.X, padx=5, pady=5)
 
+        self.skin_filter = tk.StringVar(value="any")
         for skin in ["any", "light", "medium", "dark"]:
             ttk.Radiobutton(skin_frame, text=skin.title(),
                            variable=self.skin_filter, value=skin).pack(anchor=tk.W, padx=5)
 
         # Quality filter
         quality_frame = ttk.LabelFrame(scrollable_frame, text="Image Quality")
-        quality_frame.pack(fill=tk.X, padx=10, pady=5)
+        quality_frame.pack(fill=tk.X, padx=5, pady=5)
 
+        self.quality_filter = tk.StringVar(value="any")
         for quality in ["any", "high", "medium", "low"]:
             ttk.Radiobutton(quality_frame, text=quality.title(),
                            variable=self.quality_filter, value=quality).pack(anchor=tk.W, padx=5)
 
         # Brightness filter
         brightness_frame = ttk.LabelFrame(scrollable_frame, text="Brightness Range")
-        brightness_frame.pack(fill=tk.X, padx=10, pady=5)
+        brightness_frame.pack(fill=tk.X, padx=5, pady=5)
 
+        self.use_brightness_filter = tk.BooleanVar(value=False)
         ttk.Checkbutton(brightness_frame, text="Enable brightness filter",
                        variable=self.use_brightness_filter).pack(anchor=tk.W, padx=5)
 
         ttk.Label(brightness_frame, text="Min brightness:").pack(anchor=tk.W, padx=5)
+        self.min_brightness = tk.DoubleVar(value=0)
         ttk.Scale(brightness_frame, from_=0, to=255, variable=self.min_brightness,
                  orient=tk.HORIZONTAL).pack(fill=tk.X, padx=10)
 
         ttk.Label(brightness_frame, text="Max brightness:").pack(anchor=tk.W, padx=5)
+        self.max_brightness = tk.DoubleVar(value=255)
         ttk.Scale(brightness_frame, from_=0, to=255, variable=self.max_brightness,
                  orient=tk.HORIZONTAL).pack(fill=tk.X, padx=10)
 
         # Date range filter
         date_frame = ttk.LabelFrame(scrollable_frame, text="Date Range")
-        date_frame.pack(fill=tk.X, padx=10, pady=5)
+        date_frame.pack(fill=tk.X, padx=5, pady=5)
 
+        self.use_date_filter = tk.BooleanVar(value=False)
         ttk.Checkbutton(date_frame, text="Enable date filter",
                        variable=self.use_date_filter).pack(anchor=tk.W, padx=5)
 
         ttk.Label(date_frame, text="From date (YYYY-MM-DD):").pack(anchor=tk.W, padx=5)
+        self.date_from = tk.StringVar()
         ttk.Entry(date_frame, textvariable=self.date_from).pack(fill=tk.X, padx=10, pady=2)
 
         ttk.Label(date_frame, text="To date (YYYY-MM-DD):").pack(anchor=tk.W, padx=5)
+        self.date_to = tk.StringVar()
         ttk.Entry(date_frame, textvariable=self.date_to).pack(fill=tk.X, padx=10, pady=2)
 
-        # Buttons at bottom
-        btn_frame = ttk.Frame(dialog)
-        btn_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=10)
-
-        ttk.Button(btn_frame, text="🔄 Reset Filters",
-                  command=lambda: [self.reset_filters(), self.update_mode_indicator()]).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame, text="Apply & Close",
-                  command=lambda: [self.update_mode_indicator(), dialog.destroy()]).pack(side=tk.RIGHT, padx=5)
+        # Reset filters button
+        ttk.Button(scrollable_frame, text="🔄 Reset All Filters",
+                  command=self.reset_filters).pack(fill=tk.X, padx=5, pady=10)
 
     def setup_results_panel(self, parent):
         """Setup results display panel"""
