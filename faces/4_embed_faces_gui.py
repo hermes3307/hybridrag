@@ -167,33 +167,41 @@ class EmbeddingGUI:
                                      variable=self.clear_existing_var)
         clear_check.grid(row=5, column=0, columnspan=2, sticky=tk.W, pady=2)
 
-        # Control buttons
+        # Control buttons - organized in two rows
         control_frame = ttk.Frame(main_frame)
         control_frame.grid(row=2, column=0, columnspan=2, pady=10)
 
-        self.start_button = ttk.Button(control_frame, text="🚀 Start Embedding",
-                                      command=self.start_embedding, style="Accent.TButton")
-        self.start_button.pack(side=tk.LEFT, padx=(0, 10))
+        # First row of buttons - main actions
+        control_row1 = ttk.Frame(control_frame)
+        control_row1.pack(pady=(0, 5))
 
-        self.stop_button = ttk.Button(control_frame, text="⏹️ Stop Embedding",
-                                     command=self.stop_embedding, state=tk.DISABLED)
-        self.stop_button.pack(side=tk.LEFT, padx=(0, 10))
+        self.start_button = ttk.Button(control_row1, text="🚀 Start Embedding",
+                                      command=self.start_embedding, style="Accent.TButton", width=18)
+        self.start_button.pack(side=tk.LEFT, padx=5)
 
-        self.open_folder_button = ttk.Button(control_frame, text="📁 Open Folder",
-                                           command=self.open_faces_folder)
-        self.open_folder_button.pack(side=tk.LEFT, padx=(0, 10))
+        self.stop_button = ttk.Button(control_row1, text="⏹️ Stop Embedding",
+                                     command=self.stop_embedding, state=tk.DISABLED, width=18)
+        self.stop_button.pack(side=tk.LEFT, padx=5)
 
-        self.db_info_button = ttk.Button(control_frame, text="📊 Database Info",
-                                        command=self.show_db_info)
-        self.db_info_button.pack(side=tk.LEFT, padx=(0, 10))
+        self.open_folder_button = ttk.Button(control_row1, text="📁 Open Folder",
+                                           command=self.open_faces_folder, width=18)
+        self.open_folder_button.pack(side=tk.LEFT, padx=5)
 
-        self.delete_collection_button = ttk.Button(control_frame, text="🗑️ Delete Collection",
-                                                 command=self.delete_collection)
-        self.delete_collection_button.pack(side=tk.LEFT, padx=(0, 10))
+        # Second row of buttons - database operations
+        control_row2 = ttk.Frame(control_frame)
+        control_row2.pack()
 
-        self.show_embeddings_button = ttk.Button(control_frame, text="🔍 View Embeddings",
-                                               command=self.show_embedding_viewer)
-        self.show_embeddings_button.pack(side=tk.LEFT)
+        self.db_info_button = ttk.Button(control_row2, text="📊 Database Info",
+                                        command=self.show_db_info, width=18)
+        self.db_info_button.pack(side=tk.LEFT, padx=5)
+
+        self.delete_collection_button = ttk.Button(control_row2, text="🗑️ Delete Collection",
+                                                 command=self.delete_collection, width=18)
+        self.delete_collection_button.pack(side=tk.LEFT, padx=5)
+
+        self.show_embeddings_button = ttk.Button(control_row2, text="🔍 View Embeddings",
+                                               command=self.show_embedding_viewer, width=18)
+        self.show_embeddings_button.pack(side=tk.LEFT, padx=5)
 
         # Directory Information section
         dir_info_frame = ttk.LabelFrame(main_frame, text="Directory Information", padding="10")

@@ -141,22 +141,33 @@ class FaceDatabase:
     def search_similar_faces(self, query_embedding: List[float], n_results: int = 5) -> Dict[str, Any]:
         """Search for similar faces using embedding similarity"""
         try:
+            logger.info(f"ChromaDB query - embedding dim: {len(query_embedding)}, n_results: {n_results}")
+
+            # Check collection count
+            count = self.collection.count()
+            logger.info(f"Collection has {count} total vectors")
+
             results = self.collection.query(
                 query_embeddings=[query_embedding],
                 n_results=n_results,
                 include=["metadatas", "documents", "distances"]
             )
 
+            logger.info(f"Query returned: {results.keys()}")
+            logger.info(f"IDs: {len(results['ids'][0]) if results['ids'] and len(results['ids']) > 0 else 0}")
+
             return {
-                "ids": results["ids"][0] if results["ids"] else [],
-                "metadatas": results["metadatas"][0] if results["metadatas"] else [],
-                "documents": results["documents"][0] if results["documents"] else [],
-                "distances": results["distances"][0] if results["distances"] else [],
-                "count": len(results["ids"][0]) if results["ids"] else 0
+                "ids": results["ids"][0] if results["ids"] and len(results["ids"]) > 0 else [],
+                "metadatas": results["metadatas"][0] if results["metadatas"] and len(results["metadatas"]) > 0 else [],
+                "documents": results["documents"][0] if results["documents"] and len(results["documents"]) > 0 else [],
+                "distances": results["distances"][0] if results["distances"] and len(results["distances"]) > 0 else [],
+                "count": len(results["ids"][0]) if results["ids"] and len(results["ids"]) > 0 else 0
             }
 
         except Exception as e:
             logger.error(f"Error searching similar faces: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return {"ids": [], "metadatas": [], "documents": [], "distances": [], "count": 0}
 
     def search_by_metadata(self, filters: Dict[str, Any], n_results: int = 10) -> Dict[str, Any]:
@@ -199,6 +210,98 @@ class FaceSearchInterface:
     def search_similar(self, query_embedding: List[float], n_results: int = 5) -> Dict[str, Any]:
         """Search for similar faces"""
         return self.face_db.search_similar_faces(query_embedding, n_results)
+
+    def search_by_image(self, image_path: str, n_results: int = 5) -> Dict[str, Any]:
+        """Search for similar faces by image path"""
+        try:
+            from PIL import Image
+            import numpy as np
+
+            logger.info(f"=== Vector Search Started ===")
+            logger.info(f"Input image: {image_path}")
+            logger.info(f"Requested results: {n_results}")
+
+            # Load and process image
+            logger.info("Loading and preprocessing image...")
+            img = Image.open(image_path).convert('RGB')
+            original_size = img.size
+            img = img.resize((224, 224))
+            image = np.array(img)
+            logger.info(f"Image resized from {original_size} to (224, 224)")
+
+            # Generate embedding using the SAME method as the database
+            logger.info("Generating embedding vector using CNN features...")
+
+            # Convert to grayscale
+            if len(image.shape) == 3:
+                gray = np.mean(image, axis=2).astype(np.uint8)
+            else:
+                gray = image
+
+            feature_vector = []
+
+            # Histogram features (32 bins)
+            hist, _ = np.histogram(gray, bins=32, range=[0, 256])
+            feature_vector.extend(hist.tolist())
+            logger.info(f"Added histogram features: {len(hist)} values")
+
+            # Color moments for each channel (RGB)
+            for channel in range(image.shape[2] if len(image.shape) == 3 else 1):
+                ch = image[:,:,channel] if len(image.shape) == 3 else image
+                feature_vector.extend([
+                    float(np.mean(ch)),
+                    float(np.std(ch)),
+                    float(np.mean(np.power(ch - np.mean(ch), 3)))  # skewness
+                ])
+            logger.info(f"Added color moments: 9 values (3 channels × 3 moments)")
+
+            # Texture features (7x7 grid = 49 patches × 2 features)
+            patch_count = 0
+            for i in range(0, gray.shape[0], 32):
+                for j in range(0, gray.shape[1], 32):
+                    patch = gray[i:i+32, j:j+32]
+                    if patch.size > 0:
+                        feature_vector.extend([
+                            float(np.mean(patch)),
+                            float(np.std(patch))
+                        ])
+                        patch_count += 1
+            logger.info(f"Added texture features: {patch_count} patches × 2 = {patch_count * 2} values")
+
+            # Add dummy extracted features (since we don't have metadata for query)
+            feature_vector.extend([0.5, 0.5, 0.5, 0.5])
+            logger.info(f"Added metadata features: 4 values")
+
+            # Normalize to unit vector (SAME as database)
+            feature_vector = np.array(feature_vector)
+            if np.linalg.norm(feature_vector) > 0:
+                feature_vector = feature_vector / np.linalg.norm(feature_vector)
+
+            embedding = feature_vector.tolist()
+
+            logger.info(f"Embedding vector size: {len(embedding)}")
+            logger.info(f"Embedding stats - min: {min(embedding):.4f}, max: {max(embedding):.4f}, mean: {sum(embedding)/len(embedding):.4f}")
+
+            # Search with embedding
+            logger.info("Querying ChromaDB with embedding vector...")
+            results = self.face_db.search_similar_faces(embedding, n_results)
+
+            logger.info(f"ChromaDB returned {results.get('count', 0)} results")
+            logger.info(f"Result structure: {list(results.keys())}")
+
+            if results.get('count', 0) > 0:
+                logger.info(f"Top 3 distances: {results.get('distances', [])[:3]}")
+                logger.info(f"Top 3 IDs: {results.get('ids', [])[:3]}")
+
+            logger.info("=== Vector Search Completed ===")
+
+            return {"results": results}
+
+        except Exception as e:
+            logger.error(f"Error in search_by_image: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return {"error": str(e)}
 
     def search_by_features(self, filters: Dict[str, Any], n_results: int = 10) -> Dict[str, Any]:
         """Search by feature filters"""

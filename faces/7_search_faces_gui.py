@@ -55,7 +55,7 @@ class UnifiedSearchGUI:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("🔍 Unified Face Search Interface")
-        self.root.geometry("1200x500")
+        self.root.geometry("900x600")
 
         # Initialize components
         self.face_db = None
@@ -145,7 +145,13 @@ class UnifiedSearchGUI:
         # Tab 1: Query Image
         self.setup_query_tab(notebook)
 
-        # Search button right after query tab
+        # Tab 2: Search Mode
+        self.setup_search_mode_tab(notebook)
+
+        # Tab 3: Metadata Filters
+        self.setup_filters_tab(notebook)
+
+        # Search buttons at the bottom
         search_btn_frame = ttk.Frame(parent)
         search_btn_frame.pack(fill=tk.X, padx=5, pady=10)
 
@@ -158,12 +164,6 @@ class UnifiedSearchGUI:
         clear_btn = ttk.Button(search_btn_frame, text="🗑️ Clear All",
                               command=self.clear_all)
         clear_btn.pack(fill=tk.X, pady=(5, 0))
-
-        # Tab 2: Search Mode
-        self.setup_search_mode_tab(notebook)
-
-        # Tab 3: Metadata Filters
-        self.setup_filters_tab(notebook)
 
     def setup_query_tab(self, notebook):
         """Setup query image tab"""
@@ -355,7 +355,7 @@ class UnifiedSearchGUI:
         # Create treeview with scrollbar
         columns = ("Rank", "Similarity", "Filename", "Age", "Skin", "Quality", "Brightness", "Download Date")
         self.results_tree = ttk.Treeview(table_frame, columns=columns,
-                                        show="headings", height=12)
+                                        show="headings", height=5)
 
         # Configure columns
         self.results_tree.heading("Rank", text="#")
@@ -410,6 +410,20 @@ class UnifiedSearchGUI:
 
         ttk.Button(btn_frame, text="🗑️ Clear Results",
                   command=self.clear_results).pack(side=tk.LEFT, padx=2)
+
+        # Log panel
+        log_frame = ttk.LabelFrame(parent, text="📋 Search Logs")
+        log_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+
+        self.log_text = scrolledtext.ScrolledText(log_frame, height=8, wrap=tk.WORD, font=("Courier", 9))
+        self.log_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+    def log_message(self, message):
+        """Add message to log panel"""
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        self.log_text.insert(tk.END, f"[{timestamp}] {message}\n")
+        self.log_text.see(tk.END)
+        logger.info(message)
 
     def initialize_database(self):
         """Initialize the face database"""
@@ -668,31 +682,47 @@ class UnifiedSearchGUI:
     def _perform_semantic_search(self, metadata_filters: Dict) -> List[Dict]:
         """Perform semantic similarity search"""
         num_results = self.num_results.get()
+        self.log_message(f"Starting semantic search with num_results={num_results}")
+        self.log_message(f"Query image: {self.current_query_file}")
 
         # Use search interface
+        self.log_message("Generating embedding from query image...")
         raw_results = self.search_interface.search_by_image(
             self.current_query_file,
             num_results
         )
 
+        self.log_message(f"Raw results keys: {raw_results.keys()}")
+
         if "error" in raw_results:
+            self.log_message(f"ERROR: {raw_results['error']}")
             raise Exception(raw_results["error"])
 
         # Process and filter results
         results = []
         search_data = raw_results.get("results", {})
 
+        self.log_message(f"Search data keys: {search_data.keys()}")
+        self.log_message(f"Search data count: {search_data.get('count', 0)}")
+        self.log_message(f"IDs found: {len(search_data.get('ids', []))}")
+        self.log_message(f"Metadatas found: {len(search_data.get('metadatas', []))}")
+        self.log_message(f"Distances found: {len(search_data.get('distances', []))}")
+
         for i in range(search_data.get("count", 0)):
             metadata = search_data.get("metadatas", [])[i] if i < len(search_data.get("metadatas", [])) else {}
             distance = search_data.get("distances", [])[i] if i < len(search_data.get("distances", [])) else 1.0
             similarity = (1 - distance) * 100
 
+            self.log_message(f"Result {i}: distance={distance:.4f}, similarity={similarity:.2f}%")
+
             # Apply similarity threshold
             if similarity < self.min_similarity.get():
+                self.log_message(f"  Filtered out (below threshold {self.min_similarity.get()}%)")
                 continue
 
             # Apply metadata filters
             if not self._matches_filters(metadata, metadata_filters):
+                self.log_message(f"  Filtered out (metadata mismatch)")
                 continue
 
             result = {
@@ -702,7 +732,9 @@ class UnifiedSearchGUI:
                 'metadata': metadata
             }
             results.append(result)
+            self.log_message(f"  Added to results (rank {len(results)})")
 
+        self.log_message(f"Semantic search completed: {len(results)} results after filtering")
         return results
 
     def _perform_metadata_search(self, metadata_filters: Dict) -> List[Dict]:
