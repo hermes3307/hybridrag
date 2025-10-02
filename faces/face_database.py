@@ -204,8 +204,19 @@ class FaceDatabase:
 class FaceSearchInterface:
     """Interface for advanced face search operations"""
 
-    def __init__(self, db_path: str = "./chroma_db", collection_name: str = "faces"):
-        self.face_db = FaceDatabase(db_path, collection_name)
+    def __init__(self, face_db=None, db_path: str = "./chroma_db", collection_name: str = "faces"):
+        """
+        Initialize FaceSearchInterface.
+
+        Args:
+            face_db: Optional existing FaceDatabase instance to use
+            db_path: Path to database (used if face_db not provided)
+            collection_name: Collection name (used if face_db not provided)
+        """
+        if face_db is not None:
+            self.face_db = face_db
+        else:
+            self.face_db = FaceDatabase(db_path, collection_name)
 
     def search_similar(self, query_embedding: List[float], n_results: int = 5) -> Dict[str, Any]:
         """Search for similar faces"""
