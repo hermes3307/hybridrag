@@ -1,5 +1,6 @@
 .env
 faces/
+*face_database.FaceDatabase*
 chroma_db/
 indexer.log
 batch/
