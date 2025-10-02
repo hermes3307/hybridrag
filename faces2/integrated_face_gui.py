@@ -229,15 +229,15 @@ class IntegratedFaceGUI:
         ttk.Button(control_frame, text="Search Similar Faces", command=self.search_faces).grid(row=2, column=0, columnspan=2, pady=10)
 
         # Results frame
-        results_frame = ttk.LabelFrame(self.search_frame, text="Search Results", padding=10)
-        results_frame.grid(row=1, column=0, sticky="both", padx=5, pady=5, fill="both", expand=True)
+        self.results_frame = ttk.LabelFrame(self.search_frame, text="Search Results", padding=10)
+        self.results_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
 
         # Results display
-        self.results_frame_inner = ttk.Frame(results_frame)
-        self.results_scrollbar = ttk.Scrollbar(results_frame, orient="vertical")
-        self.results_canvas = tk.Canvas(results_frame, yscrollcommand=self.results_scrollbar.set)
-        self.results_scrollbar.config(command=self.results_canvas.yview)
+        self.results_canvas = tk.Canvas(self.results_frame)
+        self.results_scrollbar = ttk.Scrollbar(self.results_frame, orient="vertical", command=self.results_canvas.yview)
+        self.results_frame_inner = ttk.Frame(self.results_canvas)
 
+        self.results_canvas.configure(yscrollcommand=self.results_scrollbar.set)
         self.results_canvas.pack(side="left", fill="both", expand=True)
         self.results_scrollbar.pack(side="right", fill="y")
         self.results_canvas.create_window((0, 0), window=self.results_frame_inner, anchor="nw")
