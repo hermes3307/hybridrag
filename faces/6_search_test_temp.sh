@@ -7,7 +7,16 @@ echo "🧪 Testing face similarity search by downloading a new test face..."
 
 # Create comprehensive search test script
 cat > temp_search_test.py << 'EOF'
-from face_collector import FaceCollector, FaceAnalyzer, FaceEmbedder
+import sys
+sys.path.insert(0, '/Users/j/Cursor/hybridrag/faces')
+from importlib import import_module
+
+# Import from numbered scripts
+collect_module = import_module('3_collect_faces')
+FaceCollector = collect_module.FaceCollector
+FaceAnalyzer = collect_module.FaceAnalyzer
+FaceEmbedder = collect_module.FaceEmbedder
+
 from face_database import FaceDatabase, FaceSearchInterface
 import os
 import time
@@ -114,20 +123,20 @@ def main():
     test_quality = features.get('image_quality')
 
     if test_age:
-        age_results = face_db.search_by_features({"estimated_age_group": test_age}, n_results=10)
+        age_results = search_interface.search_by_features({"estimated_age_group": test_age}, n_results=10)
         print(f"Same age group ({test_age}): {age_results['count']} matches")
 
     if test_tone:
-        tone_results = face_db.search_by_features({"estimated_skin_tone": test_tone}, n_results=10)
+        tone_results = search_interface.search_by_features({"estimated_skin_tone": test_tone}, n_results=10)
         print(f"Same skin tone ({test_tone}): {tone_results['count']} matches")
 
     if test_quality:
-        quality_results = face_db.search_by_features({"image_quality": test_quality}, n_results=10)
+        quality_results = search_interface.search_by_features({"image_quality": test_quality}, n_results=10)
         print(f"Same quality ({test_quality}): {quality_results['count']} matches")
 
     # Test 4: Combined feature search
     if test_age and test_tone:
-        combined_results = face_db.search_by_features({
+        combined_results = search_interface.search_by_features({
             "estimated_age_group": test_age,
             "estimated_skin_tone": test_tone
         }, n_results=5)

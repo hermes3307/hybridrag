@@ -55,7 +55,7 @@ class UnifiedSearchGUI:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("🔍 Unified Face Search Interface")
-        self.root.geometry("900x600")
+        self.root.geometry("1200x800")
 
         # Initialize components
         self.face_db = None
@@ -111,13 +111,13 @@ class UnifiedSearchGUI:
         paned = ttk.PanedWindow(main_container, orient=tk.HORIZONTAL)
         paned.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        # Left panel - Search controls
-        left_frame = ttk.Frame(paned, width=400)
+        # Left panel - Search controls (1/3 of space)
+        left_frame = ttk.Frame(paned, width=300)
         paned.add(left_frame, weight=1)
 
-        # Right panel - Results
-        right_frame = ttk.Frame(paned, width=800)
-        paned.add(right_frame, weight=2)
+        # Right panel - Results (2/3 of space)
+        right_frame = ttk.Frame(paned, width=900)
+        paned.add(right_frame, weight=3)
 
         # Setup left panel
         self.setup_search_controls(left_frame)
@@ -174,7 +174,7 @@ class UnifiedSearchGUI:
         preview_frame = ttk.LabelFrame(query_frame, text="Query Image Preview")
         preview_frame.pack(fill=tk.X, padx=10, pady=10)
 
-        self.query_canvas = tk.Canvas(preview_frame, width=120, height=120,
+        self.query_canvas = tk.Canvas(preview_frame, width=150, height=150,
                                      bg='lightgray', highlightthickness=1,
                                      relief='ridge', bd=2)
         self.query_canvas.pack(pady=10)
@@ -183,7 +183,7 @@ class UnifiedSearchGUI:
         # Query info
         self.query_info_var = tk.StringVar(value="No query image selected")
         ttk.Label(preview_frame, textvariable=self.query_info_var,
-                 wraplength=280).pack(pady=5)
+                 wraplength=350).pack(pady=5)
 
         # Query source buttons
         source_frame = ttk.LabelFrame(query_frame, text="Query Image Source")
@@ -348,14 +348,18 @@ class UnifiedSearchGUI:
         self.results_summary_var = tk.StringVar(value="No search performed yet")
         ttk.Label(parent, textvariable=self.results_summary_var).pack(pady=5)
 
-        # Results table with metadata
-        table_frame = ttk.Frame(parent)
-        table_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        # Create horizontal paned window for results table and preview
+        results_paned = ttk.PanedWindow(parent, orient=tk.HORIZONTAL)
+        results_paned.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+
+        # Left side - Results table
+        table_frame = ttk.Frame(results_paned)
+        results_paned.add(table_frame, weight=3)
 
         # Create treeview with scrollbar
         columns = ("Rank", "Similarity", "Filename", "Age", "Skin", "Quality", "Brightness", "Download Date")
         self.results_tree = ttk.Treeview(table_frame, columns=columns,
-                                        show="headings", height=5)
+                                        show="headings", height=12)
 
         # Configure columns
         self.results_tree.heading("Rank", text="#")
@@ -368,13 +372,13 @@ class UnifiedSearchGUI:
         self.results_tree.heading("Download Date", text="Date")
 
         self.results_tree.column("Rank", width=40)
-        self.results_tree.column("Similarity", width=80)
-        self.results_tree.column("Filename", width=200)
+        self.results_tree.column("Similarity", width=70)
+        self.results_tree.column("Filename", width=180)
         self.results_tree.column("Age", width=80)
-        self.results_tree.column("Skin", width=70)
-        self.results_tree.column("Quality", width=70)
-        self.results_tree.column("Brightness", width=80)
-        self.results_tree.column("Download Date", width=150)
+        self.results_tree.column("Skin", width=60)
+        self.results_tree.column("Quality", width=60)
+        self.results_tree.column("Brightness", width=70)
+        self.results_tree.column("Download Date", width=130)
 
         # Scrollbars
         v_scrollbar = ttk.Scrollbar(table_frame, orient="vertical",
@@ -392,14 +396,36 @@ class UnifiedSearchGUI:
         table_frame.grid_rowconfigure(0, weight=1)
         table_frame.grid_columnconfigure(0, weight=1)
 
-        # Bind double-click to view image
+        # Bind single-click to show preview and double-click to open image
+        self.results_tree.bind("<<TreeviewSelect>>", self.on_result_selected)
         self.results_tree.bind("<Double-1>", self.view_result_image)
+
+        # Right side - Preview panel
+        preview_container = ttk.Frame(results_paned)
+        results_paned.add(preview_container, weight=1)
+
+        preview_label = ttk.Label(preview_container, text="🖼️ Preview",
+                                 font=("Arial", 12, "bold"))
+        preview_label.pack(pady=5)
+
+        # Preview canvas (same size as query image: 150x150)
+        self.preview_canvas = tk.Canvas(preview_container, width=150, height=150,
+                                       bg='lightgray', highlightthickness=1,
+                                       relief='ridge', bd=2)
+        self.preview_canvas.pack(pady=10, padx=10)
+        self.preview_photo = None
+
+        # Preview info
+        self.preview_info_var = tk.StringVar(value="Select a result to preview")
+        preview_info = ttk.Label(preview_container, textvariable=self.preview_info_var,
+                                wraplength=150, justify=tk.CENTER)
+        preview_info.pack(pady=5, padx=10)
 
         # Results action buttons
         btn_frame = ttk.Frame(parent)
         btn_frame.pack(fill=tk.X, padx=10, pady=5)
 
-        ttk.Button(btn_frame, text="👁️ View Image",
+        ttk.Button(btn_frame, text="👁️ View Full Size",
                   command=self.view_selected_result).pack(side=tk.LEFT, padx=2)
 
         ttk.Button(btn_frame, text="📋 View Metadata",
@@ -411,12 +437,93 @@ class UnifiedSearchGUI:
         ttk.Button(btn_frame, text="🗑️ Clear Results",
                   command=self.clear_results).pack(side=tk.LEFT, padx=2)
 
-        # Log panel
-        log_frame = ttk.LabelFrame(parent, text="📋 Search Logs")
-        log_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        # Collapsible log panel (smaller)
+        log_expander_frame = ttk.Frame(parent)
+        log_expander_frame.pack(fill=tk.X, padx=10, pady=5)
 
-        self.log_text = scrolledtext.ScrolledText(log_frame, height=8, wrap=tk.WORD, font=("Courier", 9))
+        self.log_expanded = tk.BooleanVar(value=False)
+        log_toggle_btn = ttk.Checkbutton(log_expander_frame, text="📋 Show Search Logs",
+                                        variable=self.log_expanded,
+                                        command=self.toggle_log_panel)
+        log_toggle_btn.pack(anchor=tk.W)
+
+        # Log panel (hidden by default)
+        self.log_frame = ttk.Frame(parent)
+        self.log_text = scrolledtext.ScrolledText(self.log_frame, height=6, wrap=tk.WORD, font=("Courier", 8))
         self.log_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+    def toggle_log_panel(self):
+        """Toggle visibility of log panel"""
+        if self.log_expanded.get():
+            self.log_frame.pack(fill=tk.BOTH, expand=False, padx=10, pady=5)
+        else:
+            self.log_frame.pack_forget()
+
+    def on_result_selected(self, event):
+        """Handle result selection to show preview"""
+        selection = self.results_tree.selection()
+        if not selection:
+            return
+
+        try:
+            item = self.results_tree.item(selection[0])
+            rank = int(item['values'][0])
+            result = self.search_results[rank - 1]
+            file_path = result['metadata'].get('file_path', '')
+
+            if file_path and os.path.exists(file_path):
+                self.show_preview(file_path, result)
+            else:
+                self.clear_preview("Image file not found")
+        except Exception as e:
+            logger.error(f"Error showing preview: {e}")
+            self.clear_preview("Error loading preview")
+
+    def show_preview(self, file_path: str, result: Dict):
+        """Show preview of selected result"""
+        try:
+            # Load and display image
+            pil_image = Image.open(file_path)
+
+            # Convert to RGB if needed
+            if pil_image.mode != 'RGB':
+                pil_image = pil_image.convert('RGB')
+
+            # Resize to fit preview canvas (same as query image size)
+            max_size = 140
+            pil_image.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+
+            self.preview_photo = ImageTk.PhotoImage(pil_image)
+
+            # Display in canvas (centered at 75, 75 for 150x150 canvas)
+            self.preview_canvas.delete("all")
+            self.preview_canvas.configure(bg='white')
+            self.preview_canvas.create_image(75, 75, image=self.preview_photo)
+
+            # Update info
+            metadata = result['metadata']
+            filename = os.path.basename(file_path)
+            similarity = result.get('similarity')
+
+            info_text = f"{filename}\n"
+            if similarity is not None:
+                info_text += f"Match: {similarity:.1f}%\n"
+            info_text += f"Age: {metadata.get('estimated_age_group', 'N/A')}\n"
+            info_text += f"Skin: {metadata.get('estimated_skin_tone', 'N/A')}\n"
+            info_text += f"Quality: {metadata.get('image_quality', 'N/A')}"
+
+            self.preview_info_var.set(info_text)
+
+        except Exception as e:
+            logger.error(f"Error in show_preview: {e}")
+            self.clear_preview("Error loading image")
+
+    def clear_preview(self, message="Select a result to preview"):
+        """Clear preview panel"""
+        self.preview_canvas.delete("all")
+        self.preview_canvas.configure(bg='lightgray')
+        self.preview_photo = None
+        self.preview_info_var.set(message)
 
     def log_message(self, message):
         """Add message to log panel"""
@@ -430,14 +537,16 @@ class UnifiedSearchGUI:
         try:
             self.status_var.set("Initializing database...")
             self.face_db = FaceDatabase()
-            self.search_interface = FaceSearchInterface(self.face_db)
+            # Pass the FaceDatabase instance to FaceSearchInterface
+            self.search_interface = FaceSearchInterface(face_db=self.face_db)
 
             # Get database stats
             stats = self.face_db.get_database_stats()
             total_faces = stats.get('total_faces', 0)
 
             self.status_var.set(f"Ready - Database contains {total_faces:,} faces")
-            logger.info(f"Database initialized with {total_faces} faces")
+            self.log_message(f"Database initialized with {total_faces} faces")
+            self.log_message(f"Collection: {self.face_db.collection_name}")
 
         except Exception as e:
             logger.error(f"Error initializing database: {e}")
@@ -556,7 +665,7 @@ class UnifiedSearchGUI:
                 pil_image = pil_image.convert('RGB')
 
             # Resize to fit canvas
-            max_size = 116
+            max_size = 140
             pil_image.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
 
             self.query_photo = ImageTk.PhotoImage(pil_image)
@@ -564,7 +673,7 @@ class UnifiedSearchGUI:
             # Display in canvas
             self.query_canvas.delete("all")
             self.query_canvas.configure(bg='white')
-            self.query_canvas.create_image(60, 60, image=self.query_photo)
+            self.query_canvas.create_image(75, 75, image=self.query_photo)
 
         except Exception as e:
             logger.error(f"Error updating query preview: {e}")
@@ -685,35 +794,37 @@ class UnifiedSearchGUI:
         self.log_message(f"Starting semantic search with num_results={num_results}")
         self.log_message(f"Query image: {self.current_query_file}")
 
-        # Use search interface
-        self.log_message("Generating embedding from query image...")
-        raw_results = self.search_interface.search_by_image(
-            self.current_query_file,
-            num_results
-        )
+        # Analyze query image first
+        self.log_message("Analyzing query image features...")
+        features = self.analyzer.estimate_basic_features(self.current_query_file)
+        self.log_message(f"Query features - Age: {features.get('estimated_age_group')}, "
+                        f"Skin: {features.get('estimated_skin_tone')}, "
+                        f"Quality: {features.get('image_quality')}")
 
-        self.log_message(f"Raw results keys: {raw_results.keys()}")
+        # Generate embedding
+        self.log_message("Generating query embedding...")
+        query_embedding = self.embedder.generate_embedding(self.current_query_file, features)
+        self.log_message(f"Embedding dimensions: {len(query_embedding)}")
 
-        if "error" in raw_results:
-            self.log_message(f"ERROR: {raw_results['error']}")
-            raise Exception(raw_results["error"])
+        # Search directly with the FaceDatabase for better results
+        self.log_message("Searching in database...")
+        search_results = self.face_db.search_similar_faces(query_embedding, n_results=num_results)
+
+        self.log_message(f"Database returned {search_results.get('count', 0)} results")
 
         # Process and filter results
         results = []
-        search_data = raw_results.get("results", {})
 
-        self.log_message(f"Search data keys: {search_data.keys()}")
-        self.log_message(f"Search data count: {search_data.get('count', 0)}")
-        self.log_message(f"IDs found: {len(search_data.get('ids', []))}")
-        self.log_message(f"Metadatas found: {len(search_data.get('metadatas', []))}")
-        self.log_message(f"Distances found: {len(search_data.get('distances', []))}")
+        for i in range(search_results.get('count', 0)):
+            if i >= len(search_results.get('ids', [])):
+                break
 
-        for i in range(search_data.get("count", 0)):
-            metadata = search_data.get("metadatas", [])[i] if i < len(search_data.get("metadatas", [])) else {}
-            distance = search_data.get("distances", [])[i] if i < len(search_data.get("distances", [])) else 1.0
+            face_id = search_results['ids'][i]
+            distance = search_results['distances'][i] if i < len(search_results.get('distances', [])) else 1.0
             similarity = (1 - distance) * 100
+            metadata = search_results['metadatas'][i] if i < len(search_results.get('metadatas', [])) else {}
 
-            self.log_message(f"Result {i}: distance={distance:.4f}, similarity={similarity:.2f}%")
+            self.log_message(f"Result {i+1}: {face_id[:30]}... similarity={similarity:.1f}%")
 
             # Apply similarity threshold
             if similarity < self.min_similarity.get():
@@ -727,12 +838,12 @@ class UnifiedSearchGUI:
 
             result = {
                 'rank': len(results) + 1,
-                'face_id': search_data.get("ids", [])[i] if i < len(search_data.get("ids", [])) else "",
+                'face_id': face_id,
                 'similarity': similarity,
                 'metadata': metadata
             }
             results.append(result)
-            self.log_message(f"  Added to results (rank {len(results)})")
+            self.log_message(f"  ✓ Added to results (rank {len(results)})")
 
         self.log_message(f"Semantic search completed: {len(results)} results after filtering")
         return results
@@ -764,18 +875,63 @@ class UnifiedSearchGUI:
 
     def _perform_combined_search(self, metadata_filters: Dict) -> List[Dict]:
         """Perform combined semantic + metadata search"""
-        # First do semantic search with more results
-        expanded_results = self.num_results.get() * 3
+        self.log_message("Starting combined search (semantic + metadata filters)")
 
-        # Temporarily increase num_results
-        original_num = self.num_results.get()
-        self.num_results.set(expanded_results)
+        # Analyze query image
+        features = self.analyzer.estimate_basic_features(self.current_query_file)
+        self.log_message(f"Query features - Age: {features.get('estimated_age_group')}, "
+                        f"Skin: {features.get('estimated_skin_tone')}")
 
-        try:
-            results = self._perform_semantic_search(metadata_filters)
-            return results[:original_num]
-        finally:
-            self.num_results.set(original_num)
+        # Generate embedding
+        query_embedding = self.embedder.generate_embedding(self.current_query_file, features)
+
+        # Use combined search from search interface
+        num_results = self.num_results.get()
+
+        # Build simple metadata filters (no complex filters for ChromaDB where clause)
+        simple_filters = {}
+        for key, value in metadata_filters.items():
+            if key in ['estimated_age_group', 'estimated_skin_tone', 'image_quality']:
+                simple_filters[key] = value
+
+        if simple_filters:
+            self.log_message(f"Applying metadata filters: {simple_filters}")
+            search_results = self.search_interface.combined_search(
+                query_embedding, simple_filters, n_results=num_results
+            )
+        else:
+            self.log_message("No metadata filters, using semantic search only")
+            search_results = self.face_db.search_similar_faces(query_embedding, n_results=num_results)
+
+        # Process results
+        results = []
+        for i in range(search_results.get('count', 0)):
+            if i >= len(search_results.get('ids', [])):
+                break
+
+            face_id = search_results['ids'][i]
+            distance = search_results['distances'][i] if i < len(search_results.get('distances', [])) else 1.0
+            similarity = (1 - distance) * 100
+            metadata = search_results['metadatas'][i] if i < len(search_results.get('metadatas', [])) else {}
+
+            # Apply similarity threshold
+            if similarity < self.min_similarity.get():
+                continue
+
+            # Apply complex metadata filters that ChromaDB can't handle
+            if not self._matches_filters(metadata, metadata_filters):
+                continue
+
+            result = {
+                'rank': len(results) + 1,
+                'face_id': face_id,
+                'similarity': similarity,
+                'metadata': metadata
+            }
+            results.append(result)
+
+        self.log_message(f"Combined search completed: {len(results)} results")
+        return results
 
     def _matches_filters(self, metadata: Dict, filters: Dict) -> bool:
         """Check if metadata matches all filters"""
@@ -897,7 +1053,7 @@ class UnifiedSearchGUI:
         # Create metadata view window
         meta_window = tk.Toplevel(self.root)
         meta_window.title(f"Metadata - Result #{rank}")
-        meta_window.geometry("600x500")
+        meta_window.geometry("700x600")
 
         # Metadata text
         text_widget = scrolledtext.ScrolledText(meta_window, wrap=tk.WORD)
@@ -950,6 +1106,7 @@ class UnifiedSearchGUI:
         for item in self.results_tree.get_children():
             self.results_tree.delete(item)
         self.results_summary_var.set("No search performed yet")
+        self.clear_preview()
 
     def clear_all(self):
         """Clear everything"""
