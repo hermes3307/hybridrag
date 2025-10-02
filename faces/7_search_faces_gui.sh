@@ -5,7 +5,7 @@ echo "==========================="
 echo ""
 
 # Check if required files exist
-required_files=("7_search_faces_gui.py" "face_database.py" "face_collector.py")
+required_files=("7_search_faces_gui.py" "face_database.py")
 
 echo "🔍 Checking required files..."
 for file in "${required_files[@]}"; do
