@@ -89,6 +89,7 @@ class SystemStats:
         self.download_errors = 0
         self.embed_processed = 0
         self.embed_success = 0
+        self.embed_duplicates = 0
         self.embed_errors = 0
         self.search_queries = 0
         self.start_time = time.time()
@@ -118,6 +119,10 @@ class SystemStats:
         with self.lock:
             self.embed_success += 1
 
+    def increment_embed_duplicates(self):
+        with self.lock:
+            self.embed_duplicates += 1
+
     def increment_embed_errors(self):
         with self.lock:
             self.embed_errors += 1
@@ -136,6 +141,7 @@ class SystemStats:
                 'download_errors': self.download_errors,
                 'embed_processed': self.embed_processed,
                 'embed_success': self.embed_success,
+                'embed_duplicates': self.embed_duplicates,
                 'embed_errors': self.embed_errors,
                 'search_queries': self.search_queries,
                 'elapsed_time': elapsed,
@@ -763,6 +769,21 @@ class DatabaseManager:
         """Hybrid search combining vector similarity and metadata filtering"""
         return self.search_faces(query_embedding, n_results, metadata_filter)
 
+    def hash_exists(self, image_hash: str) -> bool:
+        """Check if an image with this hash already exists in the database"""
+        if not self.initialized:
+            return False
+
+        try:
+            results = self.collection.get(
+                where={"image_hash": image_hash},
+                limit=1
+            )
+            return len(results['ids']) > 0
+        except Exception as e:
+            logger.error(f"Error checking hash existence: {e}")
+            return False
+
     def get_collection_info(self) -> Dict[str, Any]:
         """Get information about the collection"""
         if not self.initialized:
@@ -980,6 +1001,15 @@ class FaceProcessor:
         self.stats.increment_embed_processed()
 
         try:
+            # Calculate hash first to check for duplicates
+            file_hash = self._get_file_hash(file_path)
+
+            # Check if duplicate exists in database
+            if self.db_manager.hash_exists(file_hash):
+                self.stats.increment_embed_duplicates()
+                logger.info(f"Skipping duplicate: {os.path.basename(file_path)} (hash: {file_hash[:8]})")
+                return True  # Skip but don't count as error
+
             # Analyze face
             features = self.analyzer.analyze_face(file_path)
             if 'error' in features:
@@ -990,7 +1020,6 @@ class FaceProcessor:
             embedding = self.embedder.create_embedding(file_path, features)
 
             # Create face data
-            file_hash = self._get_file_hash(file_path)
             face_id = f"face_{int(time.time())}_{file_hash[:8]}"
 
             face_data = FaceData(
