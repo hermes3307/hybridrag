@@ -144,7 +144,7 @@ class SystemStats:
             }
 
 class FaceAnalyzer:
-    """Analyze face images for features"""
+    """Analyze face images for features including demographics"""
 
     def __init__(self):
         self.cv2_available = CV2_AVAILABLE
@@ -152,7 +152,7 @@ class FaceAnalyzer:
             logger.warning("OpenCV not available. Using basic image analysis.")
 
     def analyze_face(self, image_path: str) -> Dict[str, Any]:
-        """Analyze face image and extract features"""
+        """Analyze face image and extract features including demographics"""
         try:
             # Open image
             image = Image.open(image_path)
@@ -167,14 +167,22 @@ class FaceAnalyzer:
                 'format': image.format
             }
 
-            # Advanced features with OpenCV
+            # Advanced features with OpenCV or PIL
             if self.cv2_available:
                 cv_image = cv2.imread(image_path)
                 if cv_image is not None:
                     # Color analysis
                     features.update(self._analyze_colors(cv_image))
                     # Face detection
-                    features.update(self._detect_faces(cv_image))
+                    face_info = self._detect_faces(cv_image)
+                    features.update(face_info)
+                    # Demographic analysis
+                    features.update(self._analyze_demographics(cv_image, face_info))
+            else:
+                # Fallback to PIL-based analysis
+                img_array = np.array(image)
+                features.update(self._analyze_colors_pil(img_array))
+                features.update(self._analyze_demographics_pil(img_array))
 
             return features
 
@@ -202,6 +210,22 @@ class FaceAnalyzer:
         except Exception as e:
             return {'color_error': str(e)}
 
+    def _analyze_colors_pil(self, img_array: np.ndarray) -> Dict[str, Any]:
+        """Analyze colors using PIL/numpy"""
+        try:
+            if len(img_array.shape) == 3:
+                gray = np.mean(img_array, axis=2)
+            else:
+                gray = img_array
+
+            return {
+                'brightness': float(np.mean(gray)),
+                'contrast': float(np.std(gray)),
+                'saturation_mean': float(np.std(img_array))
+            }
+        except Exception as e:
+            return {'color_error': str(e)}
+
     def _detect_faces(self, cv_image) -> Dict[str, Any]:
         """Detect faces in the image"""
         try:
@@ -216,6 +240,283 @@ class FaceAnalyzer:
             }
         except Exception as e:
             return {'face_detection_error': str(e)}
+
+    def _analyze_demographics(self, cv_image, face_info: Dict[str, Any]) -> Dict[str, Any]:
+        """Analyze demographic features: age, sex, skin tone, hair color"""
+        demographics = {}
+
+        try:
+            h, w = cv_image.shape[:2]
+
+            # Get face region or use center of image
+            if face_info.get('faces_detected', 0) > 0 and len(face_info.get('face_regions', [])) > 0:
+                x, y, fw, fh = face_info['face_regions'][0]
+                face_region = cv_image[y:y+fh, x:x+fw]
+            else:
+                # Use center region as fallback
+                cy, cx = h//2, w//2
+                size = min(h, w) // 2
+                y1, y2 = max(0, cy-size//2), min(h, cy+size//2)
+                x1, x2 = max(0, cx-size//2), min(w, cx+size//2)
+                face_region = cv_image[y1:y2, x1:x2]
+
+            if face_region.size == 0:
+                face_region = cv_image
+
+            # Convert to different color spaces for analysis
+            hsv_face = cv2.cvtColor(face_region, cv2.COLOR_BGR2HSV)
+            lab_face = cv2.cvtColor(face_region, cv2.COLOR_BGR2LAB)
+
+            # Skin tone analysis (from face center region)
+            fh, fw = face_region.shape[:2]
+            skin_y1, skin_y2 = fh//3, 2*fh//3
+            skin_x1, skin_x2 = fw//3, 2*fw//3
+            skin_sample = face_region[skin_y1:skin_y2, skin_x1:skin_x2]
+
+            skin_tone = self._estimate_skin_tone(skin_sample)
+            demographics['skin_tone'] = skin_tone
+            demographics['skin_color'] = self._categorize_skin_color(skin_tone)
+
+            # Hair color analysis (top portion of image)
+            hair_region = cv_image[0:h//4, :]
+            hair_color = self._estimate_hair_color(hair_region)
+            demographics['hair_color'] = hair_color
+
+            # Age estimation (based on image characteristics)
+            age_group = self._estimate_age_group(face_region)
+            demographics['age_group'] = age_group
+            demographics['estimated_age'] = self._age_group_to_range(age_group)
+
+            # Sex estimation (based on facial features and colors)
+            sex = self._estimate_sex(face_region, hair_color, skin_tone)
+            demographics['estimated_sex'] = sex
+
+        except Exception as e:
+            logger.error(f"Error in demographic analysis: {e}")
+            demographics['demographic_error'] = str(e)
+
+        return demographics
+
+    def _analyze_demographics_pil(self, img_array: np.ndarray) -> Dict[str, Any]:
+        """Analyze demographics using PIL/numpy (fallback)"""
+        demographics = {}
+
+        try:
+            h, w = img_array.shape[:2] if len(img_array.shape) > 1 else (img_array.shape[0], 1)
+
+            # Use center region
+            cy, cx = h//2, w//2 if w > 1 else 0
+            size = min(h, w) // 2 if w > 1 else h // 2
+
+            if len(img_array.shape) == 3:
+                y1, y2 = max(0, cy-size//2), min(h, cy+size//2)
+                x1, x2 = max(0, cx-size//2), min(w, cx+size//2)
+                face_region = img_array[y1:y2, x1:x2]
+
+                # Simple skin tone from RGB
+                avg_color = np.mean(face_region, axis=(0, 1))
+                brightness = np.mean(avg_color)
+
+                if brightness > 200:
+                    demographics['skin_tone'] = 'very_light'
+                    demographics['skin_color'] = 'light'
+                elif brightness > 160:
+                    demographics['skin_tone'] = 'light'
+                    demographics['skin_color'] = 'light'
+                elif brightness > 120:
+                    demographics['skin_tone'] = 'medium'
+                    demographics['skin_color'] = 'medium'
+                elif brightness > 80:
+                    demographics['skin_tone'] = 'tan'
+                    demographics['skin_color'] = 'medium'
+                else:
+                    demographics['skin_tone'] = 'dark'
+                    demographics['skin_color'] = 'dark'
+
+                # Hair color from top
+                hair_region = img_array[0:h//4, :]
+                hair_avg = np.mean(hair_region, axis=(0, 1))
+                demographics['hair_color'] = self._rgb_to_hair_color(hair_avg)
+
+                # Simple age/sex estimates
+                demographics['age_group'] = 'adult'
+                demographics['estimated_age'] = '25-35'
+                demographics['estimated_sex'] = 'unknown'
+
+        except Exception as e:
+            logger.error(f"Error in PIL demographic analysis: {e}")
+
+        return demographics
+
+    def _estimate_skin_tone(self, skin_sample) -> str:
+        """Estimate skin tone from skin sample"""
+        try:
+            lab = cv2.cvtColor(skin_sample, cv2.COLOR_BGR2LAB)
+            l_mean = np.mean(lab[:, :, 0])  # Lightness channel
+
+            # Fitzpatrick-inspired scale
+            if l_mean > 200:
+                return 'very_light'
+            elif l_mean > 170:
+                return 'light'
+            elif l_mean > 140:
+                return 'medium'
+            elif l_mean > 110:
+                return 'tan'
+            elif l_mean > 80:
+                return 'brown'
+            else:
+                return 'dark'
+        except:
+            return 'unknown'
+
+    def _categorize_skin_color(self, skin_tone: str) -> str:
+        """Categorize skin tone into broad categories"""
+        tone_map = {
+            'very_light': 'light',
+            'light': 'light',
+            'medium': 'medium',
+            'tan': 'medium',
+            'brown': 'dark',
+            'dark': 'dark'
+        }
+        return tone_map.get(skin_tone, 'unknown')
+
+    def _estimate_hair_color(self, hair_region) -> str:
+        """Estimate hair color from top region"""
+        try:
+            # Convert to HSV for better color detection
+            hsv = cv2.cvtColor(hair_region, cv2.COLOR_BGR2HSV)
+            h_mean = np.mean(hsv[:, :, 0])
+            s_mean = np.mean(hsv[:, :, 1])
+            v_mean = np.mean(hsv[:, :, 2])
+
+            # Black/dark hair
+            if v_mean < 50:
+                return 'black'
+            # Gray/white hair
+            elif s_mean < 30 and v_mean > 150:
+                return 'gray'
+            elif s_mean < 30 and v_mean > 100:
+                return 'light_gray'
+            # Brown hair
+            elif h_mean < 30 and v_mean < 150:
+                return 'brown'
+            elif h_mean < 30 and v_mean < 100:
+                return 'dark_brown'
+            # Blonde hair
+            elif h_mean < 40 and v_mean > 150:
+                return 'blonde'
+            # Red hair
+            elif h_mean < 20 or h_mean > 340:
+                return 'red'
+            # Other colors
+            else:
+                return 'other'
+
+        except:
+            return 'unknown'
+
+    def _rgb_to_hair_color(self, rgb_avg) -> str:
+        """Convert RGB average to hair color (fallback)"""
+        r, g, b = rgb_avg
+        brightness = np.mean(rgb_avg)
+
+        if brightness < 50:
+            return 'black'
+        elif brightness > 200:
+            return 'blonde'
+        elif r > g and r > b:
+            return 'red'
+        elif brightness < 100:
+            return 'dark_brown'
+        else:
+            return 'brown'
+
+    def _estimate_age_group(self, face_region) -> str:
+        """Estimate age group from facial characteristics"""
+        try:
+            # Analyze texture and smoothness
+            gray = cv2.cvtColor(face_region, cv2.COLOR_BGR2GRAY)
+
+            # Calculate variance (smoother = younger)
+            variance = np.var(gray)
+
+            # Calculate edge density (more edges = older)
+            edges = cv2.Canny(gray, 50, 150)
+            edge_density = np.count_nonzero(edges) / edges.size
+
+            # Simple heuristic
+            if variance < 300 and edge_density < 0.05:
+                return 'child'
+            elif variance < 600 and edge_density < 0.08:
+                return 'young_adult'
+            elif variance < 900 and edge_density < 0.12:
+                return 'adult'
+            elif variance < 1200 and edge_density < 0.15:
+                return 'middle_aged'
+            else:
+                return 'senior'
+
+        except:
+            return 'adult'
+
+    def _age_group_to_range(self, age_group: str) -> str:
+        """Convert age group to age range"""
+        age_ranges = {
+            'child': '0-12',
+            'young_adult': '18-25',
+            'adult': '25-40',
+            'middle_aged': '40-60',
+            'senior': '60+'
+        }
+        return age_ranges.get(age_group, '25-40')
+
+    def _estimate_sex(self, face_region, hair_color: str, skin_tone: str) -> str:
+        """Estimate biological sex from facial features"""
+        try:
+            # Analyze facial structure and features
+            gray = cv2.cvtColor(face_region, cv2.COLOR_BGR2GRAY)
+
+            # Calculate aspect ratio (males tend to have wider faces)
+            h, w = gray.shape
+            aspect_ratio = w / h if h > 0 else 1.0
+
+            # Analyze jawline sharpness (males tend to have sharper jawlines)
+            bottom_third = gray[2*h//3:, :]
+            jaw_variance = np.var(bottom_third)
+
+            # Analyze skin smoothness (females tend to have smoother skin)
+            skin_variance = np.var(gray)
+
+            # Simple heuristic combination
+            male_score = 0
+            female_score = 0
+
+            if aspect_ratio > 0.85:
+                male_score += 1
+            else:
+                female_score += 1
+
+            if jaw_variance > 500:
+                male_score += 1
+            else:
+                female_score += 1
+
+            if skin_variance < 600:
+                female_score += 1
+            else:
+                male_score += 1
+
+            if male_score > female_score:
+                return 'male'
+            elif female_score > male_score:
+                return 'female'
+            else:
+                return 'unknown'
+
+        except:
+            return 'unknown'
 
 class FaceEmbedder:
     """Create embeddings for face images"""
@@ -360,36 +661,66 @@ class DatabaseManager:
     def add_face(self, face_data: FaceData) -> bool:
         """Add face data to the database"""
         if not self.initialized:
+            logger.warning("Database not initialized, cannot add face")
             return False
 
         try:
+            # Prepare metadata - ChromaDB only accepts str, int, float, bool, or None
+            metadata = {
+                'face_id': face_data.face_id,
+                'file_path': face_data.file_path,
+                'timestamp': face_data.timestamp,
+                'image_hash': face_data.image_hash,
+            }
+
+            # Filter features to only include valid metadata types
+            valid_types = (str, int, float, bool, type(None))
+            for key, value in face_data.features.items():
+                if isinstance(value, valid_types):
+                    metadata[key] = value
+                elif isinstance(value, (list, tuple)):
+                    # Convert lists/tuples to JSON strings
+                    metadata[f"{key}_json"] = json.dumps(value)
+                elif isinstance(value, dict):
+                    # Convert dicts to JSON strings
+                    metadata[f"{key}_json"] = json.dumps(value)
+                else:
+                    # Convert other types to string
+                    metadata[key] = str(value)
+
+            # Add to collection
             self.collection.add(
                 embeddings=[face_data.embedding],
-                metadatas=[{
-                    'face_id': face_data.face_id,
-                    'file_path': face_data.file_path,
-                    'timestamp': face_data.timestamp,
-                    'image_hash': face_data.image_hash,
-                    **face_data.features
-                }],
+                metadatas=[metadata],
                 ids=[face_data.face_id]
             )
+
+            logger.debug(f"Successfully added face {face_data.face_id} to database")
             return True
 
         except Exception as e:
-            logger.error(f"Error adding face to database: {e}")
+            logger.error(f"Error adding face {face_data.face_id} to database: {e}")
+            logger.debug(f"Problematic metadata keys: {list(face_data.features.keys())}")
             return False
 
-    def search_faces(self, query_embedding: List[float], n_results: int = 10) -> List[Dict[str, Any]]:
-        """Search for similar faces"""
+    def search_faces(self, query_embedding: List[float], n_results: int = 10,
+                    metadata_filter: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+        """Search for similar faces with optional metadata filtering"""
         if not self.initialized:
             return []
 
         try:
-            results = self.collection.query(
-                query_embeddings=[query_embedding],
-                n_results=n_results
-            )
+            # Build query parameters
+            query_params = {
+                'query_embeddings': [query_embedding],
+                'n_results': n_results
+            }
+
+            # Add metadata filter if provided (for hybrid search)
+            if metadata_filter:
+                query_params['where'] = metadata_filter
+
+            results = self.collection.query(**query_params)
 
             return [
                 {
@@ -403,6 +734,34 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Error searching faces: {e}")
             return []
+
+    def search_by_metadata(self, metadata_filter: Dict[str, Any], n_results: int = 10) -> List[Dict[str, Any]]:
+        """Search faces by metadata only (no vector similarity)"""
+        if not self.initialized:
+            return []
+
+        try:
+            results = self.collection.get(
+                where=metadata_filter,
+                limit=n_results
+            )
+
+            return [
+                {
+                    'id': results['ids'][i],
+                    'metadata': results['metadatas'][i]
+                }
+                for i in range(len(results['ids']))
+            ]
+
+        except Exception as e:
+            logger.error(f"Error searching by metadata: {e}")
+            return []
+
+    def hybrid_search(self, query_embedding: List[float], metadata_filter: Dict[str, Any],
+                     n_results: int = 10) -> List[Dict[str, Any]]:
+        """Hybrid search combining vector similarity and metadata filtering"""
+        return self.search_faces(query_embedding, n_results, metadata_filter)
 
     def get_collection_info(self) -> Dict[str, Any]:
         """Get information about the collection"""
@@ -455,11 +814,12 @@ class FaceDownloader:
             return ""
 
     def download_face(self) -> Optional[str]:
-        """Download a single face image"""
+        """Download a single face image with metadata JSON"""
         self.stats.increment_download_attempts()
 
         try:
             # Download image
+            download_time = datetime.now()
             response = requests.get("https://thispersondoesnotexist.com/",
                                  headers={'User-Agent': 'Mozilla/5.0'},
                                  timeout=30)
@@ -481,6 +841,85 @@ class FaceDownloader:
             with open(file_path, 'wb') as f:
                 f.write(response.content)
 
+            # Analyze image and create metadata
+            try:
+                # Analyze the downloaded image
+                analyzer = FaceAnalyzer()
+                features = analyzer.analyze_face(file_path)
+
+                # Get image properties
+                with Image.open(file_path) as img:
+                    image_width, image_height = img.size
+                    image_format = img.format
+                    image_mode = img.mode
+
+                # Create comprehensive metadata
+                metadata = {
+                    # Basic identifiers
+                    'filename': filename,
+                    'file_path': file_path,
+                    'face_id': timestamp,
+                    'md5_hash': image_hash,
+
+                    # Download info
+                    'download_timestamp': download_time.isoformat(),
+                    'download_date': download_time.strftime("%Y-%m-%d %H:%M:%S"),
+                    'source_url': "https://thispersondoesnotexist.com/",
+                    'http_status_code': response.status_code,
+
+                    # File properties
+                    'file_size_bytes': len(response.content),
+                    'file_size_kb': round(len(response.content) / 1024, 2),
+
+                    # Image properties (queryable)
+                    'image_properties': {
+                        'width': image_width,
+                        'height': image_height,
+                        'format': image_format,
+                        'mode': image_mode,
+                        'dimensions': f"{image_width}x{image_height}"
+                    },
+
+                    # Face features from analyzer (IMPORTANT FOR QUERYING)
+                    'face_features': features,
+
+                    # Queryable attributes extracted from features
+                    'queryable_attributes': {
+                        'brightness_level': 'bright' if features.get('brightness', 0) > 150 else 'dark',
+                        'image_quality': 'high' if features.get('contrast', 0) > 50 else 'medium',
+                        'has_face': features.get('faces_detected', 0) > 0,
+                        'face_count': features.get('faces_detected', 0),
+                        # Demographic attributes
+                        'sex': features.get('estimated_sex', 'unknown'),
+                        'age_group': features.get('age_group', 'unknown'),
+                        'estimated_age': features.get('estimated_age', 'unknown'),
+                        'skin_tone': features.get('skin_tone', 'unknown'),
+                        'skin_color': features.get('skin_color', 'unknown'),
+                        'hair_color': features.get('hair_color', 'unknown')
+                    },
+
+                    # HTTP headers for debugging
+                    'http_headers': dict(response.headers),
+
+                    # Downloader config
+                    'downloader_config': {
+                        'storage_dir': self.config.faces_dir,
+                        'delay': self.config.download_delay
+                    }
+                }
+
+                # Save metadata JSON alongside image
+                json_filename = f"face_{timestamp}_{image_hash[:8]}.json"
+                json_path = os.path.join(self.config.faces_dir, json_filename)
+
+                with open(json_path, 'w') as json_file:
+                    json.dump(metadata, json_file, indent=2, default=self._json_numpy_fallback)
+
+                logger.info(f"Saved metadata to: {json_filename}")
+
+            except Exception as meta_error:
+                logger.warning(f"Failed to save metadata for {filename}: {meta_error}")
+
             # Add to downloaded hashes
             self.downloaded_hashes.add(image_hash)
 
@@ -492,6 +931,16 @@ class FaceDownloader:
             self.stats.increment_download_errors()
             logger.error(f"Download error: {e}")
             return None
+
+    def _json_numpy_fallback(self, obj):
+        """Fallback for JSON serialization of numpy types"""
+        if isinstance(obj, (np.integer,)):
+            return int(obj)
+        if isinstance(obj, (np.floating,)):
+            return float(obj)
+        if isinstance(obj, (np.ndarray,)):
+            return obj.tolist()
+        return str(obj)
 
     def start_download_loop(self, callback=None):
         """Start continuous download loop"""
@@ -523,7 +972,7 @@ class FaceProcessor:
         self.embedder = FaceEmbedder()
         self.processed_files = set()
 
-    def process_face_file(self, file_path: str) -> bool:
+    def process_face_file(self, file_path: str, callback=None) -> bool:
         """Process a single face file"""
         if file_path in self.processed_files:
             return True
@@ -558,6 +1007,10 @@ class FaceProcessor:
                 self.processed_files.add(file_path)
                 self.stats.increment_embed_success()
                 logger.info(f"Processed: {os.path.basename(file_path)}")
+
+                # Call callback with detailed face data
+                if callback:
+                    callback(face_data)
                 return True
             else:
                 self.stats.increment_embed_errors()
@@ -583,9 +1036,8 @@ class FaceProcessor:
             face_files.extend(Path(self.config.faces_dir).rglob(ext))
 
         for file_path in face_files:
-            if self.process_face_file(str(file_path)):
-                if callback:
-                    callback(str(file_path))
+            # Pass callback to process_face_file - it will call it with FaceData
+            self.process_face_file(str(file_path), callback=callback)
 
 class IntegratedFaceSystem:
     """Main system integrating all components"""

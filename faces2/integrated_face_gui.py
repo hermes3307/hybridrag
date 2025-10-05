@@ -51,6 +51,36 @@ class IntegratedFaceGUI:
         self.is_processing = False
         self.last_stats_update = 0
 
+        # Create main container with scrollbar
+        self.main_container = ttk.Frame(self.root)
+        self.main_container.pack(fill="both", expand=True)
+
+        # Create canvas and scrollbar for entire window
+        self.main_canvas = tk.Canvas(self.main_container)
+        self.main_scrollbar = ttk.Scrollbar(self.main_container, orient="vertical", command=self.main_canvas.yview)
+        self.scrollable_frame = ttk.Frame(self.main_canvas)
+
+        self.scrollable_frame.bind(
+            "<Configure>",
+            lambda e: self.main_canvas.configure(scrollregion=self.main_canvas.bbox("all"))
+        )
+
+        self.canvas_window = self.main_canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+        self.main_canvas.configure(yscrollcommand=self.main_scrollbar.set)
+
+        # Pack canvas and scrollbar
+        self.main_canvas.pack(side="left", fill="both", expand=True)
+        self.main_scrollbar.pack(side="right", fill="y")
+
+        # Bind canvas resize to expand scrollable frame width
+        def on_canvas_configure(event):
+            self.main_canvas.itemconfig(self.canvas_window, width=event.width)
+
+        self.main_canvas.bind("<Configure>", on_canvas_configure)
+
+        # Bind mousewheel to main canvas
+        self._bind_main_mousewheel()
+
         # Create GUI
         self.create_widgets()
         self.setup_layout()
@@ -64,8 +94,8 @@ class IntegratedFaceGUI:
     def create_widgets(self):
         """Create all GUI widgets"""
 
-        # Main notebook for tabs
-        self.notebook = ttk.Notebook(self.root)
+        # Main notebook for tabs (use scrollable_frame instead of root)
+        self.notebook = ttk.Notebook(self.scrollable_frame)
 
         # Tab 1: System Overview
         self.overview_frame = ttk.Frame(self.notebook)
@@ -133,6 +163,10 @@ class IntegratedFaceGUI:
     def create_download_tab(self):
         """Create download faces tab"""
 
+        # Configure grid weights for proper resizing
+        self.download_frame.columnconfigure(0, weight=1)
+        self.download_frame.rowconfigure(2, weight=1)  # Preview frame expands
+
         # Download control frame
         control_frame = ttk.LabelFrame(self.download_frame, text="Download Controls", padding=10)
         control_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
@@ -157,16 +191,52 @@ class IntegratedFaceGUI:
         self.download_button.pack(side="left", padx=5)
 
         ttk.Button(button_frame, text="Download Single", command=self.download_single).pack(side="left", padx=5)
+        ttk.Button(button_frame, text="Take a Picture", command=self.take_picture_download).pack(side="left", padx=5)
 
         # Download status
         status_frame = ttk.LabelFrame(self.download_frame, text="Download Status", padding=10)
         status_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=5)
 
-        self.download_status_text = scrolledtext.ScrolledText(status_frame, height=20, width=70)
+        self.download_status_text = scrolledtext.ScrolledText(status_frame, height=10, width=70)
         self.download_status_text.pack(fill="both", expand=True)
+
+        # Download preview frame - thumbnails with scrolling
+        preview_frame = ttk.LabelFrame(self.download_frame, text="Downloaded Images Preview", padding=10)
+        preview_frame.grid(row=2, column=0, sticky="nsew", padx=5, pady=5)
+        preview_frame.columnconfigure(0, weight=1)
+        preview_frame.rowconfigure(0, weight=1)
+
+        # Create canvas with both horizontal and vertical scrollbars
+        self.download_canvas = tk.Canvas(preview_frame, height=200)
+        download_h_scrollbar = ttk.Scrollbar(preview_frame, orient="horizontal", command=self.download_canvas.xview)
+        download_v_scrollbar = ttk.Scrollbar(preview_frame, orient="vertical", command=self.download_canvas.yview)
+        self.download_thumbnails_frame = ttk.Frame(self.download_canvas)
+
+        self.download_canvas.configure(
+            xscrollcommand=download_h_scrollbar.set,
+            yscrollcommand=download_v_scrollbar.set
+        )
+
+        # Grid layout for canvas and scrollbars
+        self.download_canvas.grid(row=0, column=0, sticky="nsew")
+        download_h_scrollbar.grid(row=1, column=0, sticky="ew")
+        download_v_scrollbar.grid(row=0, column=1, sticky="ns")
+
+        self.download_canvas.create_window((0, 0), window=self.download_thumbnails_frame, anchor="nw")
+
+        # Enable mousewheel scrolling for download canvas
+        self._bind_mousewheel(self.download_canvas, self.download_thumbnails_frame)
+
+        # Track thumbnails
+        self.download_thumbnails = []
+        self.download_thumbnail_refs = []  # Keep references to prevent garbage collection
 
     def create_process_tab(self):
         """Create process/embed tab"""
+
+        # Configure grid weights for proper resizing
+        self.process_frame.columnconfigure(0, weight=1)
+        self.process_frame.rowconfigure(2, weight=1)  # Preview frame expands
 
         # Processing control frame
         control_frame = ttk.LabelFrame(self.process_frame, text="Processing Controls", padding=10)
@@ -202,21 +272,58 @@ class IntegratedFaceGUI:
         self.process_progress = ttk.Progressbar(progress_frame, mode='indeterminate')
         self.process_progress.pack(fill="x", pady=(0, 10))
 
-        self.process_status_text = scrolledtext.ScrolledText(progress_frame, height=15, width=70)
+        self.process_status_text = scrolledtext.ScrolledText(progress_frame, height=8, width=70)
         self.process_status_text.pack(fill="both", expand=True)
+
+        # Processing preview frame - thumbnails with scrolling
+        process_preview_frame = ttk.LabelFrame(self.process_frame, text="Embedding Images Preview", padding=10)
+        process_preview_frame.grid(row=2, column=0, sticky="nsew", padx=5, pady=5)
+        process_preview_frame.columnconfigure(0, weight=1)
+        process_preview_frame.rowconfigure(0, weight=1)
+
+        # Create canvas with both horizontal and vertical scrollbars
+        self.process_canvas = tk.Canvas(process_preview_frame, height=200)
+        process_h_scrollbar = ttk.Scrollbar(process_preview_frame, orient="horizontal", command=self.process_canvas.xview)
+        process_v_scrollbar = ttk.Scrollbar(process_preview_frame, orient="vertical", command=self.process_canvas.yview)
+        self.process_thumbnails_frame = ttk.Frame(self.process_canvas)
+
+        self.process_canvas.configure(
+            xscrollcommand=process_h_scrollbar.set,
+            yscrollcommand=process_v_scrollbar.set
+        )
+
+        # Grid layout for canvas and scrollbars
+        self.process_canvas.grid(row=0, column=0, sticky="nsew")
+        process_h_scrollbar.grid(row=1, column=0, sticky="ew")
+        process_v_scrollbar.grid(row=0, column=1, sticky="ns")
+
+        self.process_canvas.create_window((0, 0), window=self.process_thumbnails_frame, anchor="nw")
+
+        # Enable mousewheel scrolling for process canvas
+        self._bind_mousewheel(self.process_canvas, self.process_thumbnails_frame)
+
+        # Track thumbnails
+        self.process_thumbnails = []
+        self.process_thumbnail_refs = []  # Keep references to prevent garbage collection
 
     def create_search_tab(self):
         """Create search faces tab"""
 
-        # Search control frame
+        # Configure grid weights for two-column layout
+        self.search_frame.columnconfigure(0, weight=3)  # Controls take more space
+        self.search_frame.columnconfigure(1, weight=1)  # Preview takes less space
+        self.search_frame.rowconfigure(1, weight=1)      # Results expand
+
+        # Search control frame (left side)
         control_frame = ttk.LabelFrame(self.search_frame, text="Search Controls", padding=10)
         control_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
 
         # Search by image
         ttk.Label(control_frame, text="Search by Image:").grid(row=0, column=0, sticky="w")
         self.search_image_var = tk.StringVar()
-        ttk.Entry(control_frame, textvariable=self.search_image_var, width=40).grid(row=0, column=1, sticky="w", padx=(5, 0))
+        ttk.Entry(control_frame, textvariable=self.search_image_var, width=30).grid(row=0, column=1, sticky="w", padx=(5, 0))
         ttk.Button(control_frame, text="Browse", command=self.browse_search_image).grid(row=0, column=2, padx=5)
+        ttk.Button(control_frame, text="Take a Picture", command=self.take_picture_search).grid(row=0, column=3, padx=5)
 
         # Number of results
         ttk.Label(control_frame, text="Number of Results:").grid(row=1, column=0, sticky="w")
@@ -225,12 +332,104 @@ class IntegratedFaceGUI:
                                   textvariable=self.num_results_var, width=10)
         results_spin.grid(row=1, column=1, sticky="w", padx=(5, 0))
 
-        # Search button
-        ttk.Button(control_frame, text="Search Similar Faces", command=self.search_faces).grid(row=2, column=0, columnspan=2, pady=10)
+        # Search mode selection
+        ttk.Label(control_frame, text="Search Mode:").grid(row=2, column=0, sticky="w")
+        self.search_mode_var = tk.StringVar(value="vector")
+        mode_frame = ttk.Frame(control_frame)
+        mode_frame.grid(row=2, column=1, sticky="w", padx=(5, 0))
+        ttk.Radiobutton(mode_frame, text="Vector (Image)", variable=self.search_mode_var, value="vector").pack(side="left", padx=5)
+        ttk.Radiobutton(mode_frame, text="Metadata", variable=self.search_mode_var, value="metadata").pack(side="left", padx=5)
+        ttk.Radiobutton(mode_frame, text="Hybrid", variable=self.search_mode_var, value="hybrid").pack(side="left", padx=5)
 
-        # Results frame
+        # Metadata filter frame
+        metadata_frame = ttk.LabelFrame(control_frame, text="Metadata Filters (Optional)", padding=5)
+        metadata_frame.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(10, 0))
+
+        # Column 1 - Demographics
+        demo_label = ttk.Label(metadata_frame, text="Demographics", font=('TkDefaultFont', 9, 'bold'))
+        demo_label.grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 5))
+
+        # Sex filter
+        ttk.Label(metadata_frame, text="Sex:").grid(row=1, column=0, sticky="w", padx=(10, 0))
+        self.sex_filter_var = tk.StringVar(value="any")
+        sex_combo = ttk.Combobox(metadata_frame, textvariable=self.sex_filter_var,
+                                values=["any", "male", "female", "unknown"], width=15, state="readonly")
+        sex_combo.grid(row=1, column=1, sticky="w", padx=(5, 10))
+
+        # Age group filter
+        ttk.Label(metadata_frame, text="Age Group:").grid(row=2, column=0, sticky="w", padx=(10, 0))
+        self.age_filter_var = tk.StringVar(value="any")
+        age_combo = ttk.Combobox(metadata_frame, textvariable=self.age_filter_var,
+                                values=["any", "child", "young_adult", "adult", "middle_aged", "senior"],
+                                width=15, state="readonly")
+        age_combo.grid(row=2, column=1, sticky="w", padx=(5, 10))
+
+        # Skin tone filter
+        ttk.Label(metadata_frame, text="Skin Tone:").grid(row=3, column=0, sticky="w", padx=(10, 0))
+        self.skin_tone_filter_var = tk.StringVar(value="any")
+        skin_tone_combo = ttk.Combobox(metadata_frame, textvariable=self.skin_tone_filter_var,
+                                      values=["any", "very_light", "light", "medium", "tan", "brown", "dark"],
+                                      width=15, state="readonly")
+        skin_tone_combo.grid(row=3, column=1, sticky="w", padx=(5, 10))
+
+        # Skin color (broad category)
+        ttk.Label(metadata_frame, text="Skin Color:").grid(row=4, column=0, sticky="w", padx=(10, 0))
+        self.skin_color_filter_var = tk.StringVar(value="any")
+        skin_color_combo = ttk.Combobox(metadata_frame, textvariable=self.skin_color_filter_var,
+                                       values=["any", "light", "medium", "dark"],
+                                       width=15, state="readonly")
+        skin_color_combo.grid(row=4, column=1, sticky="w", padx=(5, 10))
+
+        # Hair color filter
+        ttk.Label(metadata_frame, text="Hair Color:").grid(row=5, column=0, sticky="w", padx=(10, 0))
+        self.hair_color_filter_var = tk.StringVar(value="any")
+        hair_color_combo = ttk.Combobox(metadata_frame, textvariable=self.hair_color_filter_var,
+                                       values=["any", "black", "dark_brown", "brown", "blonde", "red", "gray", "light_gray", "other"],
+                                       width=15, state="readonly")
+        hair_color_combo.grid(row=5, column=1, sticky="w", padx=(5, 10))
+
+        # Column 2 - Image Properties
+        props_label = ttk.Label(metadata_frame, text="Image Properties", font=('TkDefaultFont', 9, 'bold'))
+        props_label.grid(row=0, column=2, columnspan=2, sticky="w", pady=(0, 5))
+
+        # Brightness filter
+        ttk.Label(metadata_frame, text="Brightness:").grid(row=1, column=2, sticky="w", padx=(10, 0))
+        self.brightness_filter_var = tk.StringVar(value="any")
+        brightness_combo = ttk.Combobox(metadata_frame, textvariable=self.brightness_filter_var,
+                                       values=["any", "bright", "dark"], width=15, state="readonly")
+        brightness_combo.grid(row=1, column=3, sticky="w", padx=(5, 0))
+
+        # Quality filter
+        ttk.Label(metadata_frame, text="Quality:").grid(row=2, column=2, sticky="w", padx=(10, 0))
+        self.quality_filter_var = tk.StringVar(value="any")
+        quality_combo = ttk.Combobox(metadata_frame, textvariable=self.quality_filter_var,
+                                    values=["any", "high", "medium"], width=15, state="readonly")
+        quality_combo.grid(row=2, column=3, sticky="w", padx=(5, 0))
+
+        # Face detection filter
+        ttk.Label(metadata_frame, text="Has Face:").grid(row=3, column=2, sticky="w", padx=(10, 0))
+        self.has_face_var = tk.StringVar(value="any")
+        face_combo = ttk.Combobox(metadata_frame, textvariable=self.has_face_var,
+                                 values=["any", "yes", "no"], width=15, state="readonly")
+        face_combo.grid(row=3, column=3, sticky="w", padx=(5, 0))
+
+        # Search button
+        ttk.Button(control_frame, text="Search Faces", command=self.search_faces).grid(row=4, column=0, columnspan=3, pady=10)
+
+        # Query image preview frame (right side)
+        query_preview_frame = ttk.LabelFrame(self.search_frame, text="Query Image Preview", padding=10)
+        query_preview_frame.grid(row=0, column=1, rowspan=1, sticky="nsew", padx=5, pady=5)
+
+        # Preview label for query image
+        self.query_preview_label = ttk.Label(query_preview_frame, text="No image selected",
+                                             relief="solid", borderwidth=1,
+                                             anchor="center", background="lightgray")
+        self.query_preview_label.pack(fill="both", expand=True, padx=5, pady=5)
+        self.query_preview_photo = None  # Keep reference to prevent garbage collection
+
+        # Results frame (spans both columns)
         self.results_frame = ttk.LabelFrame(self.search_frame, text="Search Results", padding=10)
-        self.results_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
+        self.results_frame.grid(row=1, column=0, columnspan=2, sticky="nsew", padx=5, pady=5)
 
         # Results display
         self.results_canvas = tk.Canvas(self.results_frame)
@@ -273,9 +472,11 @@ class IntegratedFaceGUI:
         button_frame = ttk.Frame(self.config_frame)
         button_frame.grid(row=3, column=0, pady=10)
 
+        ttk.Button(button_frame, text="Initialize Vector Database", command=self.initialize_vector_database).pack(side="left", padx=5)
+        ttk.Button(button_frame, text="Initialize Download Directory", command=self.initialize_download_directory).pack(side="left", padx=5)
         ttk.Button(button_frame, text="Check Dependencies", command=self.check_dependencies).pack(side="left", padx=5)
-        ttk.Button(button_frame, text="Reset Database", command=self.reset_database).pack(side="left", padx=5)
         ttk.Button(button_frame, text="Load Configuration", command=self.load_configuration).pack(side="left", padx=5)
+        ttk.Button(button_frame, text="Save Configuration", command=self.save_configuration).pack(side="left", padx=5)
 
     def setup_layout(self):
         """Setup the main layout"""
@@ -331,6 +532,104 @@ class IntegratedFaceGUI:
             logger.error(message)
         else:
             logger.info(message)
+
+    def _bind_main_mousewheel(self):
+        """Bind mousewheel scrolling to main canvas"""
+        def on_mousewheel(event):
+            # Scroll vertically
+            self.main_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        # Bind mousewheel to main canvas
+        self.main_canvas.bind_all("<MouseWheel>", on_mousewheel)
+
+    def _bind_mousewheel(self, canvas, frame):
+        """Bind mousewheel scrolling to canvas"""
+        def on_mousewheel(event):
+            # Scroll vertically
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        def on_enter(event):
+            # Bind mousewheel when mouse enters the canvas
+            canvas.bind_all("<MouseWheel>", on_mousewheel)
+
+        def on_leave(event):
+            # Unbind mousewheel when mouse leaves the canvas
+            canvas.unbind_all("<MouseWheel>")
+
+        canvas.bind("<Enter>", on_enter)
+        canvas.bind("<Leave>", on_leave)
+
+        # Update scroll region when frame size changes
+        def on_frame_configure(event):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        frame.bind("<Configure>", on_frame_configure)
+
+    def initialize_vector_database(self):
+        """Initialize vector database"""
+        try:
+            if self.system:
+                # Get database path from GUI
+                db_path = self.db_path_var.get()
+                collection_name = self.collection_name_var.get()
+
+                # Update system config
+                self.system.config.db_path = db_path
+                self.system.config.collection_name = collection_name
+
+                # Reinitialize database
+                self.system.db_manager.config = self.system.config
+
+                if self.system.db_manager.initialize():
+                    self.log_message(f"Vector database initialized successfully at {db_path}")
+                    self.log_message(f"Collection: {collection_name}")
+                    messagebox.showinfo("Success", f"Vector database initialized successfully!\n\nPath: {db_path}\nCollection: {collection_name}")
+                else:
+                    self.log_message("Failed to initialize vector database", "error")
+                    messagebox.showerror("Error", "Failed to initialize vector database. Check dependencies and paths.")
+            else:
+                messagebox.showerror("Error", "System not initialized")
+        except Exception as e:
+            self.log_message(f"Error initializing vector database: {e}", "error")
+            messagebox.showerror("Error", f"Error initializing vector database: {e}")
+
+    def initialize_download_directory(self):
+        """Initialize download directory"""
+        try:
+            # Get directory path from GUI
+            download_dir = self.faces_dir_var.get()
+
+            # Create directory if it doesn't exist
+            os.makedirs(download_dir, exist_ok=True)
+
+            # Update system config if system exists
+            if self.system:
+                self.system.config.faces_dir = download_dir
+                self.system.downloader.config.faces_dir = download_dir
+
+            # Count existing files
+            existing_files = []
+            for ext in ['*.jpg', '*.jpeg', '*.png']:
+                existing_files.extend(Path(download_dir).rglob(ext))
+
+            file_count = len(existing_files)
+
+            # Calculate directory size
+            total_size = sum(f.stat().st_size for f in existing_files if f.is_file())
+            size_mb = total_size / (1024 * 1024)
+
+            self.log_message(f"Download directory initialized: {download_dir}")
+            self.log_message(f"Existing files: {file_count} ({size_mb:.2f} MB)")
+
+            messagebox.showinfo("Success",
+                f"Download directory initialized successfully!\n\n"
+                f"Path: {download_dir}\n"
+                f"Existing files: {file_count}\n"
+                f"Total size: {size_mb:.2f} MB")
+
+        except Exception as e:
+            self.log_message(f"Error initializing download directory: {e}", "error")
+            messagebox.showerror("Error", f"Error initializing download directory: {e}")
 
     def update_display(self):
         """Update display elements"""
@@ -422,9 +721,213 @@ class IntegratedFaceGUI:
         except Exception as e:
             self.log_message(f"Download error: {e}", "error")
 
+    def take_picture_download(self):
+        """Take a picture from camera and save to download directory"""
+        if not self.system:
+            messagebox.showerror("Error", "System not initialized")
+            return
+
+        try:
+            import cv2
+        except ImportError:
+            messagebox.showerror("Error", "OpenCV (cv2) is required for camera capture.\nInstall with: pip install opencv-python")
+            return
+
+        try:
+            # Open camera
+            cap = cv2.VideoCapture(0)
+            if not cap.isOpened():
+                messagebox.showerror("Error", "Cannot access camera. Please check camera connection.")
+                return
+
+            self.log_message("Opening camera... Press SPACE to capture, ESC to cancel")
+
+            camera_window_name = "Camera - Press SPACE to Capture, ESC to Cancel"
+            captured_frame = None
+
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    messagebox.showerror("Error", "Failed to read from camera")
+                    break
+
+                # Display the frame
+                cv2.imshow(camera_window_name, frame)
+
+                # Wait for key press
+                key = cv2.waitKey(1) & 0xFF
+
+                # SPACE key to capture
+                if key == 32:  # SPACE
+                    captured_frame = frame.copy()
+                    self.log_message("Picture captured!")
+                    break
+
+                # ESC key to cancel
+                elif key == 27:  # ESC
+                    self.log_message("Camera capture cancelled")
+                    break
+
+            # Release camera and close window
+            cap.release()
+            cv2.destroyAllWindows()
+
+            # Save captured image if available
+            if captured_frame is not None:
+                # Generate filename
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
+                filename = f"camera_capture_{timestamp}.jpg"
+                file_path = os.path.join(self.system.config.faces_dir, filename)
+
+                # Save image
+                cv2.imwrite(file_path, captured_frame)
+                self.log_message(f"Image saved: {filename}")
+
+                # Add thumbnail to preview
+                self.add_download_thumbnail(file_path)
+
+                # Process for embedding if needed
+                messagebox.showinfo("Success", f"Picture captured and saved!\n\n{filename}")
+
+        except Exception as e:
+            self.log_message(f"Camera capture error: {e}", "error")
+            messagebox.showerror("Error", f"Failed to capture picture: {e}")
+
+    def take_picture_search(self):
+        """Take a picture from camera and use for search"""
+        try:
+            import cv2
+        except ImportError:
+            messagebox.showerror("Error", "OpenCV (cv2) is required for camera capture.\nInstall with: pip install opencv-python")
+            return
+
+        try:
+            # Open camera
+            cap = cv2.VideoCapture(0)
+            if not cap.isOpened():
+                messagebox.showerror("Error", "Cannot access camera. Please check camera connection.")
+                return
+
+            self.log_message("Opening camera for search... Press SPACE to capture, ESC to cancel")
+
+            camera_window_name = "Camera - Press SPACE to Capture, ESC to Cancel"
+            captured_frame = None
+
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    messagebox.showerror("Error", "Failed to read from camera")
+                    break
+
+                # Display the frame
+                cv2.imshow(camera_window_name, frame)
+
+                # Wait for key press
+                key = cv2.waitKey(1) & 0xFF
+
+                # SPACE key to capture
+                if key == 32:  # SPACE
+                    captured_frame = frame.copy()
+                    self.log_message("Picture captured for search!")
+                    break
+
+                # ESC key to cancel
+                elif key == 27:  # ESC
+                    self.log_message("Camera capture cancelled")
+                    break
+
+            # Release camera and close window
+            cap.release()
+            cv2.destroyAllWindows()
+
+            # Save captured image if available
+            if captured_frame is not None:
+                # Create temp directory if it doesn't exist
+                temp_dir = os.path.join(self.system.config.faces_dir, "temp")
+                os.makedirs(temp_dir, exist_ok=True)
+
+                # Generate filename
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
+                filename = f"search_query_{timestamp}.jpg"
+                file_path = os.path.join(temp_dir, filename)
+
+                # Save image
+                cv2.imwrite(file_path, captured_frame)
+                self.log_message(f"Search image saved: {filename}")
+
+                # Set the path to search image variable
+                self.search_image_var.set(file_path)
+
+                # Update query preview
+                self.update_query_preview(file_path)
+
+                messagebox.showinfo("Success", f"Picture captured for search!\n\nYou can now click 'Search Faces' to find similar faces.")
+
+        except Exception as e:
+            self.log_message(f"Camera capture error: {e}", "error")
+            messagebox.showerror("Error", f"Failed to capture picture: {e}")
+
     def on_face_downloaded(self, file_path: str):
         """Callback when a face is downloaded"""
+        # Use root.after to schedule GUI updates on the main thread
+        self.root.after(0, lambda: self._update_download_ui(file_path))
+
+    def _update_download_ui(self, file_path: str):
+        """Update download UI on main thread"""
         self.log_message(f"Downloaded: {os.path.basename(file_path)}")
+        # Add thumbnail to preview
+        self.add_download_thumbnail(file_path)
+
+    def add_download_thumbnail(self, file_path: str):
+        """Add thumbnail to download preview"""
+        try:
+            # Load and resize image
+            image = Image.open(file_path)
+
+            # Get original dimensions
+            orig_width, orig_height = image.size
+
+            image.thumbnail((120, 120), Image.Resampling.LANCZOS)
+            photo = ImageTk.PhotoImage(image)
+
+            # Create thumbnail frame with border
+            thumb_frame = ttk.Frame(self.download_thumbnails_frame, relief="solid", borderwidth=1)
+            thumb_frame.pack(side="left", padx=5, pady=5)
+
+            # Display image
+            image_label = ttk.Label(thumb_frame, image=photo)
+            image_label.pack()
+
+            # Get file size
+            file_size = os.path.getsize(file_path) / 1024  # KB
+
+            # Display info below image
+            filename = os.path.basename(file_path)
+            info_text = f"{filename}\n{orig_width}x{orig_height} | {file_size:.0f}KB"
+
+            name_label = ttk.Label(thumb_frame, text=info_text,
+                                  wraplength=120, font=('TkDefaultFont', 7),
+                                  justify="center")
+            name_label.pack()
+
+            # Keep references
+            self.download_thumbnail_refs.append(photo)
+            self.download_thumbnails.append(thumb_frame)
+
+            # Limit to last 20 thumbnails
+            if len(self.download_thumbnails) > 20:
+                old_frame = self.download_thumbnails.pop(0)
+                old_frame.destroy()
+                self.download_thumbnail_refs.pop(0)
+
+            # Update scroll region
+            self.download_thumbnails_frame.update_idletasks()
+            self.download_canvas.configure(scrollregion=self.download_canvas.bbox("all"))
+            # Auto-scroll to the right to show latest
+            self.download_canvas.xview_moveto(1.0)
+
+        except Exception as e:
+            logger.error(f"Error adding download thumbnail: {e}")
 
     # Processing methods
     def start_processing(self):
@@ -471,40 +974,184 @@ class IntegratedFaceGUI:
         self.process_progress.stop()
         self.log_message("Processing stopped")
 
-    def on_face_processed(self, file_path: str):
+    def on_face_processed(self, face_data):
         """Callback when a face is processed"""
-        self.log_message(f"Processed: {os.path.basename(file_path)}")
+        # Use root.after to schedule GUI updates on the main thread
+        self.root.after(0, lambda: self._update_process_ui(face_data))
+
+    def _update_process_ui(self, face_data):
+        """Update process UI on main thread"""
+        # Display detailed file information
+        file_path = face_data.file_path
+        filename = os.path.basename(file_path)
+        features = face_data.features
+
+        # Format detailed log message
+        log_msg = f"✅ Processed: {filename}\n"
+        log_msg += f"   📁 Size: {features.get('size_bytes', 0) / 1024:.1f} KB\n"
+        log_msg += f"   📐 Dimensions: {features.get('width', 'N/A')}x{features.get('height', 'N/A')}\n"
+        log_msg += f"   🎨 Format: {features.get('format', 'N/A')}\n"
+
+        if 'brightness' in features:
+            log_msg += f"   💡 Brightness: {features.get('brightness', 0):.1f}\n"
+        if 'contrast' in features:
+            log_msg += f"   🔆 Contrast: {features.get('contrast', 0):.1f}\n"
+        if 'faces_detected' in features:
+            log_msg += f"   👤 Faces Detected: {features.get('faces_detected', 0)}\n"
+
+        log_msg += f"   🔑 Hash: {face_data.image_hash[:12]}...\n"
+        log_msg += f"   🧬 Embedding: {len(face_data.embedding)} dimensions\n"
+        log_msg += "   " + "-" * 60 + "\n"
+
+        self.log_message(log_msg)
+
+        # Add thumbnail to preview
+        self.add_process_thumbnail(file_path)
+
+    def add_process_thumbnail(self, file_path: str):
+        """Add thumbnail to processing preview"""
+        try:
+            # Load and resize image
+            image = Image.open(file_path)
+
+            # Get original dimensions
+            orig_width, orig_height = image.size
+
+            image.thumbnail((120, 120), Image.Resampling.LANCZOS)
+            photo = ImageTk.PhotoImage(image)
+
+            # Create thumbnail frame with border
+            thumb_frame = ttk.Frame(self.process_thumbnails_frame, relief="solid", borderwidth=1)
+            thumb_frame.pack(side="left", padx=5, pady=5)
+
+            # Display image
+            image_label = ttk.Label(thumb_frame, image=photo)
+            image_label.pack()
+
+            # Get file size
+            file_size = os.path.getsize(file_path) / 1024  # KB
+
+            # Display info below image
+            filename = os.path.basename(file_path)
+            info_text = f"{filename}\n{orig_width}x{orig_height} | {file_size:.0f}KB"
+
+            name_label = ttk.Label(thumb_frame, text=info_text,
+                                  wraplength=120, font=('TkDefaultFont', 7),
+                                  justify="center")
+            name_label.pack()
+
+            # Keep references
+            self.process_thumbnail_refs.append(photo)
+            self.process_thumbnails.append(thumb_frame)
+
+            # Limit to last 20 thumbnails
+            if len(self.process_thumbnails) > 20:
+                old_frame = self.process_thumbnails.pop(0)
+                old_frame.destroy()
+                self.process_thumbnail_refs.pop(0)
+
+            # Update scroll region
+            self.process_thumbnails_frame.update_idletasks()
+            self.process_canvas.configure(scrollregion=self.process_canvas.bbox("all"))
+            # Auto-scroll to the right to show latest
+            self.process_canvas.xview_moveto(1.0)
+
+        except Exception as e:
+            logger.error(f"Error adding process thumbnail: {e}")
 
     # Search methods
     def search_faces(self):
-        """Search for similar faces"""
+        """Search for similar faces with metadata/hybrid options"""
         if not self.system:
             messagebox.showerror("Error", "System not initialized")
             return
 
-        image_path = self.search_image_var.get()
-        if not image_path or not os.path.exists(image_path):
-            messagebox.showerror("Error", "Please select a valid image file")
-            return
+        search_mode = self.search_mode_var.get()
 
         try:
-            # Create embedding for search image
-            analyzer = FaceAnalyzer()
-            embedder = FaceEmbedder()
+            # Build metadata filter
+            metadata_filter = self._build_metadata_filter()
 
-            features = analyzer.analyze_face(image_path)
-            embedding = embedder.create_embedding(image_path, features)
+            # Perform search based on mode
+            if search_mode == "metadata":
+                # Metadata-only search
+                if not metadata_filter:
+                    messagebox.showwarning("Warning", "Please select at least one metadata filter for metadata search")
+                    return
+                results = self.system.db_manager.search_by_metadata(metadata_filter, self.num_results_var.get())
+                self.log_message(f"Metadata search with filters: {metadata_filter}")
 
-            # Search database
-            results = self.system.db_manager.search_faces(embedding, self.num_results_var.get())
+            elif search_mode == "vector" or search_mode == "hybrid":
+                # Vector or hybrid search
+                image_path = self.search_image_var.get()
+                if not image_path or not os.path.exists(image_path):
+                    messagebox.showerror("Error", "Please select a valid image file for vector/hybrid search")
+                    return
+
+                # Create embedding for search image
+                analyzer = FaceAnalyzer()
+                embedder = FaceEmbedder()
+
+                features = analyzer.analyze_face(image_path)
+                embedding = embedder.create_embedding(image_path, features)
+
+                if search_mode == "hybrid" and metadata_filter:
+                    # Hybrid search - vector + metadata
+                    results = self.system.db_manager.hybrid_search(embedding, metadata_filter, self.num_results_var.get())
+                    self.log_message(f"Hybrid search with filters: {metadata_filter}")
+                else:
+                    # Vector-only search
+                    results = self.system.db_manager.search_faces(embedding, self.num_results_var.get())
+                    self.log_message("Vector similarity search")
+
+            else:
+                messagebox.showerror("Error", f"Unknown search mode: {search_mode}")
+                return
 
             # Display results
             self.display_search_results(results)
-
             self.system.stats.increment_search_queries()
+
+            self.log_message(f"Search completed: {len(results)} results found")
 
         except Exception as e:
             messagebox.showerror("Error", f"Search failed: {e}")
+            self.log_message(f"Search error: {e}", "error")
+
+    def _build_metadata_filter(self) -> Dict[str, Any]:
+        """Build metadata filter from GUI selections"""
+        metadata_filter = {}
+
+        # Demographic filters
+        if self.sex_filter_var.get() != "any":
+            metadata_filter['sex'] = self.sex_filter_var.get()
+
+        if self.age_filter_var.get() != "any":
+            metadata_filter['age_group'] = self.age_filter_var.get()
+
+        if self.skin_tone_filter_var.get() != "any":
+            metadata_filter['skin_tone'] = self.skin_tone_filter_var.get()
+
+        if self.skin_color_filter_var.get() != "any":
+            metadata_filter['skin_color'] = self.skin_color_filter_var.get()
+
+        if self.hair_color_filter_var.get() != "any":
+            metadata_filter['hair_color'] = self.hair_color_filter_var.get()
+
+        # Image property filters
+        if self.brightness_filter_var.get() != "any":
+            metadata_filter['brightness_level'] = self.brightness_filter_var.get()
+
+        if self.quality_filter_var.get() != "any":
+            metadata_filter['image_quality'] = self.quality_filter_var.get()
+
+        # Face detection filter
+        if self.has_face_var.get() == "yes":
+            metadata_filter['has_face'] = True
+        elif self.has_face_var.get() == "no":
+            metadata_filter['has_face'] = False
+
+        return metadata_filter
 
     def display_search_results(self, results: List[Dict[str, Any]]):
         """Display search results"""
@@ -556,6 +1203,36 @@ class IntegratedFaceGUI:
         )
         if file_path:
             self.search_image_var.set(file_path)
+            self.update_query_preview(file_path)
+
+    def update_query_preview(self, image_path: str):
+        """Update the query image preview"""
+        try:
+            if not os.path.exists(image_path):
+                self.query_preview_label.config(text="Image not found", image='')
+                self.query_preview_photo = None
+                return
+
+            # Load and resize image for preview
+            image = Image.open(image_path)
+
+            # Calculate resize to fit in preview (max 250x250)
+            max_size = 250
+            image.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+
+            # Convert to PhotoImage
+            photo = ImageTk.PhotoImage(image)
+
+            # Update label
+            self.query_preview_label.config(image=photo, text='')
+            self.query_preview_photo = photo  # Keep reference
+
+            self.log_message(f"Query image preview updated: {os.path.basename(image_path)}")
+
+        except Exception as e:
+            self.log_message(f"Error updating query preview: {e}", "error")
+            self.query_preview_label.config(text="Error loading image", image='')
+            self.query_preview_photo = None
 
     def browse_db_path(self):
         """Browse for database path"""
@@ -575,28 +1252,72 @@ class IntegratedFaceGUI:
 
     def save_configuration(self):
         """Save current configuration"""
-        if self.system:
-            # Update system configuration from GUI
-            self.system.config.faces_dir = self.faces_dir_var.get()
-            self.system.config.db_path = self.db_path_var.get()
-            self.system.config.collection_name = self.collection_name_var.get()
-            self.system.config.download_delay = self.download_delay_var.get()
-            self.system.config.batch_size = self.batch_size_var.get()
-            self.system.config.max_workers = self.max_workers_var.get()
+        try:
+            if self.system:
+                # Update system configuration from GUI
+                self.system.config.faces_dir = self.faces_dir_var.get()
+                self.system.config.db_path = self.db_path_var.get()
+                self.system.config.collection_name = self.collection_name_var.get()
+                self.system.config.download_delay = self.download_delay_var.get()
+                self.system.config.batch_size = self.batch_size_var.get()
+                self.system.config.max_workers = self.max_workers_var.get()
 
-            # Save to file
-            self.system.config.save_to_file()
-            self.log_message("Configuration saved")
+                # Save to file
+                config_file = self.system.config.config_file
+                self.system.config.save_to_file()
+
+                # Show detailed save result
+                save_summary = (
+                    f"Configuration saved to: {config_file}\n\n"
+                    f"Faces Directory: {self.system.config.faces_dir}\n"
+                    f"Database Path: {self.system.config.db_path}\n"
+                    f"Collection Name: {self.system.config.collection_name}\n"
+                    f"Download Delay: {self.system.config.download_delay}s\n"
+                    f"Batch Size: {self.system.config.batch_size}\n"
+                    f"Max Workers: {self.system.config.max_workers}"
+                )
+
+                self.log_message(f"Configuration saved to {config_file}")
+                messagebox.showinfo("Configuration Saved", save_summary)
+            else:
+                messagebox.showerror("Error", "System not initialized")
+        except Exception as e:
+            self.log_message(f"Error saving configuration: {e}", "error")
+            messagebox.showerror("Error", f"Failed to save configuration: {e}")
 
     def load_configuration(self):
         """Load configuration from file"""
         try:
-            config = SystemConfig.from_file()
+            config_file = "system_config.json"
+
+            # Check if config file exists
+            if not os.path.exists(config_file):
+                messagebox.showwarning("Warning", f"Configuration file '{config_file}' not found. Using default settings.")
+                return
+
+            # Load configuration
+            config = SystemConfig.from_file(config_file)
+
             if self.system:
                 self.system.config = config
                 self.update_configuration_from_system()
-            self.log_message("Configuration loaded")
+
+            # Show detailed load result
+            load_summary = (
+                f"Configuration loaded from: {config_file}\n\n"
+                f"Faces Directory: {config.faces_dir}\n"
+                f"Database Path: {config.db_path}\n"
+                f"Collection Name: {config.collection_name}\n"
+                f"Download Delay: {config.download_delay}s\n"
+                f"Batch Size: {config.batch_size}\n"
+                f"Max Workers: {config.max_workers}"
+            )
+
+            self.log_message(f"Configuration loaded from {config_file}")
+            messagebox.showinfo("Configuration Loaded", load_summary)
+
         except Exception as e:
+            self.log_message(f"Error loading configuration: {e}", "error")
             messagebox.showerror("Error", f"Failed to load configuration: {e}")
 
     def check_dependencies(self):
@@ -634,17 +1355,6 @@ class IntegratedFaceGUI:
         # Update deps text
         self.deps_text.delete(1.0, tk.END)
         self.deps_text.insert(1.0, "\n".join(deps_status))
-
-    def reset_database(self):
-        """Reset the database"""
-        if messagebox.askyesno("Confirm", "Are you sure you want to reset the database? This will delete all data."):
-            try:
-                if self.system and self.system.db_manager.client:
-                    # This is a simplified reset - in practice you'd want more careful handling
-                    self.log_message("Database reset requested")
-                    messagebox.showinfo("Info", "Please restart the application to complete database reset")
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to reset database: {e}")
 
     def run(self):
         """Run the GUI application"""
