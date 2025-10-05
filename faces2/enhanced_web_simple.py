@@ -69,6 +69,28 @@ class SimpleVectorDB:
         except Exception as e:
             print(f"Error saving embeddings: {e}")
 
+    def export_metadata(self, export_path=None):
+        """Export metadata to JSON file"""
+        if export_path is None:
+            export_path = os.path.join(self.config.db_path, "face_metadata.json")
+
+        try:
+            metadata = []
+            for entry in self.embeddings:
+                metadata.append({
+                    'id': entry['id'],
+                    'file_path': entry['file_path'],
+                    'timestamp': entry['timestamp'],
+                    'file_size': entry['file_size'],
+                    'file_mtime': entry['file_mtime']
+                })
+
+            with open(export_path, 'w') as f:
+                json.dump(metadata, f, indent=2)
+            return True, export_path
+        except Exception as e:
+            return False, f"Error exporting metadata: {e}"
+
     def create_embedding(self, image_path):
         """Create a simple embedding for an image"""
         try:
@@ -382,6 +404,10 @@ class EnhancedWebHandler(BaseHTTPRequestHandler):
             self.serve_search(query)
         elif path == '/api/process_all':
             self.serve_process_all()
+        elif path == '/api/export_metadata':
+            self.serve_export_metadata()
+        elif path.startswith('/api/image/'):
+            self.serve_image(path)
         elif path == '/style.css':
             self.serve_css()
         else:
@@ -477,6 +503,11 @@ class EnhancedWebHandler(BaseHTTPRequestHandler):
                     updateStatus();
                     updateFilesList();
                     updateVectorStats();
+
+                    // Show downloaded image preview
+                    if (data.success) {
+                        showLatestDownload();
+                    }
                 })
                 .catch(err => {
                     logMessage(`Error: ${err.message}`, 'error');
@@ -485,6 +516,23 @@ class EnhancedWebHandler(BaseHTTPRequestHandler):
                     btn.disabled = false;
                     btn.textContent = 'Download Single Face';
                 });
+        }
+
+        function showLatestDownload() {
+            fetch('/api/status')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.last_download) {
+                        const preview = document.getElementById('download-preview');
+                        preview.innerHTML = `
+                            <h4>📥 Latest Download</h4>
+                            <img src="/api/image/${data.last_download}" class="preview-image" alt="Latest Download">
+                            <p class="image-label">${data.last_download}</p>
+                        `;
+                        preview.style.display = 'block';
+                    }
+                })
+                .catch(err => console.error('Error showing preview:', err));
         }
 
         function downloadBatch() {
@@ -530,18 +578,47 @@ class EnhancedWebHandler(BaseHTTPRequestHandler):
             btn.disabled = true;
             btn.textContent = 'Processing...';
 
+            const preview = document.getElementById('embedding-preview');
+            preview.innerHTML = '<h4>⚙️ Processing Embeddings...</h4>';
+            preview.style.display = 'block';
+
             fetch('/api/process_all')
                 .then(response => response.json())
                 .then(data => {
                     logMessage(`Processing completed: ${data.processed} faces processed`, 'success');
                     updateVectorStats();
+
+                    preview.innerHTML = `
+                        <h4>✅ Embedding Complete</h4>
+                        <p>${data.processed} of ${data.total} faces embedded successfully</p>
+                    `;
                 })
                 .catch(err => {
                     logMessage(`Processing error: ${err.message}`, 'error');
+                    preview.style.display = 'none';
                 })
                 .finally(() => {
                     btn.disabled = false;
                     btn.textContent = 'Process All Faces';
+                });
+        }
+
+        function exportMetadata() {
+            const btn = document.getElementById('export-btn');
+            btn.disabled = true;
+            btn.textContent = 'Exporting...';
+
+            fetch('/api/export_metadata')
+                .then(response => response.json())
+                .then(data => {
+                    logMessage(data.message, data.success ? 'success' : 'error');
+                })
+                .catch(err => {
+                    logMessage(`Export error: ${err.message}`, 'error');
+                })
+                .finally(() => {
+                    btn.disabled = false;
+                    btn.textContent = 'Export Metadata to JSON';
                 });
         }
 
@@ -555,7 +632,7 @@ class EnhancedWebHandler(BaseHTTPRequestHandler):
             fetch(`/api/search?count=${numResults}`)
                 .then(response => response.json())
                 .then(data => {
-                    displaySearchResults(data.results);
+                    displaySearchResults(data.results, data.query_image);
                 })
                 .catch(err => {
                     logMessage(`Search error: ${err.message}`, 'error');
@@ -566,22 +643,42 @@ class EnhancedWebHandler(BaseHTTPRequestHandler):
                 });
         }
 
-        function displaySearchResults(results) {
+        function displaySearchResults(results, queryImage) {
             const container = document.getElementById('search-results');
-            container.innerHTML = '<h3>Search Results</h3>';
+            container.innerHTML = '<h3>🔍 Search Results</h3>';
 
             if (results.length === 0) {
                 container.innerHTML += '<p>No results found. Add faces to the database first.</p>';
                 return;
             }
 
+            // Show query image
+            if (queryImage) {
+                const queryDiv = document.createElement('div');
+                queryDiv.className = 'query-image-container';
+                queryDiv.innerHTML = `
+                    <h4>Query Image (Random Selection)</h4>
+                    <img src="/api/image/${queryImage}" class="result-image" alt="Query Image">
+                    <p class="image-label">${queryImage}</p>
+                `;
+                container.appendChild(queryDiv);
+            }
+
+            // Show results
+            const resultsTitle = document.createElement('h4');
+            resultsTitle.textContent = 'Similar Faces';
+            resultsTitle.style.marginTop = '20px';
+            container.appendChild(resultsTitle);
+
             results.forEach((result, index) => {
+                const filename = result.metadata.file_path.split('/').pop();
                 const div = document.createElement('div');
                 div.className = 'search-result';
                 div.innerHTML = `
+                    <img src="/api/image/${filename}" class="result-image" alt="Result ${index + 1}">
                     <div class="result-info">
                         <strong>Result ${index + 1}</strong><br>
-                        File: ${result.metadata.file_path}<br>
+                        File: ${filename}<br>
                         Similarity: ${(1 - result.distance).toFixed(3)} (Distance: ${result.distance.toFixed(3)})<br>
                         Size: ${(result.metadata.file_size / 1024).toFixed(1)} KB
                     </div>
@@ -698,6 +795,7 @@ class EnhancedWebHandler(BaseHTTPRequestHandler):
                     <button id="download-btn" class="btn btn-primary" onclick="downloadFace()">
                         Download Single Face
                     </button>
+                    <div id="download-preview" class="image-preview" style="display: none;"></div>
                 </div>
 
                 <div class="control-section">
@@ -760,6 +858,10 @@ class EnhancedWebHandler(BaseHTTPRequestHandler):
                 <button id="process-btn" class="btn btn-info" onclick="processAllFaces()">
                     Process All Faces for Embeddings
                 </button>
+                <button id="export-btn" class="btn btn-success" onclick="exportMetadata()">
+                    Export Metadata to JSON
+                </button>
+                <div id="embedding-preview" class="image-preview" style="display: none;"></div>
             </div>
 
             <!-- Search -->
@@ -866,12 +968,19 @@ class EnhancedWebHandler(BaseHTTPRequestHandler):
         .files-list { max-height: 300px; overflow-y: auto; }
         .file-item { padding: 10px; border: 1px solid #e2e8f0; border-radius: 5px; margin-bottom: 10px; background: #f7fafc; }
         .search-controls { margin-bottom: 20px; }
-        .search-results { max-height: 400px; overflow-y: auto; }
-        .search-result { padding: 10px; border: 1px solid #e2e8f0; border-radius: 5px; margin-bottom: 10px; background: #f7fafc; }
-        .result-info { font-size: 14px; }
+        .search-results { max-height: 600px; overflow-y: auto; }
+        .search-result { padding: 15px; border: 1px solid #e2e8f0; border-radius: 5px; margin-bottom: 15px; background: #f7fafc; display: flex; gap: 15px; align-items: center; }
+        .result-info { font-size: 14px; flex: 1; }
+        .result-image { max-width: 150px; max-height: 150px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); object-fit: cover; }
+        .preview-image { max-width: 200px; max-height: 200px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); object-fit: cover; margin: 10px auto; display: block; }
+        .image-preview { margin-top: 15px; padding: 15px; background: #edf2f7; border-radius: 8px; text-align: center; }
+        .image-preview h4 { margin-bottom: 10px; color: #2d3748; }
+        .image-label { font-size: 12px; color: #4a5568; margin-top: 5px; word-break: break-all; }
+        .query-image-container { padding: 15px; background: #fff5e6; border: 2px solid #ffa500; border-radius: 8px; margin-bottom: 15px; text-align: center; }
+        .query-image-container h4 { color: #d97706; margin-bottom: 10px; }
         .info p { margin-bottom: 10px; padding: 5px 0; }
         footer { text-align: center; color: white; margin-top: 30px; opacity: 0.8; }
-        @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } header h1 { font-size: 2rem; } .input-group { flex-direction: column; align-items: flex-start; } .input-group label { margin-bottom: 5px; } }
+        @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } header h1 { font-size: 2rem; } .input-group { flex-direction: column; align-items: flex-start; } .input-group label { margin-bottom: 5px; } .search-result { flex-direction: column; } .result-image { max-width: 100%; } }
         """
         self.send_response(200)
         self.send_header('Content-type', 'text/css')
@@ -927,14 +1036,29 @@ class EnhancedWebHandler(BaseHTTPRequestHandler):
         """Serve search API endpoint"""
         count = int(query.get('count', [5])[0])
 
-        # Use the first available image for search
+        # Get all face files
         face_files = list(Path(self.server.config.faces_dir).glob("*.jpg"))
-        if face_files:
-            results = self.server.vector_db.search_similar(str(face_files[0]), count)
-        else:
-            results = []
 
-        response = {'results': results}
+        if face_files:
+            # Randomly select a query image
+            import random
+            query_file = random.choice(face_files)
+            query_filename = query_file.name
+
+            # Perform search
+            results = self.server.vector_db.search_similar(str(query_file), count)
+
+            # Add query image to response
+            response = {
+                'results': results,
+                'query_image': query_filename
+            }
+        else:
+            response = {
+                'results': [],
+                'query_image': None
+            }
+
         self.send_response(200)
         self.send_header('Content-type', 'application/json')
         self.end_headers()
@@ -974,6 +1098,40 @@ class EnhancedWebHandler(BaseHTTPRequestHandler):
         self.send_header('Content-type', 'application/json')
         self.end_headers()
         self.wfile.write(json.dumps(response).encode())
+
+    def serve_export_metadata(self):
+        """Export metadata to JSON file"""
+        success, result = self.server.vector_db.export_metadata()
+        response = {
+            'success': success,
+            'message': f'Metadata exported to {result}' if success else result
+        }
+        self.send_response(200)
+        self.send_header('Content-type', 'application/json')
+        self.end_headers()
+        self.wfile.write(json.dumps(response).encode())
+
+    def serve_image(self, path):
+        """Serve image file"""
+        try:
+            # Extract filename from path (format: /api/image/filename.jpg)
+            filename = path.split('/api/image/')[-1]
+            file_path = os.path.join(self.server.config.faces_dir, filename)
+
+            if os.path.exists(file_path):
+                with open(file_path, 'rb') as f:
+                    image_data = f.read()
+
+                self.send_response(200)
+                self.send_header('Content-type', 'image/jpeg')
+                self.send_header('Content-Length', str(len(image_data)))
+                self.end_headers()
+                self.wfile.write(image_data)
+            else:
+                self.send_error(404)
+        except Exception as e:
+            print(f"Error serving image: {e}")
+            self.send_error(500)
 
     def log_message(self, format, *args):
         """Suppress default logging"""
