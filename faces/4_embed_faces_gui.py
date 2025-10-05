@@ -120,7 +120,10 @@ class EmbeddingGUI:
 
         # Faces directory
         ttk.Label(config_frame, text="Faces Directory:").grid(row=0, column=0, sticky=tk.W, pady=2)
-        self.faces_dir_var = tk.StringVar(value="./faces")
+        # Default to ./faces subdirectory (where downloaded files are saved)
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        default_faces_dir = os.path.normpath(os.path.join(script_dir, "./faces"))
+        self.faces_dir_var = tk.StringVar(value=default_faces_dir)
         faces_dir_frame = ttk.Frame(config_frame)
         faces_dir_frame.grid(row=0, column=1, sticky=(tk.W, tk.E), pady=2)
         faces_dir_frame.columnconfigure(0, weight=1)
@@ -339,6 +342,11 @@ class EmbeddingGUI:
             if dir_info['total_files'] > 0:
                 self.log(f"Directory contains {dir_info['total_files']:,} face files "
                         f"({self.format_file_size(dir_info['total_size_bytes'])})")
+            else:
+                faces_dir = self.faces_dir_var.get()
+                if os.path.exists(faces_dir):
+                    self.log(f"⚠️ Warning: No face image files found in {faces_dir}")
+                    self.log("Please download face images first using the Face Collector tool")
 
         except Exception as e:
             self.log(f"Error updating directory info: {e}")
@@ -412,12 +420,20 @@ class EmbeddingGUI:
             success = self.processor.start_embedding_process(clear_existing=clear_existing)
 
             if success:
-                self.log("Embedding completed successfully!")
+                self.log("✅ Embedding completed successfully!")
             else:
-                self.log("Embedding process failed!")
+                self.log("❌ Embedding process failed - check logs for details")
+                # Check if it's because no files were found
+                if self.processor.stats.total_files == 0:
+                    self.log("💡 No face files found. Please:")
+                    self.log("   1. Run the Face Collector tool first to download images")
+                    self.log("   2. Or manually add face images (.jpg, .jpeg, .png) to the faces directory")
+                    self.log(f"   3. Directory: {self.faces_dir_var.get()}")
 
         except Exception as e:
-            self.log(f"Embedding error: {e}")
+            self.log(f"❌ Embedding error: {e}")
+            import traceback
+            self.log(f"Traceback: {traceback.format_exc()}")
         finally:
             # Reset UI state
             self.root.after(0, self._reset_ui_after_embedding)
@@ -443,7 +459,7 @@ class EmbeddingGUI:
             # Create completion statistics window
             stats_window = tk.Toplevel(self.root)
             stats_window.title("🎉 Embedding Completed - Statistics")
-            stats_window.geometry("700x500")
+            stats_window.geometry("900x700")  # Enlarged from 700x500 to 900x700
             stats_window.resizable(True, True)
 
             # Main frame

@@ -134,7 +134,16 @@ class DownloadGUI:
 
         # Faces directory
         ttk.Label(config_frame, text="Faces Directory:").grid(row=0, column=0, sticky=tk.W, pady=2)
-        self.faces_dir_var = tk.StringVar(value=self.config.faces_dir)
+        # Convert relative path to absolute for display
+        display_dir = self.config.faces_dir
+        if not os.path.isabs(display_dir):
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            if display_dir == ".":
+                display_dir = script_dir
+            else:
+                display_dir = os.path.normpath(os.path.join(script_dir, display_dir))
+
+        self.faces_dir_var = tk.StringVar(value=display_dir)
         faces_dir_frame = ttk.Frame(config_frame)
         faces_dir_frame.grid(row=0, column=1, sticky=(tk.W, tk.E), pady=2)
         faces_dir_frame.columnconfigure(0, weight=1)

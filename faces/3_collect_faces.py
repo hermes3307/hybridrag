@@ -56,7 +56,7 @@ class FaceData:
 @dataclass
 class DownloadConfig:
     """Configuration for background downloader"""
-    faces_dir: str = "./faces"
+    faces_dir: str = "./faces"  # Save to ./faces subdirectory
     delay: float = 1.0
     max_workers: int = 2
     download_limit: Optional[int] = None
@@ -199,6 +199,12 @@ class FaceCollector:
     """Downloads and processes faces from ThisPersonDoesNotExist.com"""
 
     def __init__(self, storage_dir: str = "./faces", delay: float = 1.0):
+        # Convert relative path to absolute path based on script location
+        if not os.path.isabs(storage_dir):
+            # Get the directory where this script is located
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            storage_dir = os.path.normpath(os.path.join(script_dir, storage_dir))
+
         self.storage_dir = storage_dir
         self.delay = delay
         self.downloaded_hashes = set()
@@ -206,6 +212,7 @@ class FaceCollector:
 
         # Create storage directory
         os.makedirs(storage_dir, exist_ok=True)
+        logger.info(f"📁 Face storage directory: {self.storage_dir}")
 
         # Setup session
         self.session = requests.Session()
