@@ -67,7 +67,12 @@ class VectorEmbeddingProcessor:
 
     def __init__(self, faces_dir: str = "./faces", batch_size: int = 50, max_workers: int = 4,
                  db_path: str = "./chroma_db", collection_name: str = "faces"):
-        self.faces_dir = faces_dir
+        # Convert relative path to absolute based on script location
+        if not os.path.isabs(faces_dir):
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            self.faces_dir = os.path.normpath(os.path.join(script_dir, faces_dir))
+        else:
+            self.faces_dir = faces_dir
         self.batch_size = batch_size
         self.max_workers = max_workers
         self.db_path = db_path
@@ -102,13 +107,18 @@ class VectorEmbeddingProcessor:
             logger.error(f"Faces directory does not exist: {self.faces_dir}")
             return []
 
-        # If faces_dir is a directory, scan it (non-recursively for performance)
+        # If faces_dir is a directory, scan it recursively
         if faces_path.is_dir():
-            for file_path in faces_path.iterdir():
-                if file_path.is_file() and file_path.suffix.lower() in supported_extensions:
-                    face_files.append(str(file_path))
+            # Use rglob for recursive scanning of all subdirectories
+            for ext in supported_extensions:
+                for file_path in faces_path.rglob(f'*{ext}'):
+                    if file_path.is_file():
+                        face_files.append(str(file_path))
 
-        logger.info(f"Found {len(face_files)} image files in {self.faces_dir}")
+            logger.info(f"Found {len(face_files)} image files in {self.faces_dir} (including subdirectories)")
+        else:
+            logger.error(f"Path is not a directory: {self.faces_dir}")
+
         return sorted(face_files)
 
     def load_existing_embeddings(self) -> Set[str]:
@@ -401,12 +411,23 @@ class VectorEmbeddingProcessor:
             self.initialize_database(clear_existing)
 
             # Scan for face files
-            logger.info("Scanning for face files...")
+            logger.info(f"Scanning for face files in: {self.faces_dir}")
             face_files = self.scan_face_files()
             self.stats.total_files = len(face_files)
 
             if self.stats.total_files == 0:
-                logger.warning("No face files found in directory")
+                logger.error("=" * 60)
+                logger.error("❌ NO FACE FILES FOUND!")
+                logger.error("=" * 60)
+                logger.error(f"Directory scanned: {os.path.abspath(self.faces_dir)}")
+                logger.error("Searched for file types: .jpg, .jpeg, .png")
+                logger.error("Searched recursively in all subdirectories")
+                logger.error("")
+                logger.error("Please ensure that:")
+                logger.error("  1. You have downloaded face images first")
+                logger.error("  2. The images are in the correct directory")
+                logger.error("  3. The file extensions are .jpg, .jpeg, or .png")
+                logger.error("=" * 60)
                 return False
 
             logger.info(f"Found {self.stats.total_files} face files to process")
