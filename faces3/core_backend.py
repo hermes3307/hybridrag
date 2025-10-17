@@ -36,6 +36,54 @@ try:
 except ImportError:
     CHROMADB_AVAILABLE = False
 
+# Check embedding model libraries
+def check_embedding_models():
+    """Check availability of various embedding models"""
+    models_status = {}
+
+    # FaceNet (facenet-pytorch)
+    try:
+        from facenet_pytorch import InceptionResnetV1
+        models_status['facenet'] = True
+    except ImportError:
+        models_status['facenet'] = False
+
+    # ArcFace/InsightFace
+    try:
+        import insightface
+        models_status['arcface'] = True
+    except ImportError:
+        models_status['arcface'] = False
+
+    # DeepFace
+    try:
+        from deepface import DeepFace
+        models_status['deepface'] = True
+    except ImportError:
+        models_status['deepface'] = False
+
+    # VGGFace2 (via deepface or keras)
+    try:
+        from deepface import DeepFace
+        models_status['vggface2'] = True
+    except ImportError:
+        models_status['vggface2'] = False
+
+    # OpenFace (via deepface)
+    try:
+        from deepface import DeepFace
+        models_status['openface'] = True
+    except ImportError:
+        models_status['openface'] = False
+
+    # Statistical (always available)
+    models_status['statistical'] = True
+
+    return models_status
+
+# Check models at module load
+AVAILABLE_MODELS = check_embedding_models()
+
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -62,6 +110,8 @@ class SystemConfig:
     download_delay: float = 1.0
     max_workers: int = 2
     batch_size: int = 50
+    embedding_model: str = "statistical"  # Options: statistical, facenet, arcface, deepface, vggface2, openface
+    download_source: str = "thispersondoesnotexist"  # Options: thispersondoesnotexist, fakeface, randomface
     config_file: str = "system_config.json"
 
     @classmethod
@@ -95,13 +145,31 @@ class SystemStats:
         self.start_time = time.time()
         self.lock = threading.Lock()
 
+        # Detailed timing statistics
+        self.download_times = []  # Track individual download times
+        self.embed_times = []     # Track individual embedding times
+        self.last_download_time = None
+        self.last_embed_time = None
+        self.session_start_time = time.time()
+
+        # Session statistics
+        self.session_downloads = 0
+        self.session_embeds = 0
+
     def increment_download_attempts(self):
         with self.lock:
             self.download_attempts += 1
 
-    def increment_download_success(self):
+    def increment_download_success(self, elapsed_time: float = None):
         with self.lock:
             self.download_success += 1
+            self.session_downloads += 1
+            if elapsed_time is not None:
+                self.download_times.append(elapsed_time)
+                # Keep only last 100 times for average calculation
+                if len(self.download_times) > 100:
+                    self.download_times.pop(0)
+                self.last_download_time = elapsed_time
 
     def increment_download_duplicates(self):
         with self.lock:
@@ -115,9 +183,16 @@ class SystemStats:
         with self.lock:
             self.embed_processed += 1
 
-    def increment_embed_success(self):
+    def increment_embed_success(self, elapsed_time: float = None):
         with self.lock:
             self.embed_success += 1
+            self.session_embeds += 1
+            if elapsed_time is not None:
+                self.embed_times.append(elapsed_time)
+                # Keep only last 100 times for average calculation
+                if len(self.embed_times) > 100:
+                    self.embed_times.pop(0)
+                self.last_embed_time = elapsed_time
 
     def increment_embed_duplicates(self):
         with self.lock:
@@ -134,20 +209,54 @@ class SystemStats:
     def get_stats(self) -> Dict[str, Any]:
         with self.lock:
             elapsed = time.time() - self.start_time
+            session_elapsed = time.time() - self.session_start_time
+
+            # Calculate average download time
+            avg_download_time = sum(self.download_times) / len(self.download_times) if self.download_times else 0
+            # Calculate average embed time
+            avg_embed_time = sum(self.embed_times) / len(self.embed_times) if self.embed_times else 0
+
+            # Calculate success rates
+            download_success_rate = (self.download_success / self.download_attempts * 100) if self.download_attempts > 0 else 0
+            embed_success_rate = (self.embed_success / self.embed_processed * 100) if self.embed_processed > 0 else 0
+
             return {
+                # Download statistics
                 'download_attempts': self.download_attempts,
                 'download_success': self.download_success,
                 'download_duplicates': self.download_duplicates,
                 'download_errors': self.download_errors,
+                'download_rate': self.download_success / elapsed if elapsed > 0 else 0,
+                'avg_download_time': avg_download_time,
+                'last_download_time': self.last_download_time or 0,
+                'download_success_rate': download_success_rate,
+                'session_downloads': self.session_downloads,
+                'session_download_rate': self.session_downloads / session_elapsed if session_elapsed > 0 else 0,
+
+                # Embed statistics
                 'embed_processed': self.embed_processed,
                 'embed_success': self.embed_success,
                 'embed_duplicates': self.embed_duplicates,
                 'embed_errors': self.embed_errors,
+                'embed_rate': self.embed_success / elapsed if elapsed > 0 else 0,
+                'avg_embed_time': avg_embed_time,
+                'last_embed_time': self.last_embed_time or 0,
+                'embed_success_rate': embed_success_rate,
+                'session_embeds': self.session_embeds,
+                'session_embed_rate': self.session_embeds / session_elapsed if session_elapsed > 0 else 0,
+
+                # General statistics
                 'search_queries': self.search_queries,
                 'elapsed_time': elapsed,
-                'download_rate': self.download_success / elapsed if elapsed > 0 else 0,
-                'embed_rate': self.embed_success / elapsed if elapsed > 0 else 0
+                'session_elapsed_time': session_elapsed,
             }
+
+    def reset_session_stats(self):
+        """Reset session statistics"""
+        with self.lock:
+            self.session_downloads = 0
+            self.session_embeds = 0
+            self.session_start_time = time.time()
 
 class FaceAnalyzer:
     """Analyze face images for features including demographics"""
@@ -525,28 +634,195 @@ class FaceAnalyzer:
             return 'unknown'
 
 class FaceEmbedder:
-    """Create embeddings for face images"""
+    """Create embeddings for face images using various models"""
 
-    def __init__(self):
-        # Simple embedding using image statistics
-        self.embedding_size = 512
+    def __init__(self, model_name: str = "statistical"):
+        self.model_name = model_name
+        self.model = None
+        self.embedding_size = 512  # Default size
+
+        # Initialize the selected model
+        self._initialize_model()
+
+    def _initialize_model(self):
+        """Initialize the selected embedding model"""
+        try:
+            if self.model_name == "facenet":
+                self._init_facenet()
+            elif self.model_name == "arcface":
+                self._init_arcface()
+            elif self.model_name == "deepface":
+                self._init_deepface()
+            elif self.model_name == "vggface2":
+                self._init_vggface2()
+            elif self.model_name == "openface":
+                self._init_openface()
+            elif self.model_name == "statistical":
+                self.embedding_size = 512
+                logger.info("Using statistical embedding (default)")
+            else:
+                logger.warning(f"Unknown model '{self.model_name}', falling back to statistical")
+                self.model_name = "statistical"
+                self.embedding_size = 512
+        except Exception as e:
+            logger.error(f"Failed to initialize {self.model_name}, falling back to statistical: {e}")
+            self.model_name = "statistical"
+            self.embedding_size = 512
+
+    def _init_facenet(self):
+        """Initialize FaceNet model"""
+        try:
+            from facenet_pytorch import InceptionResnetV1
+            import torch
+
+            self.model = InceptionResnetV1(pretrained='vggface2').eval()
+            self.embedding_size = 512
+            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            self.model = self.model.to(self.device)
+            logger.info("FaceNet model initialized successfully")
+        except ImportError:
+            raise ImportError("FaceNet requires: pip install facenet-pytorch torch torchvision")
+
+    def _init_arcface(self):
+        """Initialize ArcFace/InsightFace model"""
+        try:
+            import insightface
+            from insightface.app import FaceAnalysis
+
+            self.model = FaceAnalysis(name='buffalo_l', providers=['CPUExecutionProvider'])
+            self.model.prepare(ctx_id=0, det_size=(640, 640))
+            self.embedding_size = 512
+            logger.info("ArcFace model initialized successfully")
+        except ImportError:
+            raise ImportError("ArcFace requires: pip install insightface onnxruntime")
+
+    def _init_deepface(self):
+        """Initialize DeepFace model"""
+        try:
+            from deepface import DeepFace
+            # DeepFace will auto-download models on first use
+            self.model = "DeepFace"  # Use DeepFace backend
+            self.embedding_size = 4096  # DeepFace default
+            logger.info("DeepFace model initialized successfully")
+        except ImportError:
+            raise ImportError("DeepFace requires: pip install deepface")
+
+    def _init_vggface2(self):
+        """Initialize VGGFace2 model"""
+        try:
+            from deepface import DeepFace
+            self.model = "VGG-Face"  # Use VGG-Face backend
+            self.embedding_size = 2622  # VGGFace default
+            logger.info("VGGFace2 model initialized successfully")
+        except ImportError:
+            raise ImportError("VGGFace2 requires: pip install deepface")
+
+    def _init_openface(self):
+        """Initialize OpenFace model"""
+        try:
+            from deepface import DeepFace
+            self.model = "OpenFace"  # Use OpenFace backend
+            self.embedding_size = 128  # OpenFace default
+            logger.info("OpenFace model initialized successfully")
+        except ImportError:
+            raise ImportError("OpenFace requires: pip install deepface")
 
     def create_embedding(self, image_path: str, features: Dict[str, Any]) -> List[float]:
         """Create embedding vector for face image"""
         try:
-            # Load image
-            image = Image.open(image_path)
-
-            # Convert to numpy array
-            img_array = np.array(image)
-
-            # Create embedding using statistical features
-            embedding = self._create_statistical_embedding(img_array, features)
-
-            return embedding.tolist()
+            if self.model_name == "facenet":
+                return self._embed_facenet(image_path)
+            elif self.model_name == "arcface":
+                return self._embed_arcface(image_path)
+            elif self.model_name in ["deepface", "vggface2", "openface"]:
+                return self._embed_deepface(image_path)
+            else:
+                # Statistical embedding (default)
+                image = Image.open(image_path)
+                img_array = np.array(image)
+                embedding = self._create_statistical_embedding(img_array, features)
+                return embedding.tolist()
 
         except Exception as e:
             logger.error(f"Error creating embedding for {image_path}: {e}")
+            return [0.0] * self.embedding_size
+
+    def _embed_facenet(self, image_path: str) -> List[float]:
+        """Create embedding using FaceNet"""
+        try:
+            from facenet_pytorch import MTCNN
+            import torch
+            from PIL import Image
+
+            # Load and preprocess image
+            img = Image.open(image_path).convert('RGB')
+
+            # Detect face
+            mtcnn = MTCNN(image_size=160, margin=0, device=self.device)
+            img_cropped = mtcnn(img)
+
+            if img_cropped is None:
+                # If no face detected, use whole image
+                import torchvision.transforms as transforms
+                transform = transforms.Compose([
+                    transforms.Resize((160, 160)),
+                    transforms.ToTensor(),
+                    transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
+                ])
+                img_cropped = transform(img).unsqueeze(0).to(self.device)
+            else:
+                img_cropped = img_cropped.unsqueeze(0).to(self.device)
+
+            # Generate embedding
+            with torch.no_grad():
+                embedding = self.model(img_cropped)
+
+            return embedding.cpu().numpy().flatten().tolist()
+        except Exception as e:
+            logger.error(f"FaceNet embedding error: {e}")
+            return [0.0] * self.embedding_size
+
+    def _embed_arcface(self, image_path: str) -> List[float]:
+        """Create embedding using ArcFace/InsightFace"""
+        try:
+            import cv2
+
+            img = cv2.imread(image_path)
+            if img is None:
+                raise ValueError("Failed to load image")
+
+            faces = self.model.get(img)
+
+            if len(faces) > 0:
+                # Use first face
+                embedding = faces[0].embedding
+                return embedding.tolist()
+            else:
+                logger.warning(f"No face detected in {image_path}, returning zero embedding")
+                return [0.0] * self.embedding_size
+        except Exception as e:
+            logger.error(f"ArcFace embedding error: {e}")
+            return [0.0] * self.embedding_size
+
+    def _embed_deepface(self, image_path: str) -> List[float]:
+        """Create embedding using DeepFace (supports multiple backends)"""
+        try:
+            from deepface import DeepFace
+
+            # DeepFace.represent returns embeddings
+            result = DeepFace.represent(
+                img_path=image_path,
+                model_name=self.model,
+                enforce_detection=False
+            )
+
+            if isinstance(result, list) and len(result) > 0:
+                embedding = result[0]["embedding"]
+                return embedding
+            else:
+                return [0.0] * self.embedding_size
+        except Exception as e:
+            logger.error(f"DeepFace embedding error: {e}")
             return [0.0] * self.embedding_size
 
     def _create_statistical_embedding(self, img_array: np.ndarray, features: Dict[str, Any]) -> np.ndarray:
@@ -664,7 +940,7 @@ class DatabaseManager:
             logger.error(f"Failed to initialize database: {e}")
             return False
 
-    def add_face(self, face_data: FaceData) -> bool:
+    def add_face(self, face_data: FaceData, embedding_model: str = "statistical") -> bool:
         """Add face data to the database"""
         if not self.initialized:
             logger.warning("Database not initialized, cannot add face")
@@ -677,6 +953,7 @@ class DatabaseManager:
                 'file_path': face_data.file_path,
                 'timestamp': face_data.timestamp,
                 'image_hash': face_data.image_hash,
+                'embedding_model': embedding_model,  # Track which model created this embedding
             }
 
             # Filter features to only include valid metadata types
@@ -800,8 +1077,85 @@ class DatabaseManager:
             logger.error(f"Error getting collection info: {e}")
             return {}
 
+    def check_embedding_model_mismatch(self, current_model: str) -> Dict[str, Any]:
+        """Check if database has embeddings from different models"""
+        if not self.initialized:
+            return {'has_mismatch': False, 'models_found': [], 'total_count': 0}
+
+        try:
+            # Get all data to check embedding models
+            all_data = self.collection.get(limit=10000)  # Get up to 10k records
+
+            if not all_data or not all_data.get('metadatas'):
+                return {'has_mismatch': False, 'models_found': [], 'total_count': 0}
+
+            # Count embedding models
+            model_counts = {}
+            total = len(all_data['metadatas'])
+
+            for metadata in all_data['metadatas']:
+                model = metadata.get('embedding_model', 'unknown')
+                model_counts[model] = model_counts.get(model, 0) + 1
+
+            # Check for mismatch
+            has_mismatch = False
+            if current_model not in model_counts:
+                # Current model not in database at all
+                has_mismatch = len(model_counts) > 0
+            elif len(model_counts) > 1:
+                # Multiple models in database
+                has_mismatch = True
+            elif model_counts.get(current_model, 0) != total:
+                # Some entries don't have current model
+                has_mismatch = True
+
+            return {
+                'has_mismatch': has_mismatch,
+                'models_found': model_counts,
+                'total_count': total,
+                'current_model': current_model
+            }
+        except Exception as e:
+            logger.error(f"Error checking model mismatch: {e}")
+            return {'has_mismatch': False, 'models_found': {}, 'total_count': 0}
+
+    def clear_all_data(self) -> bool:
+        """Clear all data from the collection"""
+        if not self.initialized:
+            return False
+
+        try:
+            # Delete the collection
+            self.client.delete_collection(name=self.config.collection_name)
+
+            # Recreate the collection
+            self.collection = self.client.get_or_create_collection(
+                name=self.config.collection_name,
+                metadata={"description": "Face embeddings collection"}
+            )
+
+            logger.info("All data cleared from collection")
+            return True
+        except Exception as e:
+            logger.error(f"Error clearing collection: {e}")
+            return False
+
 class FaceDownloader:
-    """Download faces from ThisPersonDoesNotExist.com"""
+    """Download faces from various AI face generation websites"""
+
+    # Available download sources
+    DOWNLOAD_SOURCES = {
+        'thispersondoesnotexist': {
+            'name': 'ThisPersonDoesNotExist.com',
+            'url': 'https://thispersondoesnotexist.com/',
+            'description': 'High quality AI-generated faces (1024x1024)',
+        },
+        '100k-faces': {
+            'name': '100K AI Faces',
+            'url': 'https://100k-faces.vercel.app/api/random-image',
+            'description': '100K AI-generated faces from generated.photos',
+        }
+    }
 
     def __init__(self, config: SystemConfig, stats: SystemStats):
         self.config = config
@@ -837,14 +1191,24 @@ class FaceDownloader:
     def download_face(self) -> Optional[str]:
         """Download a single face image with metadata JSON"""
         self.stats.increment_download_attempts()
+        download_start = time.time()
 
         try:
-            # Download image
+            # Download image based on selected source
             download_time = datetime.now()
-            response = requests.get("https://thispersondoesnotexist.com/",
-                                 headers={'User-Agent': 'Mozilla/5.0'},
-                                 timeout=30)
-            response.raise_for_status()
+            source = self.config.download_source
+
+            if source == 'thispersondoesnotexist':
+                response = self._download_from_thispersondoesnotexist()
+            elif source == '100k-faces':
+                response = self._download_from_100k_faces()
+            else:
+                logger.warning(f"Unknown download source: {source}, using default")
+                response = self._download_from_thispersondoesnotexist()
+
+            if response is None:
+                self.stats.increment_download_errors()
+                return None
 
             # Calculate hash
             image_hash = hashlib.md5(response.content).hexdigest()
@@ -944,13 +1308,45 @@ class FaceDownloader:
             # Add to downloaded hashes
             self.downloaded_hashes.add(image_hash)
 
-            self.stats.increment_download_success()
-            logger.info(f"Downloaded: {filename}")
+            # Calculate download time
+            download_elapsed = time.time() - download_start
+            self.stats.increment_download_success(download_elapsed)
+            logger.info(f"Downloaded: {filename} ({download_elapsed:.2f}s)")
             return file_path
 
         except Exception as e:
             self.stats.increment_download_errors()
             logger.error(f"Download error: {e}")
+            return None
+
+    def _download_from_thispersondoesnotexist(self) -> Optional[requests.Response]:
+        """Download from thispersondoesnotexist.com"""
+        try:
+            response = requests.get(
+                "https://thispersondoesnotexist.com/",
+                headers={'User-Agent': 'Mozilla/5.0'},
+                timeout=30
+            )
+            response.raise_for_status()
+            return response
+        except Exception as e:
+            logger.error(f"Error downloading from thispersondoesnotexist: {e}")
+            return None
+
+    def _download_from_100k_faces(self) -> Optional[requests.Response]:
+        """Download from 100k-faces.vercel.app API"""
+        try:
+            # This API redirects to a random face image
+            response = requests.get(
+                "https://100k-faces.vercel.app/api/random-image",
+                headers={'User-Agent': 'Mozilla/5.0'},
+                timeout=30,
+                allow_redirects=True
+            )
+            response.raise_for_status()
+            return response
+        except Exception as e:
+            logger.error(f"Error downloading from 100k-faces: {e}")
             return None
 
     def _json_numpy_fallback(self, obj):
@@ -990,7 +1386,7 @@ class FaceProcessor:
         self.stats = stats
         self.db_manager = db_manager
         self.analyzer = FaceAnalyzer()
-        self.embedder = FaceEmbedder()
+        self.embedder = FaceEmbedder(model_name=config.embedding_model)
         self.processed_files = set()
 
     def process_face_file(self, file_path: str, callback=None) -> bool:
@@ -999,6 +1395,7 @@ class FaceProcessor:
             return True
 
         self.stats.increment_embed_processed()
+        embed_start = time.time()
 
         try:
             # Calculate hash first to check for duplicates
@@ -1031,11 +1428,14 @@ class FaceProcessor:
                 image_hash=file_hash
             )
 
-            # Add to database
-            if self.db_manager.add_face(face_data):
+            # Add to database with embedding model info
+            if self.db_manager.add_face(face_data, embedding_model=self.config.embedding_model):
                 self.processed_files.add(file_path)
-                self.stats.increment_embed_success()
-                logger.info(f"Processed: {os.path.basename(file_path)}")
+
+                # Calculate embedding time
+                embed_elapsed = time.time() - embed_start
+                self.stats.increment_embed_success(embed_elapsed)
+                logger.info(f"Processed: {os.path.basename(file_path)} ({embed_elapsed:.2f}s)")
 
                 # Call callback with detailed face data
                 if callback:
@@ -1057,6 +1457,50 @@ class FaceProcessor:
                 return hashlib.md5(f.read()).hexdigest()
         except Exception:
             return ""
+
+    def get_new_files_only(self) -> List[str]:
+        """Get list of files that are NOT in the database yet"""
+        # Get all face files
+        all_face_files = []
+        for ext in ['*.jpg', '*.jpeg', '*.png']:
+            all_face_files.extend(Path(self.config.faces_dir).rglob(ext))
+
+        # Filter to only new files (not in database)
+        new_files = []
+        for file_path in all_face_files:
+            file_path_str = str(file_path)
+
+            # Skip if already processed in this session
+            if file_path_str in self.processed_files:
+                continue
+
+            # Calculate hash and check if in database
+            file_hash = self._get_file_hash(file_path_str)
+            if not self.db_manager.hash_exists(file_hash):
+                new_files.append(file_path_str)
+
+        logger.info(f"Found {len(new_files)} new files out of {len(all_face_files)} total files")
+        return new_files
+
+    def process_new_faces_only(self, callback=None) -> Dict[str, int]:
+        """Process only new faces (not in database)"""
+        new_files = self.get_new_files_only()
+
+        stats = {
+            'total_files': len(new_files),
+            'processed': 0,
+            'skipped': 0,
+            'errors': 0
+        }
+
+        for file_path in new_files:
+            if self.process_face_file(file_path, callback=callback):
+                stats['processed'] += 1
+            else:
+                stats['errors'] += 1
+
+        logger.info(f"Processed {stats['processed']} new files, {stats['errors']} errors")
+        return stats
 
     def process_all_faces(self, callback=None):
         """Process all faces in the faces directory"""

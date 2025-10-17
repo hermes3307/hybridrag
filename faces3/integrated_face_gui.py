@@ -22,7 +22,7 @@ import io
 try:
     from core_backend import (
         IntegratedFaceSystem, SystemConfig, FaceAnalyzer,
-        FaceEmbedder, CHROMADB_AVAILABLE
+        FaceEmbedder, CHROMADB_AVAILABLE, AVAILABLE_MODELS, check_embedding_models
     )
 except ImportError as e:
     print(f"Error importing core backend: {e}")
@@ -165,27 +165,34 @@ class IntegratedFaceGUI:
 
         # Configure grid weights for proper resizing
         self.download_frame.columnconfigure(0, weight=1)
-        self.download_frame.rowconfigure(2, weight=1)  # Preview frame expands
+        self.download_frame.rowconfigure(3, weight=1)  # Preview frame expands
 
         # Download control frame
         control_frame = ttk.LabelFrame(self.download_frame, text="Download Controls", padding=10)
         control_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
 
         # Download settings
-        ttk.Label(control_frame, text="Download Delay (seconds):").grid(row=0, column=0, sticky="w")
+        ttk.Label(control_frame, text="Download Source:").grid(row=0, column=0, sticky="w")
+        self.download_source_var = tk.StringVar(value="thispersondoesnotexist")
+        source_options = ["thispersondoesnotexist", "100k-faces"]
+        source_combo = ttk.Combobox(control_frame, textvariable=self.download_source_var,
+                                   values=source_options, width=25, state="readonly")
+        source_combo.grid(row=0, column=1, sticky="w", padx=(5, 0))
+
+        ttk.Label(control_frame, text="Download Delay (seconds):").grid(row=1, column=0, sticky="w")
         self.download_delay_var = tk.DoubleVar(value=1.0)
         delay_spin = ttk.Spinbox(control_frame, from_=0.1, to=10.0, increment=0.1,
                                 textvariable=self.download_delay_var, width=10)
-        delay_spin.grid(row=0, column=1, sticky="w", padx=(5, 0))
+        delay_spin.grid(row=1, column=1, sticky="w", padx=(5, 0))
 
-        ttk.Label(control_frame, text="Faces Directory:").grid(row=1, column=0, sticky="w")
+        ttk.Label(control_frame, text="Faces Directory:").grid(row=2, column=0, sticky="w")
         self.faces_dir_var = tk.StringVar(value="./faces")
-        ttk.Entry(control_frame, textvariable=self.faces_dir_var, width=40).grid(row=1, column=1, sticky="w", padx=(5, 0))
-        ttk.Button(control_frame, text="Browse", command=self.browse_faces_dir).grid(row=1, column=2, padx=5)
+        ttk.Entry(control_frame, textvariable=self.faces_dir_var, width=40).grid(row=2, column=1, sticky="w", padx=(5, 0))
+        ttk.Button(control_frame, text="Browse", command=self.browse_faces_dir).grid(row=2, column=2, padx=5)
 
         # Download buttons
         button_frame = ttk.Frame(control_frame)
-        button_frame.grid(row=2, column=0, columnspan=3, pady=10)
+        button_frame.grid(row=3, column=0, columnspan=3, pady=10)
 
         self.download_button = ttk.Button(button_frame, text="Start Download", command=self.toggle_download)
         self.download_button.pack(side="left", padx=5)
@@ -193,16 +200,43 @@ class IntegratedFaceGUI:
         ttk.Button(button_frame, text="Download Single", command=self.download_single).pack(side="left", padx=5)
         ttk.Button(button_frame, text="Take a Picture", command=self.take_picture_download).pack(side="left", padx=5)
 
+        # Download Statistics Frame
+        stats_frame = ttk.LabelFrame(self.download_frame, text="Download Statistics", padding=10)
+        stats_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=5)
+
+        # Create statistics labels
+        stats_grid = ttk.Frame(stats_frame)
+        stats_grid.pack(fill="x")
+
+        self.download_stats_labels = {}
+        stat_items = [
+            ("Total Downloads:", "total_downloads"),
+            ("Session Downloads:", "session_downloads"),
+            ("Success Rate:", "success_rate"),
+            ("Duplicates:", "duplicates"),
+            ("Errors:", "errors"),
+            ("Avg Speed:", "avg_speed"),
+            ("Last Download:", "last_speed"),
+            ("Download Rate:", "download_rate")
+        ]
+
+        for i, (label, key) in enumerate(stat_items):
+            row = i // 4
+            col = (i % 4) * 2
+            ttk.Label(stats_grid, text=label, font=('TkDefaultFont', 9, 'bold')).grid(row=row, column=col, sticky="w", padx=(5, 2))
+            self.download_stats_labels[key] = ttk.Label(stats_grid, text="0", font=('TkDefaultFont', 9))
+            self.download_stats_labels[key].grid(row=row, column=col+1, sticky="w", padx=(0, 15))
+
         # Download status
         status_frame = ttk.LabelFrame(self.download_frame, text="Download Status", padding=10)
-        status_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=5)
+        status_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=5)
 
-        self.download_status_text = scrolledtext.ScrolledText(status_frame, height=10, width=70)
+        self.download_status_text = scrolledtext.ScrolledText(status_frame, height=6, width=70)
         self.download_status_text.pack(fill="both", expand=True)
 
         # Download preview frame - thumbnails with scrolling
         preview_frame = ttk.LabelFrame(self.download_frame, text="Downloaded Images Preview", padding=10)
-        preview_frame.grid(row=2, column=0, sticky="nsew", padx=5, pady=5)
+        preview_frame.grid(row=3, column=0, sticky="nsew", padx=5, pady=5)
         preview_frame.columnconfigure(0, weight=1)
         preview_frame.rowconfigure(0, weight=1)
 
@@ -236,7 +270,7 @@ class IntegratedFaceGUI:
 
         # Configure grid weights for proper resizing
         self.process_frame.columnconfigure(0, weight=1)
-        self.process_frame.rowconfigure(2, weight=1)  # Preview frame expands
+        self.process_frame.rowconfigure(3, weight=1)  # Preview frame expands
 
         # Processing control frame
         control_frame = ttk.LabelFrame(self.process_frame, text="Processing Controls", padding=10)
@@ -265,19 +299,46 @@ class IntegratedFaceGUI:
         ttk.Button(button_frame, text="Process New Only", command=self.process_new_faces).pack(side="left", padx=5)
         ttk.Button(button_frame, text="Stop Processing", command=self.stop_processing).pack(side="left", padx=5)
 
+        # Embedding Statistics Frame
+        embed_stats_frame = ttk.LabelFrame(self.process_frame, text="Embedding Statistics", padding=10)
+        embed_stats_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=5)
+
+        # Create statistics labels
+        embed_stats_grid = ttk.Frame(embed_stats_frame)
+        embed_stats_grid.pack(fill="x")
+
+        self.embed_stats_labels = {}
+        embed_stat_items = [
+            ("Total Embedded:", "total_embeds"),
+            ("Session Embeds:", "session_embeds"),
+            ("Success Rate:", "success_rate"),
+            ("Duplicates:", "duplicates"),
+            ("Errors:", "errors"),
+            ("Avg Speed:", "avg_speed"),
+            ("Last Embed:", "last_speed"),
+            ("Embed Rate:", "embed_rate")
+        ]
+
+        for i, (label, key) in enumerate(embed_stat_items):
+            row = i // 4
+            col = (i % 4) * 2
+            ttk.Label(embed_stats_grid, text=label, font=('TkDefaultFont', 9, 'bold')).grid(row=row, column=col, sticky="w", padx=(5, 2))
+            self.embed_stats_labels[key] = ttk.Label(embed_stats_grid, text="0", font=('TkDefaultFont', 9))
+            self.embed_stats_labels[key].grid(row=row, column=col+1, sticky="w", padx=(0, 15))
+
         # Progress frame
         progress_frame = ttk.LabelFrame(self.process_frame, text="Processing Progress", padding=10)
-        progress_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=5)
+        progress_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=5)
 
         self.process_progress = ttk.Progressbar(progress_frame, mode='indeterminate')
         self.process_progress.pack(fill="x", pady=(0, 10))
 
-        self.process_status_text = scrolledtext.ScrolledText(progress_frame, height=8, width=70)
+        self.process_status_text = scrolledtext.ScrolledText(progress_frame, height=6, width=70)
         self.process_status_text.pack(fill="both", expand=True)
 
         # Processing preview frame - thumbnails with scrolling
         process_preview_frame = ttk.LabelFrame(self.process_frame, text="Embedding Images Preview", padding=10)
-        process_preview_frame.grid(row=2, column=0, sticky="nsew", padx=5, pady=5)
+        process_preview_frame.grid(row=3, column=0, sticky="nsew", padx=5, pady=5)
         process_preview_frame.columnconfigure(0, weight=1)
         process_preview_frame.rowconfigure(0, weight=1)
 
@@ -457,23 +518,84 @@ class IntegratedFaceGUI:
         self.collection_name_var = tk.StringVar(value="faces")
         ttk.Entry(db_frame, textvariable=self.collection_name_var, width=40).grid(row=1, column=1, sticky="w", padx=(5, 0))
 
+        # Embedding Model Configuration
+        embedding_frame = ttk.LabelFrame(self.config_frame, text="Embedding Model Configuration", padding=10)
+        embedding_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=5)
+
+        ttk.Label(embedding_frame, text="Embedding Model:").grid(row=0, column=0, sticky="w")
+        self.embedding_model_var = tk.StringVar(value="statistical")
+
+        # Create dropdown with all models
+        model_options = ["statistical", "facenet", "arcface", "deepface", "vggface2", "openface"]
+        embedding_combo = ttk.Combobox(embedding_frame, textvariable=self.embedding_model_var,
+                                      values=model_options, width=20, state="readonly")
+        embedding_combo.grid(row=0, column=1, sticky="w", padx=(5, 10))
+
+        ttk.Button(embedding_frame, text="Check Model Availability",
+                  command=self.check_embedding_models).grid(row=0, column=2, padx=5)
+
+        # Bind model change event
+        self.embedding_model_var.trace('w', self.on_embedding_model_changed)
+
+        # Model change warning label
+        self.model_warning_label = ttk.Label(embedding_frame, text="", foreground="red", font=('TkDefaultFont', 9, 'bold'))
+        self.model_warning_label.grid(row=1, column=0, columnspan=3, sticky="w", pady=(5, 0))
+
+        # Model description
+        model_desc_frame = ttk.Frame(embedding_frame)
+        model_desc_frame.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(10, 0))
+
+        self.model_info_text = scrolledtext.ScrolledText(model_desc_frame, height=8, width=70, wrap=tk.WORD)
+        self.model_info_text.pack(fill="both", expand=True)
+
+        # Insert model descriptions
+        model_descriptions = """
+Embedding Models:
+
+• Statistical (Default): Simple statistical features. Always available. Fast but lower accuracy.
+  Size: 512 dimensions
+
+• FaceNet: Deep learning model. High accuracy for face recognition.
+  Install: pip install facenet-pytorch torch torchvision
+  Size: 512 dimensions
+
+• ArcFace: State-of-the-art face recognition. Best accuracy.
+  Install: pip install insightface onnxruntime
+  Size: 512 dimensions
+
+• DeepFace: Multi-purpose deep learning. Good general performance.
+  Install: pip install deepface
+  Size: 4096 dimensions
+
+• VGGFace2: Deep CNN model. Good accuracy, slower.
+  Install: pip install deepface
+  Size: 2622 dimensions
+
+• OpenFace: Lightweight deep learning. Fast and reasonable accuracy.
+  Install: pip install deepface
+  Size: 128 dimensions
+"""
+        self.model_info_text.insert('1.0', model_descriptions)
+        self.model_info_text.config(state='disabled')
+
         # System config frame
         system_frame = ttk.LabelFrame(self.config_frame, text="System Configuration", padding=10)
-        system_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=5)
+        system_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=5)
 
         # Dependencies status
         deps_frame = ttk.LabelFrame(self.config_frame, text="Dependencies Status", padding=10)
-        deps_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=5)
+        deps_frame.grid(row=3, column=0, sticky="ew", padx=5, pady=5)
 
         self.deps_text = scrolledtext.ScrolledText(deps_frame, height=10, width=70)
         self.deps_text.pack(fill="both", expand=True)
 
         # Config buttons
         button_frame = ttk.Frame(self.config_frame)
-        button_frame.grid(row=3, column=0, pady=10)
+        button_frame.grid(row=4, column=0, pady=10)
 
         ttk.Button(button_frame, text="Initialize Vector Database", command=self.initialize_vector_database).pack(side="left", padx=5)
         ttk.Button(button_frame, text="Initialize Download Directory", command=self.initialize_download_directory).pack(side="left", padx=5)
+        ttk.Button(button_frame, text="Re-embed All Data", command=self.reembed_all_data).pack(side="left", padx=5)
         ttk.Button(button_frame, text="Check Dependencies", command=self.check_dependencies).pack(side="left", padx=5)
         ttk.Button(button_frame, text="Load Configuration", command=self.load_configuration).pack(side="left", padx=5)
         ttk.Button(button_frame, text="Save Configuration", command=self.save_configuration).pack(side="left", padx=5)
@@ -494,6 +616,8 @@ class IntegratedFaceGUI:
             if self.system.initialize():
                 self.log_message("System initialized successfully")
                 self.update_configuration_from_system()
+                # Check for model mismatch after initialization
+                self.check_model_mismatch_on_startup()
             else:
                 self.log_message("Failed to initialize system", "error")
                 messagebox.showerror("Error", "Failed to initialize system. Check dependencies.")
@@ -511,6 +635,8 @@ class IntegratedFaceGUI:
             self.download_delay_var.set(config.download_delay)
             self.batch_size_var.set(config.batch_size)
             self.max_workers_var.set(config.max_workers)
+            self.embedding_model_var.set(config.embedding_model)
+            self.download_source_var.set(config.download_source)
 
     def log_message(self, message: str, level: str = "info"):
         """Log message to appropriate text widget"""
@@ -648,6 +774,30 @@ class IntegratedFaceGUI:
                     self.status_labels['process_rate'].config(text=f"{stats.get('embed_rate', 0):.2f}/sec")
                     self.status_labels['uptime'].config(text=f"{stats.get('elapsed_time', 0):.0f}s")
 
+                # Update download statistics display
+                if hasattr(self, 'download_stats_labels'):
+                    stats = status.get('statistics', {})
+                    self.download_stats_labels['total_downloads'].config(text=f"{stats.get('download_success', 0)}")
+                    self.download_stats_labels['session_downloads'].config(text=f"{stats.get('session_downloads', 0)}")
+                    self.download_stats_labels['success_rate'].config(text=f"{stats.get('download_success_rate', 0):.1f}%")
+                    self.download_stats_labels['duplicates'].config(text=f"{stats.get('download_duplicates', 0)}")
+                    self.download_stats_labels['errors'].config(text=f"{stats.get('download_errors', 0)}")
+                    self.download_stats_labels['avg_speed'].config(text=f"{stats.get('avg_download_time', 0):.2f}s")
+                    self.download_stats_labels['last_speed'].config(text=f"{stats.get('last_download_time', 0):.2f}s")
+                    self.download_stats_labels['download_rate'].config(text=f"{stats.get('download_rate', 0):.3f}/s")
+
+                # Update embedding statistics display
+                if hasattr(self, 'embed_stats_labels'):
+                    stats = status.get('statistics', {})
+                    self.embed_stats_labels['total_embeds'].config(text=f"{stats.get('embed_success', 0)}")
+                    self.embed_stats_labels['session_embeds'].config(text=f"{stats.get('session_embeds', 0)}")
+                    self.embed_stats_labels['success_rate'].config(text=f"{stats.get('embed_success_rate', 0):.1f}%")
+                    self.embed_stats_labels['duplicates'].config(text=f"{stats.get('embed_duplicates', 0)}")
+                    self.embed_stats_labels['errors'].config(text=f"{stats.get('embed_errors', 0)}")
+                    self.embed_stats_labels['avg_speed'].config(text=f"{stats.get('avg_embed_time', 0):.2f}s")
+                    self.embed_stats_labels['last_speed'].config(text=f"{stats.get('last_embed_time', 0):.2f}s")
+                    self.embed_stats_labels['embed_rate'].config(text=f"{stats.get('embed_rate', 0):.3f}/s")
+
                 # Update statistics text (throttled)
                 current_time = time.time()
                 if current_time - self.last_stats_update > 2.0:  # Update every 2 seconds
@@ -681,6 +831,7 @@ class IntegratedFaceGUI:
             # Update configuration
             self.system.config.download_delay = self.download_delay_var.get()
             self.system.config.faces_dir = self.faces_dir_var.get()
+            self.system.config.download_source = self.download_source_var.get()
 
             # Create faces directory
             os.makedirs(self.system.config.faces_dir, exist_ok=True)
@@ -940,6 +1091,40 @@ class IntegratedFaceGUI:
             messagebox.showwarning("Warning", "Processing already in progress")
             return
 
+        # Get file counts
+        try:
+            from pathlib import Path
+            all_files = []
+            for ext in ['*.jpg', '*.jpeg', '*.png']:
+                all_files.extend(Path(self.system.config.faces_dir).rglob(ext))
+
+            new_files = self.system.processor.get_new_files_only()
+            existing_count = len(all_files) - len(new_files)
+
+            if len(all_files) == 0:
+                messagebox.showinfo("No Files",
+                    "No image files found in the faces directory!\n\n"
+                    f"Directory: {self.system.config.faces_dir}")
+                return
+
+            # Show confirmation with details
+            response = messagebox.askokcancel(
+                "Process All Faces",
+                f"Process ALL faces in directory:\n\n"
+                f"Total files: {len(all_files)}\n"
+                f"  • New files: {len(new_files)} (will be processed)\n"
+                f"  • Already in DB: {existing_count} (will be skipped)\n\n"
+                f"Using '{self.system.config.embedding_model}' model\n\n"
+                f"Duplicates will be automatically skipped.\n\n"
+                f"Continue?"
+            )
+
+            if not response:
+                return
+
+        except Exception as e:
+            self.log_message(f"Error checking files: {e}", "error")
+
         self.is_processing = True
         self.process_button.config(state="disabled")
         self.process_progress.start()
@@ -963,9 +1148,66 @@ class IntegratedFaceGUI:
         self.processing_thread.start()
 
     def process_new_faces(self):
-        """Process only new faces"""
-        # Simplified version - just process all for now
-        self.start_processing()
+        """Process only new faces (not in database)"""
+        if not self.system:
+            messagebox.showerror("Error", "System not initialized")
+            return
+
+        if self.is_processing:
+            messagebox.showwarning("Warning", "Processing already in progress")
+            return
+
+        # Get count of new files first
+        try:
+            new_files = self.system.processor.get_new_files_only()
+
+            if len(new_files) == 0:
+                messagebox.showinfo("No New Files",
+                    "All files in the faces directory have already been processed!\n\n"
+                    "No new faces to embed.")
+                return
+
+            # Ask for confirmation
+            response = messagebox.askokcancel(
+                "Process New Files Only",
+                f"Found {len(new_files)} NEW files that haven't been processed yet.\n\n"
+                f"These files will be:\n"
+                f"1. Analyzed for facial features\n"
+                f"2. Embedded using '{self.system.config.embedding_model}' model\n"
+                f"3. Added to the database\n\n"
+                f"Already processed files will be skipped.\n\n"
+                f"Continue?"
+            )
+
+            if not response:
+                return
+
+            self.is_processing = True
+            self.process_button.config(state="disabled")
+            self.process_progress.start()
+
+            def process_worker():
+                try:
+                    self.log_message(f"Processing {len(new_files)} new files only...")
+                    result_stats = self.system.processor.process_new_faces_only(
+                        callback=self.on_face_processed
+                    )
+                    self.log_message(f"New files processing completed: {result_stats['processed']} processed, {result_stats['errors']} errors")
+                except Exception as e:
+                    self.log_message(f"Processing error: {e}", "error")
+                finally:
+                    self.is_processing = False
+                    self.root.after(0, lambda: [
+                        self.process_button.config(state="normal"),
+                        self.process_progress.stop()
+                    ])
+
+            self.processing_thread = threading.Thread(target=process_worker, daemon=True)
+            self.processing_thread.start()
+
+        except Exception as e:
+            self.log_message(f"Error checking new files: {e}", "error")
+            messagebox.showerror("Error", f"Failed to check for new files: {e}")
 
     def stop_processing(self):
         """Stop processing"""
@@ -1066,6 +1308,30 @@ class IntegratedFaceGUI:
             messagebox.showerror("Error", "System not initialized")
             return
 
+        # Check for model mismatch before searching
+        mismatch_info = self.system.db_manager.check_embedding_model_mismatch(
+            self.system.config.embedding_model
+        )
+
+        if mismatch_info['has_mismatch'] and mismatch_info['total_count'] > 0:
+            warning = (
+                f"⚠️ CANNOT SEARCH - MODEL MISMATCH!\n\n"
+                f"Current model: {mismatch_info['current_model']}\n"
+                f"Database contains embeddings from different models:\n"
+            )
+            for model, count in mismatch_info['models_found'].items():
+                warning += f"  • {model}: {count} embeddings\n"
+
+            warning += (
+                f"\nSearching with mismatched models produces INCORRECT results.\n\n"
+                f"Please click 'Re-embed All Data' button in Configuration tab\n"
+                f"to update all embeddings with '{mismatch_info['current_model']}' model."
+            )
+
+            messagebox.showerror("Model Mismatch - Cannot Search", warning)
+            self.log_message("Search blocked due to model mismatch", "error")
+            return
+
         search_mode = self.search_mode_var.get()
 
         try:
@@ -1088,9 +1354,9 @@ class IntegratedFaceGUI:
                     messagebox.showerror("Error", "Please select a valid image file for vector/hybrid search")
                     return
 
-                # Create embedding for search image
+                # Create embedding for search image using configured model
                 analyzer = FaceAnalyzer()
-                embedder = FaceEmbedder()
+                embedder = FaceEmbedder(model_name=self.system.config.embedding_model)
 
                 features = analyzer.analyze_face(image_path)
                 embedding = embedder.create_embedding(image_path, features)
@@ -1261,6 +1527,8 @@ class IntegratedFaceGUI:
                 self.system.config.download_delay = self.download_delay_var.get()
                 self.system.config.batch_size = self.batch_size_var.get()
                 self.system.config.max_workers = self.max_workers_var.get()
+                self.system.config.embedding_model = self.embedding_model_var.get()
+                self.system.config.download_source = self.download_source_var.get()
 
                 # Save to file
                 config_file = self.system.config.config_file
@@ -1272,6 +1540,8 @@ class IntegratedFaceGUI:
                     f"Faces Directory: {self.system.config.faces_dir}\n"
                     f"Database Path: {self.system.config.db_path}\n"
                     f"Collection Name: {self.system.config.collection_name}\n"
+                    f"Embedding Model: {self.system.config.embedding_model}\n"
+                    f"Download Source: {self.system.config.download_source}\n"
                     f"Download Delay: {self.system.config.download_delay}s\n"
                     f"Batch Size: {self.system.config.batch_size}\n"
                     f"Max Workers: {self.system.config.max_workers}"
@@ -1308,6 +1578,8 @@ class IntegratedFaceGUI:
                 f"Faces Directory: {config.faces_dir}\n"
                 f"Database Path: {config.db_path}\n"
                 f"Collection Name: {config.collection_name}\n"
+                f"Embedding Model: {config.embedding_model}\n"
+                f"Download Source: {config.download_source}\n"
                 f"Download Delay: {config.download_delay}s\n"
                 f"Batch Size: {config.batch_size}\n"
                 f"Max Workers: {config.max_workers}"
@@ -1319,6 +1591,32 @@ class IntegratedFaceGUI:
         except Exception as e:
             self.log_message(f"Error loading configuration: {e}", "error")
             messagebox.showerror("Error", f"Failed to load configuration: {e}")
+
+    def check_embedding_models(self):
+        """Check embedding model availability"""
+        models_status = check_embedding_models()
+
+        status_lines = ["Embedding Model Availability:\n"]
+
+        install_commands = {
+            'facenet': 'pip install facenet-pytorch torch torchvision',
+            'arcface': 'pip install insightface onnxruntime',
+            'deepface': 'pip install deepface',
+            'vggface2': 'pip install deepface',
+            'openface': 'pip install deepface'
+        }
+
+        for model, available in models_status.items():
+            if available:
+                status_lines.append(f"✓ {model.upper()}: Available")
+            else:
+                status_lines.append(f"✗ {model.upper()}: Not installed")
+                if model in install_commands:
+                    status_lines.append(f"  Install: {install_commands[model]}")
+
+        # Update deps text
+        self.deps_text.delete(1.0, tk.END)
+        self.deps_text.insert(1.0, "\n".join(status_lines))
 
     def check_dependencies(self):
         """Check system dependencies"""
@@ -1355,6 +1653,136 @@ class IntegratedFaceGUI:
         # Update deps text
         self.deps_text.delete(1.0, tk.END)
         self.deps_text.insert(1.0, "\n".join(deps_status))
+
+    def check_model_mismatch_on_startup(self):
+        """Check for embedding model mismatches on startup"""
+        if not self.system:
+            return
+
+        try:
+            mismatch_info = self.system.db_manager.check_embedding_model_mismatch(
+                self.system.config.embedding_model
+            )
+
+            if mismatch_info['has_mismatch'] and mismatch_info['total_count'] > 0:
+                models_found = mismatch_info['models_found']
+                current_model = mismatch_info['current_model']
+
+                warning_msg = (
+                    f"⚠️ EMBEDDING MODEL MISMATCH DETECTED!\n\n"
+                    f"Current model: {current_model}\n"
+                    f"Database contains:\n"
+                )
+
+                for model, count in models_found.items():
+                    warning_msg += f"  • {model}: {count} embeddings\n"
+
+                warning_msg += (
+                    f"\nTotal embeddings: {mismatch_info['total_count']}\n\n"
+                    f"⚠️ Searching with mismatched models will produce INCORRECT results!\n\n"
+                    f"Recommended actions:\n"
+                    f"1. Click 'Re-embed All Data' to update all embeddings with '{current_model}'\n"
+                    f"2. Or change embedding model back to match database"
+                )
+
+                self.log_message(warning_msg, "error")
+                self.model_warning_label.config(text=f"⚠️ Model Mismatch: {len(models_found)} different models in database!")
+
+                # Show warning dialog
+                response = messagebox.askquestion(
+                    "Embedding Model Mismatch",
+                    f"{warning_msg}\n\nDo you want to RE-EMBED ALL DATA now with '{current_model}'?",
+                    icon='warning'
+                )
+
+                if response == 'yes':
+                    self.reembed_all_data()
+            else:
+                self.model_warning_label.config(text="")
+
+        except Exception as e:
+            logger.error(f"Error checking model mismatch: {e}")
+
+    def on_embedding_model_changed(self, *args):
+        """Called when embedding model selection changes"""
+        if not self.system:
+            return
+
+        new_model = self.embedding_model_var.get()
+        current_db_model = self.system.config.embedding_model
+
+        if new_model != current_db_model:
+            # Check if database has data
+            db_info = self.system.db_manager.get_collection_info()
+            count = db_info.get('count', 0)
+
+            if count > 0:
+                self.model_warning_label.config(
+                    text=f"⚠️ WARNING: Changing model will require re-embedding {count} faces!"
+                )
+            else:
+                self.model_warning_label.config(text="")
+
+    def reembed_all_data(self):
+        """Re-embed all data with the current embedding model"""
+        if not self.system:
+            messagebox.showerror("Error", "System not initialized")
+            return
+
+        try:
+            # Get current database info
+            db_info = self.system.db_manager.get_collection_info()
+            count = db_info.get('count', 0)
+            current_model = self.system.config.embedding_model
+
+            if count == 0:
+                messagebox.showinfo("Info", "No data in database to re-embed.")
+                return
+
+            # Confirm with user
+            confirm_msg = (
+                f"RE-EMBED ALL DATA\n\n"
+                f"This will:\n"
+                f"1. Clear all {count} existing embeddings from database\n"
+                f"2. Re-process all face images in {self.system.config.faces_dir}\n"
+                f"3. Create new embeddings using: {current_model}\n\n"
+                f"This operation cannot be undone and may take several minutes.\n\n"
+                f"Continue?"
+            )
+
+            response = messagebox.askokcancel("Confirm Re-embedding", confirm_msg, icon='warning')
+
+            if not response:
+                return
+
+            self.log_message(f"Starting re-embedding with model: {current_model}")
+
+            # Clear existing data
+            if not self.system.db_manager.clear_all_data():
+                messagebox.showerror("Error", "Failed to clear database")
+                return
+
+            self.log_message(f"Cleared {count} existing embeddings")
+
+            # Update the processor with new model
+            self.system.processor.embedder = FaceEmbedder(model_name=current_model)
+            self.system.processor.processed_files.clear()
+
+            # Start processing all faces
+            self.log_message("Re-embedding all faces...")
+            self.start_processing()
+
+            # Clear warning
+            self.model_warning_label.config(text="")
+
+            messagebox.showinfo("Re-embedding Started",
+                f"Re-embedding all faces with '{current_model}' model.\n\n"
+                f"Check the 'Process & Embed' tab for progress."
+            )
+
+        except Exception as e:
+            self.log_message(f"Error re-embedding data: {e}", "error")
+            messagebox.showerror("Error", f"Failed to re-embed data: {e}")
 
     def run(self):
         """Run the GUI application"""
