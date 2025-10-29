@@ -26,4 +26,4 @@ echo ""
 echo "Initializing..."
 echo ""
 
-python3 integrated_face_gui.py
+python3 faces.py

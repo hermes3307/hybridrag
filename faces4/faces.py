@@ -28,13 +28,13 @@ import io
 
 # Import core backend functionality
 try:
-    from core_backend import (
+    from core import (
         IntegratedFaceSystem, SystemConfig, FaceAnalyzer,
         FaceEmbedder, CHROMADB_AVAILABLE, AVAILABLE_MODELS, check_embedding_models
     )
 except ImportError as e:
     print(f"Error importing core backend: {e}")
-    print("Make sure core_backend.py is in the same directory")
+    print("Make sure core.py is in the same directory")
     sys.exit(1)
 
 # Configure logging
