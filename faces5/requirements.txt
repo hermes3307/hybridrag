@@ -3,3 +3,6 @@ numpy>=1.21.0
 Pillow>=9.0.0
 requests>=2.25.0
 opencv-python>=4.5.0
+
+# Note: If you get "externally-managed-environment" error, use:
+# pip3 install --break-system-packages -r requirements.txt
