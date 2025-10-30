@@ -443,6 +443,22 @@ class PgVectorDatabaseManager:
             if conn:
                 self.return_connection(conn)
 
+    def hybrid_search(self, query_embedding: List[float], metadata_filter: Dict[str, Any],
+                     n_results: int = 10) -> List[Dict[str, Any]]:
+        """
+        Hybrid search combining vector similarity and metadata filtering
+        (Compatibility method - just calls search_faces with metadata_filter)
+
+        Args:
+            query_embedding: Query embedding vector
+            metadata_filter: Metadata filters
+            n_results: Number of results to return
+
+        Returns:
+            List of matching faces with distances
+        """
+        return self.search_faces(query_embedding, n_results, metadata_filter)
+
     def search_by_metadata(self, metadata_filter: Dict[str, Any],
                           n_results: int = 10) -> List[Dict[str, Any]]:
         """
@@ -576,6 +592,80 @@ class PgVectorDatabaseManager:
             bool: True if hash exists, False otherwise
         """
         return self.check_duplicate(image_hash)
+
+    def check_embedding_model_mismatch(self, current_model: str) -> Dict[str, Any]:
+        """
+        Check if database has embeddings from different models
+
+        Args:
+            current_model: The current embedding model being used
+
+        Returns:
+            Dictionary with mismatch information:
+            - has_mismatch: Boolean indicating if there's a model mismatch
+            - models_found: Dictionary of model names and their counts
+            - total_count: Total number of faces in database
+            - current_model: The current model name
+        """
+        if not self.initialized:
+            return {'has_mismatch': False, 'models_found': {}, 'total_count': 0}
+
+        conn = None
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+
+            # Get count of each embedding model
+            cursor.execute("""
+                SELECT embedding_model, COUNT(*) as count
+                FROM faces
+                WHERE embedding_model IS NOT NULL
+                GROUP BY embedding_model
+            """)
+
+            results = cursor.fetchall()
+            cursor.close()
+
+            # Build model counts dictionary
+            model_counts = {}
+            total = 0
+            for row in results:
+                model_name = row[0]
+                count = row[1]
+                model_counts[model_name] = count
+                total += count
+
+            # Check for mismatch
+            has_mismatch = False
+            if current_model not in model_counts:
+                # Current model not in database at all
+                has_mismatch = len(model_counts) > 0
+            elif len(model_counts) > 1:
+                # Multiple models in database
+                has_mismatch = True
+            elif model_counts.get(current_model, 0) != total:
+                # Some entries don't have current model
+                has_mismatch = True
+
+            return {
+                'has_mismatch': has_mismatch,
+                'models_found': model_counts,
+                'total_count': total,
+                'current_model': current_model
+            }
+
+        except Exception as e:
+            logger.error(f"Error checking model mismatch: {e}")
+            return {
+                'has_mismatch': False,
+                'models_found': {},
+                'total_count': 0,
+                'current_model': current_model
+            }
+
+        finally:
+            if conn:
+                self.return_connection(conn)
 
     def get_count(self) -> int:
         """
@@ -735,6 +825,16 @@ class PgVectorDatabaseManager:
         finally:
             if conn:
                 self.return_connection(conn)
+
+    def clear_all_data(self) -> bool:
+        """
+        Clear all data from the database
+        (Alias for reset_database for compatibility with ChromaDB interface)
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        return self.reset_database()
 
     def close(self):
         """Close all database connections"""
