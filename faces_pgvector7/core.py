@@ -141,7 +141,7 @@ class SystemConfig:
     max_workers: int = 2
     batch_size: int = 50
     embedding_model: str = "statistical"  # Options: statistical, facenet, arcface, deepface, vggface2, openface
-    download_source: str = "100k-faces"  # Options: thispersondoesnotexist, 100k-faces
+    download_source: str = "thispersondoesnotexist"  # Options: thispersondoesnotexist, fakeface, randomface
     config_file: str = "system_config.json"
 
     @classmethod
