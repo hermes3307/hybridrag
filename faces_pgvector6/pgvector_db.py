@@ -564,6 +564,19 @@ class PgVectorDatabaseManager:
             if conn:
                 self.return_connection(conn)
 
+    def hash_exists(self, image_hash: str) -> bool:
+        """
+        Check if an image with this hash already exists in the database
+        (Alias for check_duplicate for compatibility with ChromaDB interface)
+
+        Args:
+            image_hash: Hash of the image
+
+        Returns:
+            bool: True if hash exists, False otherwise
+        """
+        return self.check_duplicate(image_hash)
+
     def get_count(self) -> int:
         """
         Get total number of faces in database
