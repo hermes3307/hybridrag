@@ -33,10 +33,10 @@ def print_results(results):
         print(f"   📁 File: {Path(metadata.get('file_path', 'N/A')).name}")
         print(f"   🆔 ID: {result.get('id', 'N/A')}")
 
-        # Demographics
-        sex = metadata.get('estimated_sex', 'unknown')
+        # Demographics - check both JSONB metadata and dedicated columns
+        sex = metadata.get('estimated_sex') or metadata.get('gender', 'unknown')
         age_group = metadata.get('age_group', 'unknown')
-        age_range = metadata.get('estimated_age', 'unknown')
+        age_range = metadata.get('estimated_age') or metadata.get('age_estimate', 'unknown')
         skin_tone = metadata.get('skin_tone', 'unknown')
         hair_color = metadata.get('hair_color', 'unknown')
 

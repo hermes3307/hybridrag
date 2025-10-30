@@ -414,21 +414,37 @@ class PgVectorDatabaseManager:
             # Format results
             formatted_results = []
             for row in results:
+                # Merge dedicated columns with JSONB metadata
+                # JSONB metadata takes precedence, but fall back to dedicated columns
+                jsonb_metadata = row[10] if row[10] else {}
+
+                metadata = {
+                    'face_id': row[0],
+                    'file_path': row[1],
+                    'timestamp': row[2],
+                    'image_hash': row[3],
+                    'embedding_model': row[4],
+                    'age_estimate': row[5],
+                    'gender': row[6],
+                    'brightness': row[7],
+                    'contrast': row[8],
+                    'sharpness': row[9],
+                }
+
+                # Merge JSONB metadata
+                metadata.update(jsonb_metadata)
+
+                # Ensure estimated_sex exists (fallback to gender column)
+                if not metadata.get('estimated_sex') and metadata.get('gender'):
+                    metadata['estimated_sex'] = metadata['gender']
+
+                # Ensure estimated_age exists (could be in age_estimate column or JSONB)
+                if not metadata.get('estimated_age') and metadata.get('age_estimate'):
+                    metadata['estimated_age'] = str(metadata['age_estimate'])
+
                 formatted_results.append({
-                    'id': row[0],  # face_id
-                    'metadata': {
-                        'face_id': row[0],
-                        'file_path': row[1],
-                        'timestamp': row[2],
-                        'image_hash': row[3],
-                        'embedding_model': row[4],
-                        'age_estimate': row[5],
-                        'gender': row[6],
-                        'brightness': row[7],
-                        'contrast': row[8],
-                        'sharpness': row[9],
-                        **(row[10] if row[10] else {})  # Additional metadata from JSONB
-                    },
+                    'id': row[0],
+                    'metadata': metadata,
                     'distance': float(row[11])
                 })
 
@@ -517,21 +533,36 @@ class PgVectorDatabaseManager:
             # Format results
             formatted_results = []
             for row in results:
+                # Merge dedicated columns with JSONB metadata
+                jsonb_metadata = row[10] if row[10] else {}
+
+                metadata = {
+                    'face_id': row[0],
+                    'file_path': row[1],
+                    'timestamp': row[2],
+                    'image_hash': row[3],
+                    'embedding_model': row[4],
+                    'age_estimate': row[5],
+                    'gender': row[6],
+                    'brightness': row[7],
+                    'contrast': row[8],
+                    'sharpness': row[9],
+                }
+
+                # Merge JSONB metadata
+                metadata.update(jsonb_metadata)
+
+                # Ensure estimated_sex exists (fallback to gender column)
+                if not metadata.get('estimated_sex') and metadata.get('gender'):
+                    metadata['estimated_sex'] = metadata['gender']
+
+                # Ensure estimated_age exists
+                if not metadata.get('estimated_age') and metadata.get('age_estimate'):
+                    metadata['estimated_age'] = str(metadata['age_estimate'])
+
                 formatted_results.append({
                     'id': row[0],
-                    'metadata': {
-                        'face_id': row[0],
-                        'file_path': row[1],
-                        'timestamp': row[2],
-                        'image_hash': row[3],
-                        'embedding_model': row[4],
-                        'age_estimate': row[5],
-                        'gender': row[6],
-                        'brightness': row[7],
-                        'contrast': row[8],
-                        'sharpness': row[9],
-                        **(row[10] if row[10] else {})
-                    }
+                    'metadata': metadata
                 })
 
             cursor.close()
