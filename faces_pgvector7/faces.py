@@ -164,10 +164,7 @@ class IntegratedFaceGUI:
         self.status_labels = {}
         status_items = [
             ("Database Status", "db_status"),
-            ("Total Face Records", "total_faces"),
-            ("Embeddings/Vectors", "embeddings_count"),
-            ("Database Size", "db_size"),
-            ("Embedding Models", "embedding_models"),
+            ("Total Faces", "total_faces"),
             ("Download Rate", "download_rate"),
             ("Processing Rate", "process_rate"),
             ("System Uptime", "uptime")
@@ -207,7 +204,7 @@ class IntegratedFaceGUI:
 
         # Download settings
         ttk.Label(control_frame, text="Download Source:").grid(row=0, column=0, sticky="w")
-        self.download_source_var = tk.StringVar(value="100k-faces")
+        self.download_source_var = tk.StringVar(value="thispersondoesnotexist")
         source_options = ["thispersondoesnotexist", "100k-faces"]
         source_combo = ttk.Combobox(control_frame, textvariable=self.download_source_var,
                                    values=source_options, width=25, state="readonly")
@@ -573,19 +570,18 @@ class IntegratedFaceGUI:
 
         ttk.Label(embedding_frame, text="Embedding Model:").grid(row=0, column=0, sticky="w")
         self.embedding_model_var = tk.StringVar(value="statistical")
-        self.pending_model_var = tk.StringVar(value="statistical")  # Track pending changes
 
         # Create dropdown with all models
         model_options = ["statistical", "facenet", "arcface", "deepface", "vggface2", "openface"]
-        embedding_combo = ttk.Combobox(embedding_frame, textvariable=self.pending_model_var,
+        embedding_combo = ttk.Combobox(embedding_frame, textvariable=self.embedding_model_var,
                                       values=model_options, width=20, state="readonly")
         embedding_combo.grid(row=0, column=1, sticky="w", padx=(5, 10))
 
-        ttk.Button(embedding_frame, text="Change",
-                  command=self.change_embedding_model).grid(row=0, column=2, padx=5)
-
         ttk.Button(embedding_frame, text="Check Model Availability",
-                  command=self.check_embedding_models).grid(row=0, column=3, padx=5)
+                  command=self.check_embedding_models).grid(row=0, column=2, padx=5)
+
+        # Bind model change event
+        self.embedding_model_var.trace('w', self.on_embedding_model_changed)
 
         # Model change warning label
         self.model_warning_label = ttk.Label(embedding_frame, text="", foreground="red", font=('TkDefaultFont', 9, 'bold'))
@@ -692,7 +688,6 @@ Embedding Models:
             self.batch_size_var.set(config.batch_size)
             self.max_workers_var.set(config.max_workers)
             self.embedding_model_var.set(config.embedding_model)
-            self.pending_model_var.set(config.embedding_model)  # Sync pending with current
             self.download_source_var.set(config.download_source)
 
     def log_message(self, message: str, level: str = "info"):
@@ -814,19 +809,8 @@ Embedding Models:
                     db_info = status.get('database', {})
                     stats = status.get('statistics', {})
 
-                    # Get detailed database stats
-                    db_stats = self.system.db_manager.get_stats() if self.system.db_manager.initialized else {}
-
                     self.status_labels['db_status'].config(text="Connected" if db_info else "Disconnected")
-                    self.status_labels['total_faces'].config(text=str(db_stats.get('total_faces', 0)))
-                    self.status_labels['embeddings_count'].config(text=str(db_stats.get('faces_with_embeddings', 0)))
-                    self.status_labels['db_size'].config(text=db_stats.get('database_size', 'N/A'))
-
-                    # Format embedding models list
-                    models = db_stats.get('embedding_models', [])
-                    models_str = ', '.join(models) if models else 'None'
-                    self.status_labels['embedding_models'].config(text=models_str)
-
+                    self.status_labels['total_faces'].config(text=str(db_info.get('count', 0)))
                     self.status_labels['download_rate'].config(text=f"{stats.get('download_rate', 0):.2f}/sec")
                     self.status_labels['process_rate'].config(text=f"{stats.get('embed_rate', 0):.2f}/sec")
                     self.status_labels['uptime'].config(text=f"{stats.get('elapsed_time', 0):.0f}s")
@@ -1819,78 +1803,28 @@ Embedding Models:
         except Exception as e:
             logger.error(f"Error checking model mismatch: {e}")
 
-    def change_embedding_model(self):
-        """Handle embedding model change button click"""
+    def on_embedding_model_changed(self, *args):
+        """Called when embedding model selection changes"""
         if not self.system:
-            messagebox.showerror("Error", "System not initialized")
             return
 
-        new_model = self.pending_model_var.get()
-        current_model = self.embedding_model_var.get()
+        new_model = self.embedding_model_var.get()
+        current_db_model = self.system.config.embedding_model
 
-        # Check if model actually changed
-        if new_model == current_model:
-            messagebox.showinfo("No Change", f"Embedding model is already set to '{current_model}'.")
-            return
+        if new_model != current_db_model:
+            # Check if database has data
+            db_info = self.system.db_manager.get_collection_info()
+            count = db_info.get('count', 0)
 
-        # Check if database has data
-        db_info = self.system.db_manager.get_collection_info()
-        count = db_info.get('count', 0)
-
-        if count > 0:
-            # Database has existing embeddings - need to re-embed
-            response = messagebox.askyesno(
-                "Change Embedding Model",
-                f"You want to change the embedding model from '{current_model}' to '{new_model}'.\n\n"
-                f"⚠️ IMPORTANT: The database contains {count} face embeddings created with '{current_model}'.\n\n"
-                f"To use '{new_model}', ALL data must be re-embedded.\n\n"
-                f"Do you want to RE-EMBED ALL DATA NOW with '{new_model}'?\n\n"
-                f"This will:\n"
-                f"  • Save the configuration with new model\n"
-                f"  • Delete all {count} existing embeddings\n"
-                f"  • Re-process all face images with '{new_model}'\n\n"
-                f"⚠️ This operation cannot be undone!",
-                icon='warning'
-            )
-
-            if response:
-                # User wants to re-embed now
-                self.log_message(f"User confirmed model change from '{current_model}' to '{new_model}'")
-
-                # Update both variables
-                self.embedding_model_var.set(new_model)
-                self.pending_model_var.set(new_model)
-                self.system.config.embedding_model = new_model
-                self.log_message(f"Configuration updated to use '{new_model}' model")
-
-                # Clear warning label
+            if count > 0:
+                self.model_warning_label.config(
+                    text=f"⚠️ WARNING: Changing model will require re-embedding {count} faces!"
+                )
+            else:
                 self.model_warning_label.config(text="")
 
-                # Trigger re-embedding (skip confirmation since we already asked)
-                self.reembed_all_data(skip_confirmation=True)
-            else:
-                # User cancelled, revert dropdown
-                self.log_message(f"Model change cancelled by user")
-                self.pending_model_var.set(current_model)
-        else:
-            # No existing data, just update the model
-            self.log_message(f"Changing embedding model from '{current_model}' to '{new_model}' (no data to re-embed)")
-            self.embedding_model_var.set(new_model)
-            self.pending_model_var.set(new_model)
-            self.system.config.embedding_model = new_model
-            self.model_warning_label.config(text="")
-            messagebox.showinfo(
-                "Model Changed",
-                f"Embedding model changed to '{new_model}'.\n\n"
-                f"New face embeddings will use this model."
-            )
-
-    def reembed_all_data(self, skip_confirmation=False):
-        """Re-embed all data with the current embedding model
-
-        Args:
-            skip_confirmation: If True, skip the confirmation dialog (used when called from model change)
-        """
+    def reembed_all_data(self):
+        """Re-embed all data with the current embedding model"""
         if not self.system:
             messagebox.showerror("Error", "System not initialized")
             return
@@ -1899,47 +1833,29 @@ Embedding Models:
             # Get current database info
             db_info = self.system.db_manager.get_collection_info()
             count = db_info.get('count', 0)
-            current_model = self.embedding_model_var.get()  # Get from UI
+            current_model = self.system.config.embedding_model
 
             if count == 0:
                 messagebox.showinfo("Info", "No data in database to re-embed.")
                 return
 
-            # Check if the model is available
-            if current_model not in AVAILABLE_MODELS or not AVAILABLE_MODELS.get(current_model, False):
-                messagebox.showwarning(
-                    "Model Not Available",
-                    f"The '{current_model}' model is not installed.\n\n"
-                    f"The system will use 'statistical' model instead.\n\n"
-                    f"To use {current_model}, please install it first:\n"
-                    f"Check 'Configuration' tab → 'Check Model Availability' for installation instructions."
-                )
-                current_model = "statistical"
-                self.embedding_model_var.set("statistical")
-                self.pending_model_var.set("statistical")
-                self.log_message(f"Model not available, using statistical instead")
+            # Confirm with user
+            confirm_msg = (
+                f"RE-EMBED ALL DATA\n\n"
+                f"This will:\n"
+                f"1. Clear all {count} existing embeddings from database\n"
+                f"2. Re-process all face images in {self.system.config.faces_dir}\n"
+                f"3. Create new embeddings using: {current_model}\n\n"
+                f"This operation cannot be undone and may take several minutes.\n\n"
+                f"Continue?"
+            )
 
-            # Confirm with user (unless already confirmed from model change dialog)
-            if not skip_confirmation:
-                confirm_msg = (
-                    f"RE-EMBED ALL DATA\n\n"
-                    f"This will:\n"
-                    f"1. Clear all {count} existing embeddings from database\n"
-                    f"2. Re-process all face images in {self.system.config.faces_dir}\n"
-                    f"3. Create new embeddings using: {current_model}\n\n"
-                    f"This operation cannot be undone and may take several minutes.\n\n"
-                    f"Continue?"
-                )
+            response = messagebox.askokcancel("Confirm Re-embedding", confirm_msg, icon='warning')
 
-                response = messagebox.askokcancel("Confirm Re-embedding", confirm_msg, icon='warning')
-
-                if not response:
-                    return
+            if not response:
+                return
 
             self.log_message(f"Starting re-embedding with model: {current_model}")
-
-            # Update system config with the actual model being used
-            self.system.config.embedding_model = current_model
 
             # Clear existing data
             if not self.system.db_manager.clear_all_data():
@@ -1949,21 +1865,7 @@ Embedding Models:
             self.log_message(f"Cleared {count} existing embeddings")
 
             # Update the processor with new model
-            new_embedder = FaceEmbedder(model_name=current_model)
-            actual_model = new_embedder.model_name  # Get the actual model (in case it fell back)
-
-            if actual_model != current_model:
-                self.log_message(f"⚠️ Model '{current_model}' not available, using '{actual_model}' instead", "warning")
-                self.embedding_model_var.set(actual_model)
-                self.pending_model_var.set(actual_model)
-                self.system.config.embedding_model = actual_model
-                messagebox.showwarning(
-                    "Model Fallback",
-                    f"Could not initialize '{current_model}'.\n\n"
-                    f"Using '{actual_model}' instead."
-                )
-
-            self.system.processor.embedder = new_embedder
+            self.system.processor.embedder = FaceEmbedder(model_name=current_model)
             self.system.processor.processed_files.clear()
 
             # Start processing all faces
@@ -1974,7 +1876,7 @@ Embedding Models:
             self.model_warning_label.config(text="")
 
             messagebox.showinfo("Re-embedding Started",
-                f"Re-embedding all faces with '{actual_model}' model.\n\n"
+                f"Re-embedding all faces with '{current_model}' model.\n\n"
                 f"Check the 'Process & Embed' tab for progress."
             )
 
