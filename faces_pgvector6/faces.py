@@ -310,22 +310,33 @@ class IntegratedFaceGUI:
         control_frame = ttk.LabelFrame(self.process_frame, text="Processing Controls", padding=10)
         control_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
 
+        # Current Embedding Model Display (with color indicator)
+        model_display_frame = ttk.Frame(control_frame)
+        model_display_frame.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 10))
+
+        ttk.Label(model_display_frame, text="Current Embedding Model:", font=('TkDefaultFont', 9, 'bold')).pack(side="left", padx=(0, 5))
+        self.current_model_label = tk.Label(model_display_frame, text="statistical",
+                                           font=('TkDefaultFont', 11, 'bold'),
+                                           bg="#4CAF50", fg="white",
+                                           padx=10, pady=5, relief="raised", borderwidth=2)
+        self.current_model_label.pack(side="left", padx=5)
+
         # Processing settings
-        ttk.Label(control_frame, text="Batch Size:").grid(row=0, column=0, sticky="w")
+        ttk.Label(control_frame, text="Batch Size:").grid(row=1, column=0, sticky="w")
         self.batch_size_var = tk.IntVar(value=50)
         batch_spin = ttk.Spinbox(control_frame, from_=1, to=200, increment=1,
                                 textvariable=self.batch_size_var, width=10)
-        batch_spin.grid(row=0, column=1, sticky="w", padx=(5, 0))
+        batch_spin.grid(row=1, column=1, sticky="w", padx=(5, 0))
 
-        ttk.Label(control_frame, text="Max Workers:").grid(row=1, column=0, sticky="w")
+        ttk.Label(control_frame, text="Max Workers:").grid(row=2, column=0, sticky="w")
         self.max_workers_var = tk.IntVar(value=4)
         workers_spin = ttk.Spinbox(control_frame, from_=1, to=8, increment=1,
                                   textvariable=self.max_workers_var, width=10)
-        workers_spin.grid(row=1, column=1, sticky="w", padx=(5, 0))
+        workers_spin.grid(row=2, column=1, sticky="w", padx=(5, 0))
 
         # Processing buttons
         button_frame = ttk.Frame(control_frame)
-        button_frame.grid(row=2, column=0, columnspan=2, pady=10)
+        button_frame.grid(row=3, column=0, columnspan=2, pady=10)
 
         self.process_button = ttk.Button(button_frame, text="Process All Faces", command=self.start_processing)
         self.process_button.pack(side="left", padx=5)
@@ -344,6 +355,7 @@ class IntegratedFaceGUI:
         self.embed_stats_labels = {}
         embed_stat_items = [
             ("Total Embedded:", "total_embeds"),
+            ("Vectors in DB:", "vectors_count"),
             ("Session Embeds:", "session_embeds"),
             ("Success Rate:", "success_rate"),
             ("Duplicates:", "duplicates"),
@@ -695,6 +707,9 @@ Embedding Models:
             self.pending_model_var.set(config.embedding_model)  # Sync pending with current
             self.download_source_var.set(config.download_source)
 
+            # Update model display
+            self.update_model_display(config.embedding_model)
+
     def log_message(self, message: str, level: str = "info"):
         """Log message to appropriate text widget"""
         timestamp = datetime.now().strftime("%H:%M:%S")
@@ -846,7 +861,13 @@ Embedding Models:
                 # Update embedding statistics display
                 if hasattr(self, 'embed_stats_labels'):
                     stats = status.get('statistics', {})
+
+                    # Get vector count from database
+                    db_stats = self.system.db_manager.get_stats() if self.system.db_manager.initialized else {}
+                    vectors_count = db_stats.get('faces_with_embeddings', 0)
+
                     self.embed_stats_labels['total_embeds'].config(text=f"{stats.get('embed_success', 0)}")
+                    self.embed_stats_labels['vectors_count'].config(text=f"{vectors_count}")
                     self.embed_stats_labels['session_embeds'].config(text=f"{stats.get('session_embeds', 0)}")
                     self.embed_stats_labels['success_rate'].config(text=f"{stats.get('embed_success_rate', 0):.1f}%")
                     self.embed_stats_labels['duplicates'].config(text=f"{stats.get('embed_duplicates', 0)}")
@@ -854,6 +875,11 @@ Embedding Models:
                     self.embed_stats_labels['avg_speed'].config(text=f"{stats.get('avg_embed_time', 0):.2f}s")
                     self.embed_stats_labels['last_speed'].config(text=f"{stats.get('last_embed_time', 0):.2f}s")
                     self.embed_stats_labels['embed_rate'].config(text=f"{stats.get('embed_rate', 0):.3f}/s")
+
+                # Update current embedding model display
+                if hasattr(self, 'current_model_label'):
+                    current_model = self.embedding_model_var.get()
+                    self.update_model_display(current_model)
 
                 # Update statistics text (throttled)
                 current_time = time.time()
@@ -1153,6 +1179,54 @@ Embedding Models:
         if self.is_processing:
             messagebox.showwarning("Warning", "Processing already in progress")
             return
+
+        # CHECK IF EMBEDDING MODEL HAS CHANGED
+        try:
+            db_stats = self.system.db_manager.get_stats()
+            db_count = db_stats.get('total_faces', 0)
+            embedding_models = db_stats.get('embedding_models', [])
+            current_model = self.embedding_model_var.get()
+
+            # If database has data and model has changed, prompt to re-embed
+            if db_count > 0 and embedding_models:
+                # Check if current model is different from database models
+                if current_model not in embedding_models:
+                    response = messagebox.askyesnocancel(
+                        "Embedding Model Changed",
+                        f"⚠️ EMBEDDING MODEL MISMATCH DETECTED!\n\n"
+                        f"Database contains {db_count} faces with embeddings from:\n"
+                        f"  • {', '.join(embedding_models)}\n\n"
+                        f"Current model is set to: {current_model}\n\n"
+                        f"RECOMMENDATION: Re-embed all existing data with '{current_model}' first!\n\n"
+                        f"What would you like to do?\n\n"
+                        f"  • YES: Re-embed all existing data (deletes old embeddings)\n"
+                        f"  • NO: Continue processing new files only (mixed models)\n"
+                        f"  • CANCEL: Cancel operation",
+                        icon='warning'
+                    )
+
+                    if response is None:  # Cancel
+                        self.log_message("Processing cancelled by user")
+                        return
+                    elif response:  # Yes - Re-embed all data
+                        self.log_message(f"User chose to re-embed all data with '{current_model}'")
+                        # Update config and trigger re-embedding
+                        self.system.config.embedding_model = current_model
+                        self.reembed_all_data(skip_confirmation=True)
+                        return
+                    else:  # No - Continue with mixed models
+                        self.log_message(f"⚠️ User chose to continue with mixed embedding models", "warning")
+                        messagebox.showwarning(
+                            "Mixed Models Warning",
+                            f"⚠️ Proceeding with MIXED embedding models!\n\n"
+                            f"Database: {', '.join(embedding_models)}\n"
+                            f"New embeddings: {current_model}\n\n"
+                            f"This may affect search accuracy.\n"
+                            f"Consider re-embedding all data later."
+                        )
+
+        except Exception as e:
+            self.log_message(f"Error checking embedding model: {e}", "error")
 
         # Get file counts
         try:
@@ -1616,6 +1690,28 @@ Embedding Models:
                 f"Error testing PostgreSQL connection:\n\n{str(e)}"
             )
             self.log_message(f"PostgreSQL connection error: {e}", "error")
+
+    def update_model_display(self, model_name):
+        """Update the current embedding model display with color coding"""
+        if not hasattr(self, 'current_model_label'):
+            return
+
+        # Color mapping for different models
+        model_colors = {
+            'statistical': '#4CAF50',    # Green - default/basic
+            'facenet': '#2196F3',        # Blue - advanced
+            'arcface': '#9C27B0',        # Purple - advanced
+            'deepface': '#FF9800',       # Orange - advanced
+            'vggface2': '#F44336',       # Red - advanced
+            'openface': '#00BCD4'        # Cyan - advanced
+        }
+
+        color = model_colors.get(model_name.lower(), '#607D8B')  # Default gray
+
+        self.current_model_label.config(
+            text=model_name.upper(),
+            bg=color
+        )
 
     def refresh_status(self):
         """Refresh system status"""

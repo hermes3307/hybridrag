@@ -773,23 +773,25 @@ class FaceEmbedder:
             raise ImportError("ArcFace requires: pip install insightface onnxruntime")
 
     def _init_deepface(self):
-        """Initialize DeepFace model"""
+        """Initialize DeepFace model - uses Facenet512 backend (compatible with TF 2.20+)"""
         try:
             from deepface import DeepFace
-            # DeepFace will auto-download models on first use
-            self.model = "DeepFace"  # Use DeepFace backend
-            self.embedding_size = 4096  # DeepFace default
-            logger.info("DeepFace model initialized successfully")
+            # Use Facenet512 as it doesn't require LocallyConnected2D
+            self.model = "Facenet512"  # Compatible with TensorFlow 2.20+
+            self.embedding_size = 512  # Facenet512 embedding size
+            logger.info("DeepFace model initialized successfully (using Facenet512 backend)")
         except ImportError:
             raise ImportError("DeepFace requires: pip install deepface")
 
     def _init_vggface2(self):
-        """Initialize VGGFace2 model"""
+        """Initialize VGGFace2 model - uses Facenet512 backend (VGG-Face incompatible with TF 2.20+)"""
         try:
             from deepface import DeepFace
-            self.model = "VGG-Face"  # Use VGG-Face backend
-            self.embedding_size = 2622  # VGGFace default
-            logger.info("VGGFace2 model initialized successfully")
+            # VGG-Face requires LocallyConnected2D (removed in TF 2.13+)
+            # Using Facenet512 as alternative
+            self.model = "Facenet512"  # Compatible backend
+            self.embedding_size = 512  # Facenet512 embedding size
+            logger.info("VGGFace2 model initialized successfully (using Facenet512 backend)")
         except ImportError:
             raise ImportError("VGGFace2 requires: pip install deepface")
 
