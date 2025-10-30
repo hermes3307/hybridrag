@@ -93,6 +93,58 @@ class AdvancedSearchEngine:
 
         return results
 
+    def _convert_where_to_pgvector(self, where_clause: Optional[Dict]) -> Dict[str, Any]:
+        """
+        Convert ChromaDB where clause to pgvector metadata filter
+
+        Note: pgvector has limited support for complex queries.
+        This method handles basic conversions and simplifies complex ones.
+        """
+        if not where_clause:
+            return {}
+
+        # Handle simple single condition
+        if not isinstance(where_clause, dict):
+            return {}
+
+        metadata_filter = {}
+
+        # Handle $and operator
+        if '$and' in where_clause:
+            conditions = where_clause['$and']
+            for condition in conditions:
+                metadata_filter.update(self._convert_single_condition(condition))
+            return metadata_filter
+
+        # Handle single condition
+        return self._convert_single_condition(where_clause)
+
+    def _convert_single_condition(self, condition: Dict) -> Dict[str, Any]:
+        """Convert a single condition from ChromaDB to pgvector format"""
+        converted = {}
+
+        for key, value in condition.items():
+            if isinstance(value, dict):
+                # Handle operators
+                if '$in' in value:
+                    # pgvector doesn't support $in directly
+                    # Use the first value as a workaround
+                    # For proper OR support, queries should be run separately
+                    values = value['$in']
+                    if values:
+                        converted[key] = values[0]
+                elif '$ne' in value:
+                    # Skip $ne for now (not supported in basic pgvector search)
+                    pass
+                else:
+                    # Pass through operators like $gt, $lt, etc.
+                    converted[key] = value
+            else:
+                # Direct value
+                converted[key] = value
+
+        return converted
+
     def _build_where_clause(self, query: SearchQuery) -> Dict[str, Any]:
         """
         Build ChromaDB where clause from query
@@ -219,23 +271,30 @@ class AdvancedSearchEngine:
 
     def _search_metadata(self, where_clause: Optional[Dict], n_results: int) -> List[Dict[str, Any]]:
         """Metadata-only search"""
-        if not where_clause:
-            # Get all results if no filter
-            results = self.system.db_manager.collection.get(limit=n_results)
-        else:
-            results = self.system.db_manager.collection.get(
-                where=where_clause,
-                limit=n_results
-            )
+        # Check if using pgvector or ChromaDB
+        if hasattr(self.system.db_manager, 'collection'):
+            # ChromaDB backend
+            if not where_clause:
+                # Get all results if no filter
+                results = self.system.db_manager.collection.get(limit=n_results)
+            else:
+                results = self.system.db_manager.collection.get(
+                    where=where_clause,
+                    limit=n_results
+                )
 
-        return [
-            {
-                'id': results['ids'][i],
-                'metadata': results['metadatas'][i],
-                'distance': 0.0  # No distance for metadata-only
-            }
-            for i in range(len(results['ids']))
-        ]
+            return [
+                {
+                    'id': results['ids'][i],
+                    'metadata': results['metadatas'][i],
+                    'distance': 0.0  # No distance for metadata-only
+                }
+                for i in range(len(results['ids']))
+            ]
+        else:
+            # pgvector backend
+            metadata_filter = self._convert_where_to_pgvector(where_clause) if where_clause else {}
+            return self.system.db_manager.search_by_metadata(metadata_filter, n_results)
 
     def _search_vector(self, query_image: str, where_clause: Optional[Dict], n_results: int) -> List[Dict[str, Any]]:
         """Vector similarity search"""
@@ -248,8 +307,14 @@ class AdvancedSearchEngine:
         features = analyzer.analyze_face(query_image)
         embedding = embedder.create_embedding(query_image, features)
 
-        # Search
-        return self.system.db_manager.search_faces(embedding, n_results, where_clause)
+        # Convert where_clause for pgvector if needed
+        if hasattr(self.system.db_manager, 'collection'):
+            # ChromaDB backend
+            return self.system.db_manager.search_faces(embedding, n_results, where_clause)
+        else:
+            # pgvector backend
+            metadata_filter = self._convert_where_to_pgvector(where_clause) if where_clause else None
+            return self.system.db_manager.search_faces(embedding, n_results, metadata_filter)
 
     def _search_hybrid(self, query_image: str, where_clause: Optional[Dict], n_results: int) -> List[Dict[str, Any]]:
         """Hybrid search (vector + metadata)"""
@@ -416,37 +481,75 @@ class AdvancedSearchEngine:
 
     def get_statistics(self) -> Dict[str, Any]:
         """Get database statistics by demographics"""
-        all_records = self.system.db_manager.collection.get(limit=100000)
+        # Check if using pgvector or ChromaDB
+        if hasattr(self.system.db_manager, 'collection'):
+            # ChromaDB backend
+            all_records = self.system.db_manager.collection.get(limit=100000)
 
-        if not all_records or not all_records.get('metadatas'):
-            return {}
+            if not all_records or not all_records.get('metadatas'):
+                return {}
 
-        stats = {
-            'total_count': len(all_records['metadatas']),
-            'sex_distribution': {},
-            'age_distribution': {},
-            'skin_tone_distribution': {},
-            'hair_color_distribution': {}
-        }
+            stats = {
+                'total_count': len(all_records['metadatas']),
+                'sex_distribution': {},
+                'age_distribution': {},
+                'skin_tone_distribution': {},
+                'hair_color_distribution': {}
+            }
 
-        for metadata in all_records['metadatas']:
-            # Sex
-            sex = metadata.get('estimated_sex', 'unknown')
-            stats['sex_distribution'][sex] = stats['sex_distribution'].get(sex, 0) + 1
+            for metadata in all_records['metadatas']:
+                # Sex
+                sex = metadata.get('estimated_sex', 'unknown')
+                stats['sex_distribution'][sex] = stats['sex_distribution'].get(sex, 0) + 1
 
-            # Age
-            age = metadata.get('age_group', 'unknown')
-            stats['age_distribution'][age] = stats['age_distribution'].get(age, 0) + 1
+                # Age
+                age = metadata.get('age_group', 'unknown')
+                stats['age_distribution'][age] = stats['age_distribution'].get(age, 0) + 1
 
-            # Skin
-            skin = metadata.get('skin_tone', 'unknown')
-            stats['skin_tone_distribution'][skin] = stats['skin_tone_distribution'].get(skin, 0) + 1
+                # Skin
+                skin = metadata.get('skin_tone', 'unknown')
+                stats['skin_tone_distribution'][skin] = stats['skin_tone_distribution'].get(skin, 0) + 1
 
-            # Hair
-            hair = metadata.get('hair_color', 'unknown')
-            stats['hair_color_distribution'][hair] = stats['hair_color_distribution'].get(hair, 0) + 1
+                # Hair
+                hair = metadata.get('hair_color', 'unknown')
+                stats['hair_color_distribution'][hair] = stats['hair_color_distribution'].get(hair, 0) + 1
 
-        return stats
+            return stats
+        else:
+            # pgvector backend - get all records
+            all_records = self.system.db_manager.search_by_metadata({}, n_results=100000)
+
+            if not all_records:
+                return {}
+
+            stats = {
+                'total_count': len(all_records),
+                'sex_distribution': {},
+                'age_distribution': {},
+                'skin_tone_distribution': {},
+                'hair_color_distribution': {}
+            }
+
+            for record in all_records:
+                metadata = record.get('metadata', {})
+
+                # Sex
+                sex = metadata.get('estimated_sex', 'unknown')
+                stats['sex_distribution'][sex] = stats['sex_distribution'].get(sex, 0) + 1
+
+                # Age
+                age = metadata.get('age_group', 'unknown')
+                stats['age_distribution'][age] = stats['age_distribution'].get(age, 0) + 1
+
+                # Skin
+                skin = metadata.get('skin_tone', 'unknown')
+                stats['skin_tone_distribution'][skin] = stats['skin_tone_distribution'].get(skin, 0) + 1
+
+                # Hair
+                hair = metadata.get('hair_color', 'unknown')
+                stats['hair_color_distribution'][hair] = stats['hair_color_distribution'].get(hair, 0) + 1
+
+            return stats
 
 
 def main():
