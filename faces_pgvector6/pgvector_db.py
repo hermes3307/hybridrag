@@ -136,6 +136,31 @@ class PgVectorDatabaseManager:
         if self.connection_pool:
             self.connection_pool.putconn(conn)
 
+    def _convert_to_json_serializable(self, obj):
+        """
+        Convert numpy types and other non-serializable types to JSON-serializable types
+
+        Args:
+            obj: Object to convert
+
+        Returns:
+            JSON-serializable object
+        """
+        if isinstance(obj, dict):
+            return {key: self._convert_to_json_serializable(value) for key, value in obj.items()}
+        elif isinstance(obj, (list, tuple)):
+            return [self._convert_to_json_serializable(item) for item in obj]
+        elif isinstance(obj, np.bool_):
+            return bool(obj)
+        elif isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        else:
+            return obj
+
     def _pad_embedding(self, embedding: List[float]) -> List[float]:
         """
         Pad embedding to match the expected dimension (512)
@@ -185,8 +210,9 @@ class PgVectorDatabaseManager:
             features = face_data.features
 
             # Prepare metadata JSONB (store all features for flexibility)
-            # Convert to JSON string first to handle all data types properly
-            metadata_json = json.dumps(features)
+            # Convert numpy types to Python native types first
+            features_serializable = self._convert_to_json_serializable(features)
+            metadata_json = json.dumps(features_serializable)
 
             # Insert face data
             query = """
@@ -274,6 +300,7 @@ class PgVectorDatabaseManager:
                     embedding = self._pad_embedding(face_data.embedding)
 
                 features = face_data.features
+                features_serializable = self._convert_to_json_serializable(features)
 
                 batch_data.append((
                     face_data.face_id,
@@ -282,12 +309,12 @@ class PgVectorDatabaseManager:
                     face_data.image_hash,
                     embedding_model,
                     embedding,
-                    features.get('age_estimate'),
-                    features.get('gender'),
-                    features.get('brightness'),
-                    features.get('contrast'),
-                    features.get('sharpness'),
-                    json.dumps(features)
+                    features_serializable.get('age_estimate'),
+                    features_serializable.get('gender'),
+                    features_serializable.get('brightness'),
+                    features_serializable.get('contrast'),
+                    features_serializable.get('sharpness'),
+                    json.dumps(features_serializable)
                 ))
 
             # Execute batch insert

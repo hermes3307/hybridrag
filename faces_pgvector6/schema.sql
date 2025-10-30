@@ -150,7 +150,7 @@ BEGIN
     SELECT
         COUNT(*)::BIGINT as total_faces,
         COUNT(embedding)::BIGINT as faces_with_embeddings,
-        ARRAY_AGG(DISTINCT embedding_model) as embedding_models,
+        ARRAY_AGG(DISTINCT embedding_model::TEXT) as embedding_models,
         MIN(timestamp) as oldest_face,
         MAX(timestamp) as newest_face,
         pg_size_pretty(pg_total_relation_size('faces')) as database_size
