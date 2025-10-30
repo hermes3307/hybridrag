@@ -180,17 +180,42 @@ else
     exit 1
 fi
 
-# Step 10: Install Python dependencies
-log_info "Step 10: Installing Python dependencies..."
-if [ -f "requirements.txt" ]; then
-    log_info "Installing Python packages..."
+# Step 10: Install Python system dependencies
+log_info "Step 10: Installing Python system dependencies..."
 
+# Install python3-tk for GUI support
+if ! python3 -c "import tkinter" 2>/dev/null; then
+    log_info "Installing python3-tk (required for GUI)..."
+    sudo apt-get install -y python3-tk
+    log_success "python3-tk installed"
+else
+    log_warning "python3-tk already installed"
+fi
+
+# Check if pip3 is installed
+if ! command_exists pip3 && ! python3 -m pip --version >/dev/null 2>&1; then
+    log_warning "pip3 not found, installing python3-pip..."
+    sudo apt-get install -y python3-pip
+    log_success "pip3 installed"
+fi
+
+log_info "Step 11: Installing Python packages from requirements.txt..."
+if [ -f "requirements.txt" ]; then
     # Check if we're in a virtual environment or need --break-system-packages
     if [ -z "$VIRTUAL_ENV" ]; then
         log_info "Installing with --break-system-packages flag..."
-        pip3 install --break-system-packages -r requirements.txt
+        # Use python3 -m pip for better compatibility
+        if command_exists pip3; then
+            pip3 install --break-system-packages -r requirements.txt
+        else
+            python3 -m pip install --break-system-packages -r requirements.txt
+        fi
     else
-        pip3 install -r requirements.txt
+        if command_exists pip3; then
+            pip3 install -r requirements.txt
+        else
+            python3 -m pip install -r requirements.txt
+        fi
     fi
 
     log_success "Python dependencies installed"
