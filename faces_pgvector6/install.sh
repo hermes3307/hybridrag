@@ -192,6 +192,15 @@ else
     log_warning "python3-tk already installed"
 fi
 
+# Install python3-pil.imagetk for PIL/Tkinter integration
+if ! python3 -c "from PIL import ImageTk" 2>/dev/null; then
+    log_info "Installing python3-pil.imagetk (required for image display in GUI)..."
+    sudo apt-get install -y python3-pil.imagetk
+    log_success "python3-pil.imagetk installed"
+else
+    log_warning "python3-pil.imagetk already installed"
+fi
+
 # Check if pip3 is installed
 if ! command_exists pip3 && ! python3 -m pip --version >/dev/null 2>&1; then
     log_warning "pip3 not found, installing python3-pip..."

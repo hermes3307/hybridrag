@@ -9,7 +9,7 @@ A comprehensive graphical interface for face image processing including:
 - Similarity search and metadata filtering
 
 This application provides a complete workflow for building and querying
-a face recognition database using ChromaDB and various embedding models.
+a face recognition database using PostgreSQL with pgvector and various embedding models.
 """
 
 import tkinter as tk
@@ -30,7 +30,7 @@ import io
 try:
     from core import (
         IntegratedFaceSystem, SystemConfig, FaceAnalyzer,
-        FaceEmbedder, CHROMADB_AVAILABLE, AVAILABLE_MODELS, check_embedding_models
+        FaceEmbedder, AVAILABLE_MODELS, check_embedding_models
     )
 except ImportError as e:
     print(f"Error importing core backend: {e}")
@@ -537,64 +537,32 @@ class IntegratedFaceGUI:
         """Create configuration tab"""
 
         # Database config frame
-        db_frame = ttk.LabelFrame(self.config_frame, text="Database Configuration", padding=10)
+        db_frame = ttk.LabelFrame(self.config_frame, text="PostgreSQL Database Configuration", padding=10)
         db_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
 
-        # Database type selection
-        ttk.Label(db_frame, text="Database Type:").grid(row=0, column=0, sticky="w")
-        self.db_type_var = tk.StringVar(value="pgvector")
-        db_type_frame = ttk.Frame(db_frame)
-        db_type_frame.grid(row=0, column=1, sticky="w", padx=(5, 0))
-
-        ttk.Radiobutton(db_type_frame, text="PostgreSQL + pgvector",
-                       variable=self.db_type_var, value="pgvector",
-                       command=self.on_db_type_changed).pack(side="left", padx=(0, 10))
-        ttk.Radiobutton(db_type_frame, text="ChromaDB (Legacy)",
-                       variable=self.db_type_var, value="chromadb",
-                       command=self.on_db_type_changed).pack(side="left")
-
-        # PostgreSQL Configuration (visible when pgvector selected)
-        self.pg_config_frame = ttk.Frame(db_frame)
-        self.pg_config_frame.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(10, 0))
-
-        ttk.Label(self.pg_config_frame, text="PostgreSQL Host:").grid(row=0, column=0, sticky="w", pady=2)
+        # PostgreSQL Configuration
+        ttk.Label(db_frame, text="Host:").grid(row=0, column=0, sticky="w", pady=2)
         self.pg_host_var = tk.StringVar(value="localhost")
-        ttk.Entry(self.pg_config_frame, textvariable=self.pg_host_var, width=30).grid(row=0, column=1, sticky="w", padx=(5, 0))
+        ttk.Entry(db_frame, textvariable=self.pg_host_var, width=30).grid(row=0, column=1, sticky="w", padx=(5, 0))
 
-        ttk.Label(self.pg_config_frame, text="Port:").grid(row=0, column=2, sticky="w", padx=(10, 0))
+        ttk.Label(db_frame, text="Port:").grid(row=0, column=2, sticky="w", padx=(10, 0))
         self.pg_port_var = tk.StringVar(value="5432")
-        ttk.Entry(self.pg_config_frame, textvariable=self.pg_port_var, width=10).grid(row=0, column=3, sticky="w", padx=(5, 0))
+        ttk.Entry(db_frame, textvariable=self.pg_port_var, width=10).grid(row=0, column=3, sticky="w", padx=(5, 0))
 
-        ttk.Label(self.pg_config_frame, text="Database:").grid(row=1, column=0, sticky="w", pady=2)
+        ttk.Label(db_frame, text="Database:").grid(row=1, column=0, sticky="w", pady=2)
         self.pg_db_var = tk.StringVar(value="vector_db")
-        ttk.Entry(self.pg_config_frame, textvariable=self.pg_db_var, width=30).grid(row=1, column=1, sticky="w", padx=(5, 0))
+        ttk.Entry(db_frame, textvariable=self.pg_db_var, width=30).grid(row=1, column=1, sticky="w", padx=(5, 0))
 
-        ttk.Label(self.pg_config_frame, text="User:").grid(row=1, column=2, sticky="w", padx=(10, 0))
+        ttk.Label(db_frame, text="User:").grid(row=1, column=2, sticky="w", padx=(10, 0))
         self.pg_user_var = tk.StringVar(value="postgres")
-        ttk.Entry(self.pg_config_frame, textvariable=self.pg_user_var, width=10).grid(row=1, column=3, sticky="w", padx=(5, 0))
+        ttk.Entry(db_frame, textvariable=self.pg_user_var, width=10).grid(row=1, column=3, sticky="w", padx=(5, 0))
 
-        ttk.Label(self.pg_config_frame, text="Password:").grid(row=2, column=0, sticky="w", pady=2)
+        ttk.Label(db_frame, text="Password:").grid(row=2, column=0, sticky="w", pady=2)
         self.pg_password_var = tk.StringVar(value="postgres")
-        ttk.Entry(self.pg_config_frame, textvariable=self.pg_password_var, width=30, show="*").grid(row=2, column=1, sticky="w", padx=(5, 0))
+        ttk.Entry(db_frame, textvariable=self.pg_password_var, width=30, show="*").grid(row=2, column=1, sticky="w", padx=(5, 0))
 
-        ttk.Button(self.pg_config_frame, text="Test Connection",
+        ttk.Button(db_frame, text="Test Connection",
                   command=self.test_pg_connection).grid(row=2, column=2, columnspan=2, padx=(10, 0))
-
-        # ChromaDB Configuration (visible when chromadb selected)
-        self.chroma_config_frame = ttk.Frame(db_frame)
-        self.chroma_config_frame.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(10, 0))
-
-        ttk.Label(self.chroma_config_frame, text="Database Path:").grid(row=0, column=0, sticky="w")
-        self.db_path_var = tk.StringVar(value="./chroma_db")
-        ttk.Entry(self.chroma_config_frame, textvariable=self.db_path_var, width=40).grid(row=0, column=1, sticky="w", padx=(5, 0))
-        ttk.Button(self.chroma_config_frame, text="Browse", command=self.browse_db_path).grid(row=0, column=2, padx=5)
-
-        ttk.Label(self.chroma_config_frame, text="Collection Name:").grid(row=1, column=0, sticky="w")
-        self.collection_name_var = tk.StringVar(value="faces")
-        ttk.Entry(self.chroma_config_frame, textvariable=self.collection_name_var, width=40).grid(row=1, column=1, sticky="w", padx=(5, 0))
-
-        # Initially show/hide based on default selection
-        self.on_db_type_changed()
 
         # Embedding Model Configuration
         embedding_frame = ttk.LabelFrame(self.config_frame, text="Embedding Model Configuration", padding=10)
@@ -709,23 +677,12 @@ Embedding Models:
             config = self.system.config
             self.faces_dir_var.set(config.faces_dir)
 
-            # Set database type
-            db_type = getattr(config, 'db_type', 'chromadb')
-            self.db_type_var.set(db_type)
-
-            # Load database-specific settings
-            if db_type == "pgvector":
-                self.pg_host_var.set(getattr(config, 'db_host', 'localhost'))
-                self.pg_port_var.set(str(getattr(config, 'db_port', 5432)))
-                self.pg_db_var.set(getattr(config, 'db_name', 'vector_db'))
-                self.pg_user_var.set(getattr(config, 'db_user', 'postgres'))
-                self.pg_password_var.set(getattr(config, 'db_password', ''))
-            else:
-                self.db_path_var.set(config.db_path)
-                self.collection_name_var.set(config.collection_name)
-
-            # Update UI visibility
-            self.on_db_type_changed()
+            # Load PostgreSQL database settings
+            self.pg_host_var.set(getattr(config, 'db_host', 'localhost'))
+            self.pg_port_var.set(str(getattr(config, 'db_port', 5432)))
+            self.pg_db_var.set(getattr(config, 'db_name', 'vector_db'))
+            self.pg_user_var.set(getattr(config, 'db_user', 'postgres'))
+            self.pg_password_var.set(getattr(config, 'db_password', ''))
 
             self.download_delay_var.set(config.download_delay)
             self.batch_size_var.set(config.batch_size)
@@ -790,24 +747,13 @@ Embedding Models:
         """Initialize vector database"""
         try:
             if self.system:
-                # Get database path from GUI
-                db_path = self.db_path_var.get()
-                collection_name = self.collection_name_var.get()
-
-                # Update system config
-                self.system.config.db_path = db_path
-                self.system.config.collection_name = collection_name
-
-                # Reinitialize database
-                self.system.db_manager.config = self.system.config
-
+                # Reinitialize database with current configuration
                 if self.system.db_manager.initialize():
-                    self.log_message(f"Vector database initialized successfully at {db_path}")
-                    self.log_message(f"Collection: {collection_name}")
-                    messagebox.showinfo("Success", f"Vector database initialized successfully!\n\nPath: {db_path}\nCollection: {collection_name}")
+                    self.log_message(f"PostgreSQL database initialized successfully")
+                    messagebox.showinfo("Success", "PostgreSQL database initialized successfully!")
                 else:
-                    self.log_message("Failed to initialize vector database", "error")
-                    messagebox.showerror("Error", "Failed to initialize vector database. Check dependencies and paths.")
+                    self.log_message("Failed to initialize PostgreSQL database", "error")
+                    messagebox.showerror("Error", "Failed to initialize PostgreSQL database. Check connection and configuration.")
             else:
                 messagebox.showerror("Error", "System not initialized")
         except Exception as e:
@@ -1607,25 +1553,6 @@ Embedding Models:
             self.query_preview_label.config(text="Error loading image", image='')
             self.query_preview_photo = None
 
-    def browse_db_path(self):
-        """Browse for database path"""
-        directory = filedialog.askdirectory(initialdir=self.db_path_var.get())
-        if directory:
-            self.db_path_var.set(directory)
-
-    def on_db_type_changed(self):
-        """Called when database type selection changes"""
-        db_type = self.db_type_var.get()
-
-        if db_type == "pgvector":
-            # Show PostgreSQL config, hide ChromaDB config
-            self.pg_config_frame.grid()
-            self.chroma_config_frame.grid_remove()
-        else:
-            # Show ChromaDB config, hide PostgreSQL config
-            self.pg_config_frame.grid_remove()
-            self.chroma_config_frame.grid()
-
     def test_pg_connection(self):
         """Test PostgreSQL connection"""
         try:
@@ -1690,18 +1617,13 @@ Embedding Models:
             if self.system:
                 # Update system configuration from GUI
                 self.system.config.faces_dir = self.faces_dir_var.get()
-                self.system.config.db_type = self.db_type_var.get()
 
-                # Save database-specific settings
-                if self.db_type_var.get() == "pgvector":
-                    self.system.config.db_host = self.pg_host_var.get()
-                    self.system.config.db_port = int(self.pg_port_var.get())
-                    self.system.config.db_name = self.pg_db_var.get()
-                    self.system.config.db_user = self.pg_user_var.get()
-                    self.system.config.db_password = self.pg_password_var.get()
-                else:
-                    self.system.config.db_path = self.db_path_var.get()
-                    self.system.config.collection_name = self.collection_name_var.get()
+                # Save PostgreSQL settings
+                self.system.config.db_host = self.pg_host_var.get()
+                self.system.config.db_port = int(self.pg_port_var.get())
+                self.system.config.db_name = self.pg_db_var.get()
+                self.system.config.db_user = self.pg_user_var.get()
+                self.system.config.db_password = self.pg_password_var.get()
 
                 self.system.config.download_delay = self.download_delay_var.get()
                 self.system.config.batch_size = self.batch_size_var.get()
@@ -1714,15 +1636,11 @@ Embedding Models:
                 self.system.config.save_to_file()
 
                 # Show detailed save result
-                if self.db_type_var.get() == "pgvector":
-                    db_info = f"PostgreSQL: {self.system.config.db_host}:{self.system.config.db_port}/{self.system.config.db_name}"
-                else:
-                    db_info = f"ChromaDB: {self.system.config.db_path}/{self.system.config.collection_name}"
+                db_info = f"PostgreSQL: {self.system.config.db_host}:{self.system.config.db_port}/{self.system.config.db_name}"
 
                 save_summary = (
                     f"Configuration saved to: {config_file}\n\n"
                     f"Faces Directory: {self.system.config.faces_dir}\n"
-                    f"Database Type: {self.system.config.db_type}\n"
                     f"Database: {db_info}\n"
                     f"Embedding Model: {self.system.config.embedding_model}\n"
                     f"Download Source: {self.system.config.download_source}\n"
@@ -1757,16 +1675,11 @@ Embedding Models:
                 self.update_configuration_from_system()
 
             # Show detailed load result
-            db_type = getattr(config, 'db_type', 'chromadb')
-            if db_type == "pgvector":
-                db_info = f"PostgreSQL: {getattr(config, 'db_host', 'localhost')}:{getattr(config, 'db_port', 5432)}/{getattr(config, 'db_name', 'vector_db')}"
-            else:
-                db_info = f"ChromaDB: {config.db_path}/{config.collection_name}"
+            db_info = f"PostgreSQL: {getattr(config, 'db_host', 'localhost')}:{getattr(config, 'db_port', 5432)}/{getattr(config, 'db_name', 'vector_db')}"
 
             load_summary = (
                 f"Configuration loaded from: {config_file}\n\n"
                 f"Faces Directory: {config.faces_dir}\n"
-                f"Database Type: {db_type}\n"
                 f"Database: {db_info}\n"
                 f"Embedding Model: {config.embedding_model}\n"
                 f"Download Source: {config.download_source}\n"
@@ -1812,11 +1725,8 @@ Embedding Models:
         """Check system dependencies"""
         deps_status = []
 
-        # Check ChromaDB
-        if CHROMADB_AVAILABLE:
-            deps_status.append("✓ ChromaDB: Available")
-        else:
-            deps_status.append("✗ ChromaDB: Missing (pip install chromadb)")
+        # PostgreSQL/pgvector is always required
+        deps_status.append("✓ PostgreSQL + pgvector: Required (see install.sh)")
 
         # Check OpenCV
         try:

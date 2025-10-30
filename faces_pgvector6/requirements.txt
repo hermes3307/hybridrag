@@ -1,12 +1,12 @@
 # System Dependencies (install via apt-get):
 # - python3-tk (for GUI support)
+# - python3-pil.imagetk (for PIL/Tkinter image integration)
 # - python3-pip (for package management)
 #
 # Install system dependencies:
-#   sudo apt-get install -y python3-tk python3-pip
+#   sudo apt-get install -y python3-tk python3-pil.imagetk python3-pip
 
 # Python Package Dependencies
-chromadb>=0.4.0
 numpy>=1.21.0
 Pillow>=9.0.0
 requests>=2.25.0

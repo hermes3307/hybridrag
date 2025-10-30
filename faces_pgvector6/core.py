@@ -6,19 +6,18 @@ This module provides the core functionality for the face processing system inclu
 - Face image downloading from AI generation services
 - Face feature analysis and demographic estimation
 - Vector embedding generation using multiple models
-- ChromaDB vector database management
+- PostgreSQL + pgvector database management
 - Face similarity search with metadata filtering
 
 Architecture:
 - FaceAnalyzer: Analyzes images for features and demographics
 - FaceEmbedder: Creates vector embeddings using various models
-- DatabaseManager: Manages ChromaDB operations
 - FaceDownloader: Downloads AI-generated face images
 - FaceProcessor: Processes faces and creates embeddings
 - IntegratedFaceSystem: Main orchestrator class
 
 Dependencies:
-- ChromaDB for vector storage
+- PostgreSQL with pgvector extension for vector storage
 - PIL/Pillow for image processing
 - OpenCV (optional) for advanced analysis
 - Various embedding libraries (FaceNet, ArcFace, DeepFace, etc.)
@@ -52,21 +51,8 @@ try:
 except ImportError:
     CV2_AVAILABLE = False
 
-# Import ChromaDB (optional for legacy support)
-try:
-    import chromadb
-    from chromadb.config import Settings
-    CHROMADB_AVAILABLE = True
-except ImportError:
-    CHROMADB_AVAILABLE = False
-
 # Import pgvector database manager
-try:
-    from pgvector_db import PgVectorDatabaseManager
-    PGVECTOR_AVAILABLE = True
-except ImportError:
-    PGVECTOR_AVAILABLE = False
-    PgVectorDatabaseManager = None
+from pgvector_db import PgVectorDatabaseManager
 
 
 def check_embedding_models():
@@ -77,35 +63,35 @@ def check_embedding_models():
     try:
         from facenet_pytorch import InceptionResnetV1
         models_status['facenet'] = True
-    except ImportError:
+    except Exception:
         models_status['facenet'] = False
 
     # ArcFace/InsightFace
     try:
         import insightface
         models_status['arcface'] = True
-    except ImportError:
+    except Exception:
         models_status['arcface'] = False
 
     # DeepFace
     try:
         from deepface import DeepFace
         models_status['deepface'] = True
-    except ImportError:
+    except Exception:
         models_status['deepface'] = False
 
     # VGGFace2 (via deepface or keras)
     try:
         from deepface import DeepFace
         models_status['vggface2'] = True
-    except ImportError:
+    except Exception:
         models_status['vggface2'] = False
 
     # OpenFace (via deepface)
     try:
         from deepface import DeepFace
         models_status['openface'] = True
-    except ImportError:
+    except Exception:
         models_status['openface'] = False
 
     # Statistical (always available)
@@ -143,13 +129,6 @@ class SystemConfig:
     """Configuration for the entire system"""
     faces_dir: str = "./faces"
 
-    # Database type selection
-    db_type: str = "pgvector"  # Options: chromadb, pgvector
-
-    # ChromaDB settings (legacy)
-    db_path: str = "./chroma_db"
-    collection_name: str = "faces"
-
     # PostgreSQL + pgvector settings
     db_host: str = "localhost"
     db_port: int = 5432
@@ -171,6 +150,10 @@ class SystemConfig:
         if os.path.exists(filename):
             with open(filename, 'r') as f:
                 data = json.load(f)
+                # Remove legacy fields that are no longer in SystemConfig
+                data.pop('db_type', None)
+                data.pop('db_path', None)
+                data.pop('collection_name', None)
                 return cls(**data)
         return cls()
 
@@ -992,264 +975,6 @@ class FaceEmbedder:
         return embedding
 
 # ============================================================================
-# DATABASE MANAGEMENT
-# ============================================================================
-
-class DatabaseManager:
-    """
-    ChromaDB Vector Database Manager
-
-    Manages all database operations including:
-    - Database initialization and connection
-    - Adding face embeddings with metadata
-    - Vector similarity search
-    - Metadata filtering and hybrid search
-    - Duplicate detection via image hashing
-    - Model mismatch detection
-
-    Uses persistent storage with ChromaDB for vector operations.
-    """
-
-    def __init__(self, config: SystemConfig):
-        self.config = config
-        self.client = None
-        self.collection = None
-        self.initialized = False
-
-    def initialize(self) -> bool:
-        """Initialize ChromaDB connection"""
-        if not CHROMADB_AVAILABLE:
-            logger.error("ChromaDB not available. Please install: pip install chromadb")
-            return False
-
-        try:
-            # Create database directory
-            os.makedirs(self.config.db_path, exist_ok=True)
-
-            # Initialize client
-            self.client = chromadb.PersistentClient(
-                path=self.config.db_path,
-                settings=Settings(
-                    allow_reset=False,
-                    anonymized_telemetry=False
-                )
-            )
-
-            # Get or create collection
-            self.collection = self.client.get_or_create_collection(
-                name=self.config.collection_name,
-                metadata={"description": "Face embeddings collection"}
-            )
-
-            self.initialized = True
-            logger.info(f"Database initialized: {self.config.db_path}")
-            return True
-
-        except Exception as e:
-            logger.error(f"Failed to initialize database: {e}")
-            return False
-
-    def add_face(self, face_data: FaceData, embedding_model: str = "statistical") -> bool:
-        """Add face data to the database"""
-        if not self.initialized:
-            logger.warning("Database not initialized, cannot add face")
-            return False
-
-        try:
-            # Prepare metadata - ChromaDB only accepts str, int, float, bool, or None
-            metadata = {
-                'face_id': face_data.face_id,
-                'file_path': face_data.file_path,
-                'timestamp': face_data.timestamp,
-                'image_hash': face_data.image_hash,
-                'embedding_model': embedding_model,  # Track which model created this embedding
-            }
-
-            # Filter features to only include valid metadata types
-            valid_types = (str, int, float, bool, type(None))
-            for key, value in face_data.features.items():
-                if isinstance(value, valid_types):
-                    metadata[key] = value
-                elif isinstance(value, (list, tuple)):
-                    # Convert lists/tuples to JSON strings
-                    metadata[f"{key}_json"] = json.dumps(value)
-                elif isinstance(value, dict):
-                    # Convert dicts to JSON strings
-                    metadata[f"{key}_json"] = json.dumps(value)
-                else:
-                    # Convert other types to string
-                    metadata[key] = str(value)
-
-            # Add to collection
-            self.collection.add(
-                embeddings=[face_data.embedding],
-                metadatas=[metadata],
-                ids=[face_data.face_id]
-            )
-
-            logger.debug(f"Successfully added face {face_data.face_id} to database")
-            return True
-
-        except Exception as e:
-            logger.error(f"Error adding face {face_data.face_id} to database: {e}")
-            logger.debug(f"Problematic metadata keys: {list(face_data.features.keys())}")
-            return False
-
-    def search_faces(self, query_embedding: List[float], n_results: int = 10,
-                    metadata_filter: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
-        """Search for similar faces with optional metadata filtering"""
-        if not self.initialized:
-            return []
-
-        try:
-            # Build query parameters
-            query_params = {
-                'query_embeddings': [query_embedding],
-                'n_results': n_results
-            }
-
-            # Add metadata filter if provided (for hybrid search)
-            if metadata_filter:
-                query_params['where'] = metadata_filter
-
-            results = self.collection.query(**query_params)
-
-            return [
-                {
-                    'id': results['ids'][0][i],
-                    'distance': results['distances'][0][i],
-                    'metadata': results['metadatas'][0][i]
-                }
-                for i in range(len(results['ids'][0]))
-            ]
-
-        except Exception as e:
-            logger.error(f"Error searching faces: {e}")
-            return []
-
-    def search_by_metadata(self, metadata_filter: Dict[str, Any], n_results: int = 10) -> List[Dict[str, Any]]:
-        """Search faces by metadata only (no vector similarity)"""
-        if not self.initialized:
-            return []
-
-        try:
-            results = self.collection.get(
-                where=metadata_filter,
-                limit=n_results
-            )
-
-            return [
-                {
-                    'id': results['ids'][i],
-                    'metadata': results['metadatas'][i]
-                }
-                for i in range(len(results['ids']))
-            ]
-
-        except Exception as e:
-            logger.error(f"Error searching by metadata: {e}")
-            return []
-
-    def hybrid_search(self, query_embedding: List[float], metadata_filter: Dict[str, Any],
-                     n_results: int = 10) -> List[Dict[str, Any]]:
-        """Hybrid search combining vector similarity and metadata filtering"""
-        return self.search_faces(query_embedding, n_results, metadata_filter)
-
-    def hash_exists(self, image_hash: str) -> bool:
-        """Check if an image with this hash already exists in the database"""
-        if not self.initialized:
-            return False
-
-        try:
-            results = self.collection.get(
-                where={"image_hash": image_hash},
-                limit=1
-            )
-            return len(results['ids']) > 0
-        except Exception as e:
-            logger.error(f"Error checking hash existence: {e}")
-            return False
-
-    def get_collection_info(self) -> Dict[str, Any]:
-        """Get information about the collection"""
-        if not self.initialized:
-            return {}
-
-        try:
-            count = self.collection.count()
-            return {
-                'name': self.config.collection_name,
-                'count': count,
-                'path': self.config.db_path
-            }
-        except Exception as e:
-            logger.error(f"Error getting collection info: {e}")
-            return {}
-
-    def check_embedding_model_mismatch(self, current_model: str) -> Dict[str, Any]:
-        """Check if database has embeddings from different models"""
-        if not self.initialized:
-            return {'has_mismatch': False, 'models_found': [], 'total_count': 0}
-
-        try:
-            # Get all data to check embedding models
-            all_data = self.collection.get(limit=10000)  # Get up to 10k records
-
-            if not all_data or not all_data.get('metadatas'):
-                return {'has_mismatch': False, 'models_found': [], 'total_count': 0}
-
-            # Count embedding models
-            model_counts = {}
-            total = len(all_data['metadatas'])
-
-            for metadata in all_data['metadatas']:
-                model = metadata.get('embedding_model', 'unknown')
-                model_counts[model] = model_counts.get(model, 0) + 1
-
-            # Check for mismatch
-            has_mismatch = False
-            if current_model not in model_counts:
-                # Current model not in database at all
-                has_mismatch = len(model_counts) > 0
-            elif len(model_counts) > 1:
-                # Multiple models in database
-                has_mismatch = True
-            elif model_counts.get(current_model, 0) != total:
-                # Some entries don't have current model
-                has_mismatch = True
-
-            return {
-                'has_mismatch': has_mismatch,
-                'models_found': model_counts,
-                'total_count': total,
-                'current_model': current_model
-            }
-        except Exception as e:
-            logger.error(f"Error checking model mismatch: {e}")
-            return {'has_mismatch': False, 'models_found': {}, 'total_count': 0}
-
-    def clear_all_data(self) -> bool:
-        """Clear all data from the collection"""
-        if not self.initialized:
-            return False
-
-        try:
-            # Delete the collection
-            self.client.delete_collection(name=self.config.collection_name)
-
-            # Recreate the collection
-            self.collection = self.client.get_or_create_collection(
-                name=self.config.collection_name,
-                metadata={"description": "Face embeddings collection"}
-            )
-
-            logger.info("All data cleared from collection")
-            return True
-        except Exception as e:
-            logger.error(f"Error clearing collection: {e}")
-            return False
-
-# ============================================================================
 # FACE IMAGE DOWNLOADING
 # ============================================================================
 
@@ -1518,10 +1243,10 @@ class FaceProcessor:
     - Tracks processed files to avoid duplicates
     - Supports batch processing
 
-    Works in conjunction with FaceAnalyzer, FaceEmbedder, and DatabaseManager.
+    Works in conjunction with FaceAnalyzer, FaceEmbedder, and PgVectorDatabaseManager.
     """
 
-    def __init__(self, config: SystemConfig, stats: SystemStats, db_manager: DatabaseManager):
+    def __init__(self, config: SystemConfig, stats: SystemStats, db_manager: PgVectorDatabaseManager):
         self.config = config
         self.stats = stats
         self.db_manager = db_manager
@@ -1681,19 +1406,9 @@ class IntegratedFaceSystem:
         self.config = SystemConfig.from_file(config_file)
         self.stats = SystemStats()
 
-        # Select database manager based on configuration
-        if self.config.db_type == "pgvector":
-            if not PGVECTOR_AVAILABLE:
-                logger.error("pgvector database selected but not available. Install: pip install psycopg2-binary")
-                raise ImportError("PgVectorDatabaseManager not available")
-            self.db_manager = PgVectorDatabaseManager(self.config)
-            logger.info("Using PostgreSQL + pgvector database")
-        else:  # Default to ChromaDB
-            if not CHROMADB_AVAILABLE:
-                logger.error("ChromaDB not available. Install: pip install chromadb")
-                raise ImportError("ChromaDB not available")
-            self.db_manager = DatabaseManager(self.config)
-            logger.info("Using ChromaDB database")
+        # Initialize PostgreSQL + pgvector database manager
+        self.db_manager = PgVectorDatabaseManager(self.config)
+        logger.info("Using PostgreSQL + pgvector database")
 
         self.downloader = FaceDownloader(self.config, self.stats)
         self.processor = None  # Initialize after database
