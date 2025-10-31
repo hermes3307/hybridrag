@@ -1330,6 +1330,9 @@ class FaceProcessor:
         for ext in ['*.jpg', '*.jpeg', '*.png']:
             all_face_files.extend(Path(self.config.faces_dir).rglob(ext))
 
+        # Filter out macOS metadata files (._*)
+        all_face_files = [f for f in all_face_files if not f.name.startswith('._')]
+
         # Filter to only new files (not in database)
         new_files = []
         for file_path in all_face_files:
@@ -1372,6 +1375,9 @@ class FaceProcessor:
         face_files = []
         for ext in ['*.jpg', '*.jpeg', '*.png']:
             face_files.extend(Path(self.config.faces_dir).rglob(ext))
+
+        # Filter out macOS metadata files (._*)
+        face_files = [f for f in face_files if not f.name.startswith('._')]
 
         for file_path in face_files:
             # Pass callback to process_face_file - it will call it with FaceData
