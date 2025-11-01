@@ -29,16 +29,44 @@ import io
 import numpy as np
 import numpy as np
 
-# Import core backend functionality
-try:
-    from core import (
-        IntegratedFaceSystem, SystemConfig, FaceAnalyzer,
-        FaceEmbedder, AVAILABLE_MODELS, check_embedding_models
-    )
-except ImportError as e:
-    print(f"Error importing core backend: {e}")
-    print("Make sure core.py is in the same directory")
-    sys.exit(1)
+# Lazy import for core backend functionality - will be loaded when needed
+_core_loaded = False
+IntegratedFaceSystem = None
+SystemConfig = None
+FaceAnalyzer = None
+FaceEmbedder = None
+AVAILABLE_MODELS = None
+check_embedding_models = None
+
+def _load_core_modules():
+    """Lazy load heavy core modules only when needed"""
+    global _core_loaded, IntegratedFaceSystem, SystemConfig, FaceAnalyzer
+    global FaceEmbedder, AVAILABLE_MODELS, check_embedding_models
+
+    if not _core_loaded:
+        try:
+            from core import (
+                IntegratedFaceSystem as _IntegratedFaceSystem,
+                SystemConfig as _SystemConfig,
+                FaceAnalyzer as _FaceAnalyzer,
+                FaceEmbedder as _FaceEmbedder,
+                AVAILABLE_MODELS as _AVAILABLE_MODELS,
+                check_embedding_models as _check_embedding_models
+            )
+            IntegratedFaceSystem = _IntegratedFaceSystem
+            SystemConfig = _SystemConfig
+            FaceAnalyzer = _FaceAnalyzer
+            FaceEmbedder = _FaceEmbedder
+            AVAILABLE_MODELS = _AVAILABLE_MODELS
+            check_embedding_models = _check_embedding_models
+            _core_loaded = True
+        except ImportError as e:
+            print(f"Error importing core backend: {e}")
+            print("Make sure core.py is in the same directory")
+            sys.exit(1)
+
+    return (IntegratedFaceSystem, SystemConfig, FaceAnalyzer,
+            FaceEmbedder, AVAILABLE_MODELS, check_embedding_models)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -107,8 +135,12 @@ class IntegratedFaceGUI:
         self.create_widgets()
         self.setup_layout()
 
-        # Initialize system
-        self.initialize_system()
+        # Show a loading message
+        self.log_message("Loading system components in background...")
+
+        # Defer system initialization to run after GUI is shown
+        # This makes the window appear much faster
+        self.root.after(100, self.initialize_system_deferred)
 
         # Start update loop
         self.update_display()
@@ -178,7 +210,7 @@ class IntegratedFaceGUI:
 
         for i, (label, key) in enumerate(status_items):
             ttk.Label(status_frame, text=f"{label}:").grid(row=i, column=0, sticky="w", padx=(0, 10))
-            self.status_labels[key] = ttk.Label(status_frame, text="Initializing...")
+            self.status_labels[key] = ttk.Label(status_frame, text="Loading..." if i == 0 else "Waiting for system...")
             self.status_labels[key].grid(row=i, column=1, sticky="w")
 
         # Statistics frame
@@ -408,9 +440,10 @@ class IntegratedFaceGUI:
         """Create search faces tab"""
 
         # Configure grid weights for two-column layout
-        self.search_frame.columnconfigure(0, weight=3)  # Controls take more space
-        self.search_frame.columnconfigure(1, weight=1)  # Preview takes less space
-        self.search_frame.rowconfigure(1, weight=1)      # Results expand
+        self.search_frame.columnconfigure(0, weight=2)  # Results/controls column
+        self.search_frame.columnconfigure(1, weight=1)  # Preview column
+        self.search_frame.rowconfigure(0, weight=0)      # Controls don't expand
+        self.search_frame.rowconfigure(1, weight=1)      # Results expand vertically
 
         # Search control frame (left side)
         control_frame = ttk.LabelFrame(self.search_frame, text="Search Controls", padding=10)
@@ -514,9 +547,9 @@ class IntegratedFaceGUI:
         # Search button
         ttk.Button(control_frame, text="Search Faces", command=self.search_faces).grid(row=4, column=0, columnspan=3, pady=10)
 
-        # Query image preview frame (right side)
+        # Query image preview frame (right side) - spans both rows
         query_preview_frame = ttk.LabelFrame(self.search_frame, text="Query Image Preview", padding=10)
-        query_preview_frame.grid(row=0, column=1, rowspan=1, sticky="nsew", padx=5, pady=5)
+        query_preview_frame.grid(row=0, column=1, rowspan=2, sticky="nsew", padx=5, pady=5)
 
         # Preview label for query image
         self.query_preview_label = ttk.Label(query_preview_frame, text="No image selected",
@@ -525,9 +558,25 @@ class IntegratedFaceGUI:
         self.query_preview_label.pack(fill="both", expand=True, padx=5, pady=5)
         self.query_preview_photo = None  # Keep reference to prevent garbage collection
 
-        # Results frame (spans both columns)
+        # Comparison preview frame (below query image)
+        comparison_preview_frame = ttk.LabelFrame(query_preview_frame, text="Selected Result for Comparison", padding=5)
+        comparison_preview_frame.pack(fill="both", expand=False, padx=5, pady=(10, 5))
+
+        # Comparison image label
+        self.comparison_preview_label = ttk.Label(comparison_preview_frame, text="Click a result to compare",
+                                                  relief="solid", borderwidth=1,
+                                                  anchor="center", background="lightgray")
+        self.comparison_preview_label.pack(fill="both", expand=True, padx=5, pady=5)
+        self.comparison_preview_photo = None  # Keep reference to prevent garbage collection
+
+        # Comparison info label
+        self.comparison_info_label = ttk.Label(comparison_preview_frame, text="",
+                                               wraplength=240, justify="left")
+        self.comparison_info_label.pack(fill="x", padx=5, pady=(0, 5))
+
+        # Results frame (only left column, same width as controls)
         self.results_frame = ttk.LabelFrame(self.search_frame, text="Search Results", padding=10)
-        self.results_frame.grid(row=1, column=0, columnspan=2, sticky="nsew", padx=5, pady=5)
+        self.results_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
 
         # Results display
         self.results_canvas = tk.Canvas(self.results_frame)
@@ -648,6 +697,7 @@ Embedding Models:
         ttk.Button(button_frame, text="Initialize Vector Database", command=self.initialize_vector_database).pack(side="left", padx=5)
         ttk.Button(button_frame, text="Initialize Download Directory", command=self.initialize_download_directory).pack(side="left", padx=5)
         ttk.Button(button_frame, text="Re-embed All Data", command=self.reembed_all_data).pack(side="left", padx=5)
+        ttk.Button(button_frame, text="Optimize Database", command=self.optimize_database).pack(side="left", padx=5)
         ttk.Button(button_frame, text="Check Dependencies", command=self.check_dependencies).pack(side="left", padx=5)
         ttk.Button(button_frame, text="Load Configuration", command=self.load_configuration).pack(side="left", padx=5)
         ttk.Button(button_frame, text="Save Configuration", command=self.save_configuration).pack(side="left", padx=5)
@@ -1022,9 +1072,48 @@ Embedding Models:
             self.root.grid_columnconfigure(i, weight=1)
         self.root.grid_rowconfigure(0, weight=1)
 
+    def initialize_system_deferred(self):
+        """Initialize the face processing system in background after UI is shown"""
+        def init_worker():
+            try:
+                # Update window title to show loading
+                self.root.after(0, lambda: self.root.title("Face Processing System - Loading..."))
+
+                # Load core modules first (lazy loading)
+                self.root.after(0, lambda: self.log_message("Loading core modules..."))
+                _load_core_modules()
+                self.root.after(0, lambda: self.log_message("Core modules loaded"))
+
+                # Create and initialize system
+                self.root.after(0, lambda: self.log_message("Connecting to database..."))
+                self.system = IntegratedFaceSystem()
+                if self.system.initialize():
+                    self.log_message("System initialized successfully")
+                    # Update GUI in main thread
+                    self.root.after(0, self.update_configuration_from_system)
+                    self.root.after(0, self.check_model_mismatch_on_startup)
+                    # Restore window title
+                    self.root.after(0, lambda: self.root.title("Face Processing System - Ready"))
+                else:
+                    self.log_message("Failed to initialize system", "error")
+                    self.root.after(0, lambda: self.root.title("Face Processing System - Error"))
+                    self.root.after(0, lambda: messagebox.showerror(
+                        "Error", "Failed to initialize system. Check dependencies."))
+            except Exception as e:
+                self.log_message(f"Error initializing system: {e}", "error")
+                self.root.after(0, lambda: self.root.title("Face Processing System - Error"))
+                self.root.after(0, lambda: messagebox.showerror(
+                    "Error", f"Error initializing system: {e}"))
+
+        # Run initialization in background thread
+        threading.Thread(target=init_worker, daemon=True).start()
+
     def initialize_system(self):
-        """Initialize the face processing system"""
+        """Initialize the face processing system (synchronous version for re-initialization)"""
         try:
+            # Ensure core modules are loaded
+            _load_core_modules()
+
             self.system = IntegratedFaceSystem()
             if self.system.initialize():
                 self.log_message("System initialized successfully")
@@ -1844,16 +1933,20 @@ Embedding Models:
 
         if not results:
             ttk.Label(self.results_frame_inner, text="No results found").pack(pady=20)
+            # Clear comparison preview
+            self.comparison_preview_label.config(text="Click a result to compare", image='')
+            self.comparison_preview_photo = None
+            self.comparison_info_label.config(text="")
             return
 
         # Display results
         for i, result in enumerate(results):
-            result_frame = ttk.Frame(self.results_frame_inner)
+            result_frame = ttk.Frame(self.results_frame_inner, relief="solid", borderwidth=1)
             result_frame.pack(fill="x", padx=5, pady=5)
 
             # Result info
             info_text = f"Result {i+1}: Distance: {result['distance']:.3f}\nPath: {result['metadata'].get('file_path', 'Unknown')}"
-            ttk.Label(result_frame, text=info_text).pack(side="left")
+            ttk.Label(result_frame, text=info_text).pack(side="left", padx=5)
 
             # Try to display image thumbnail
             try:
@@ -1862,15 +1955,74 @@ Embedding Models:
                     image = Image.open(image_path)
                     image.thumbnail((64, 64), Image.Resampling.LANCZOS)
                     photo = ImageTk.PhotoImage(image)
-                    image_label = ttk.Label(result_frame, image=photo)
+
+                    # Create clickable button-like label
+                    image_label = tk.Label(result_frame, image=photo, cursor="hand2",
+                                          relief="raised", borderwidth=2)
                     image_label.image = photo  # Keep a reference
-                    image_label.pack(side="right")
+                    image_label.pack(side="right", padx=5, pady=5)
+
+                    # Bind click event
+                    image_label.bind("<Button-1>", lambda e, r=result, idx=i+1: self.show_comparison(r, idx))
+
+                    # Show first result by default
+                    if i == 0:
+                        self.show_comparison(result, 1)
             except Exception:
                 pass  # Skip image display if error
 
         # Update scroll region
         self.results_frame_inner.update_idletasks()
         self.results_canvas.configure(scrollregion=self.results_canvas.bbox("all"))
+
+    def show_comparison(self, result: Dict[str, Any], result_number: int):
+        """Show selected result in comparison preview under query image"""
+        try:
+            image_path = result['metadata'].get('file_path')
+            if not image_path or not os.path.exists(image_path):
+                self.comparison_preview_label.config(text="Image not found", image='')
+                self.comparison_preview_photo = None
+                self.comparison_info_label.config(text="")
+                return
+
+            # Load and resize image for comparison preview (max 200x200)
+            image = Image.open(image_path)
+            max_size = 200
+            image.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+
+            # Convert to PhotoImage
+            photo = ImageTk.PhotoImage(image)
+
+            # Update comparison preview label
+            self.comparison_preview_label.config(image=photo, text='')
+            self.comparison_preview_photo = photo  # Keep reference
+
+            # Update info label with result details
+            distance = result['distance']
+            metadata = result['metadata']
+            info_text = (
+                f"Result #{result_number}\n"
+                f"Distance: {distance:.4f}\n"
+                f"File: {os.path.basename(image_path)}"
+            )
+
+            # Add metadata if available
+            if 'sex' in metadata:
+                info_text += f"\nSex: {metadata['sex']}"
+            if 'age_group' in metadata:
+                info_text += f"\nAge: {metadata['age_group']}"
+            if 'skin_tone' in metadata:
+                info_text += f"\nSkin Tone: {metadata['skin_tone']}"
+
+            self.comparison_info_label.config(text=info_text)
+
+            self.log_message(f"Comparison preview updated: Result #{result_number}")
+
+        except Exception as e:
+            self.log_message(f"Error updating comparison preview: {e}", "error")
+            self.comparison_preview_label.config(text="Error loading image", image='')
+            self.comparison_preview_photo = None
+            self.comparison_info_label.config(text="")
 
     # ============================================================================
     # UTILITY AND HELPER METHODS
@@ -2242,14 +2394,50 @@ Embedding Models:
             # Clear warning
             self.model_warning_label.config(text="")
 
-            messagebox.showinfo("Re-embedding Started",
-                f"Re-embedding all faces with '{current_model}' model.\n\n"
-                f"Check the 'Process & Embed' tab for progress."
-            )
+        except Exception as e:
+            messagebox.showerror("Error", f"Re-embedding failed: {e}")
+            self.log_message(f"Re-embedding error: {e}", "error")
+
+    def optimize_database(self):
+        """Optimize database performance by creating indexes and analyzing statistics"""
+        if not self.system:
+            messagebox.showerror("Error", "System not initialized")
+            return
+
+        try:
+            self.log_message("Optimizing database performance...")
+
+            # Create/rebuild indexes
+            if self.system.db_manager.create_performance_indexes():
+                self.log_message("✓ Performance indexes created")
+            else:
+                self.log_message("✗ Failed to create some indexes", "error")
+
+            # Analyze table statistics
+            stats = self.system.db_manager.analyze_table_stats()
+            if 'error' not in stats:
+                self.log_message(f"✓ Table analyzed - Size: {stats.get('table_size', 'unknown')}")
+                self.log_message(f"✓ Found {len(stats.get('indexes', []))} indexes")
+
+                # Show index details
+                for idx in stats.get('indexes', []):
+                    self.log_message(f"  - {idx['name']}")
+
+                messagebox.showinfo(
+                    "Optimization Complete",
+                    f"Database optimized successfully!\n\n"
+                    f"Table size: {stats.get('table_size', 'unknown')}\n"
+                    f"Indexes created: {len(stats.get('indexes', []))}\n\n"
+                    f"Search queries should be much faster now.\n"
+                    f"Check the log for details."
+                )
+            else:
+                messagebox.showwarning("Partial Success", "Indexes created but analysis failed")
 
         except Exception as e:
-            self.log_message(f"Error re-embedding data: {e}", "error")
-            messagebox.showerror("Error", f"Failed to re-embed data: {e}")
+            messagebox.showerror("Error", f"Database optimization failed: {e}")
+            self.log_message(f"Optimization error: {e}", "error")
+
 
     def run(self):
         """Run the GUI application"""
