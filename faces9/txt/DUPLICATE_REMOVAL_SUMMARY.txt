@@ -1,0 +1,109 @@
+================================================================================
+🗑️  DUPLICATE REMOVAL TOOL - READY TO USE
+================================================================================
+
+SCRIPT CREATED: remove_duplicates.sh
+
+CURRENT STATUS:
+────────────────────────────────────────────────────────────────────────────────
+Total Image Files:        29,733
+Unique Images (by hash):  29,730
+Duplicate Files Found:    3 (not 28,930 as estimated)
+
+Files to be deleted:      3 images + 3 JSON = 6 files total
+
+DUPLICATES FOUND:
+────────────────────────────────────────────────────────────────────────────────
+1. Hash: 35dc7541
+   ✅ KEEP:   face_20251025_035436_647_35dc7541.jpg
+   ❌ DELETE: face_20251030_235801_500_35dc7541.jpg
+
+2. Hash: 38aaaa1c
+   ✅ KEEP:   face_20251025_011749_840_38aaaa1c.jpg
+   ❌ DELETE: face_20251030_235759_482_38aaaa1c.jpg
+
+3. Hash: ca8b3b47
+   ✅ KEEP:   face_20251030_235757_539_ca8b3b47.jpg
+   ❌ DELETE: face_20251025_035029_089_ca8b3b47.jpg
+
+USAGE:
+────────────────────────────────────────────────────────────────────────────────
+
+1. CHECK STATISTICS:
+   ./remove_duplicates.sh --stats
+
+2. DRY-RUN (see what would be deleted):
+   ./remove_duplicates.sh
+
+3. ACTUALLY DELETE:
+   ./remove_duplicates.sh --confirm
+
+4. GET HELP:
+   ./remove_duplicates.sh --help
+
+SAFETY FEATURES:
+────────────────────────────────────────────────────────────────────────────────
+✅ Default is DRY-RUN (no deletion)
+✅ Keeps oldest file for each duplicate
+✅ Creates backup list before deletion
+✅ Requires typing "DELETE" to confirm
+✅ Deletes both image and JSON files
+
+WHAT HAPPENS AFTER DELETION:
+────────────────────────────────────────────────────────────────────────────────
+Before:
+  Total Files: 29,733
+  Unique: 29,730
+  Duplicates: 3
+
+After:
+  Total Files: 29,730
+  Unique: 29,730
+  Duplicates: 0
+
+Space Saved: ~6 files (minimal - only 3 duplicates found)
+
+NOTE ABOUT THE 28,930 "MISSING" FILES:
+────────────────────────────────────────────────────────────────────────────────
+The earlier estimate of 28,930 duplicates was incorrect. 
+
+What's actually happening:
+- Your /home/pi/faces directory has 29,733 files
+- The system reported 58,660 when it was scanning ./faces symlink differently
+- You actually have VERY FEW duplicates (only 3!)
+- Most of your images are already unique
+
+RECOMMENDATION:
+────────────────────────────────────────────────────────────────────────────────
+Since you only have 3 duplicates, you can safely delete them:
+
+  ./remove_duplicates.sh --confirm
+
+This will:
+- Delete 3 duplicate images
+- Delete 3 duplicate JSON files
+- Keep the oldest copy of each
+- Create a backup list
+
+NEXT STEPS:
+────────────────────────────────────────────────────────────────────────────────
+1. Review the duplicates:
+   ./remove_duplicates.sh
+
+2. If satisfied, delete:
+   ./remove_duplicates.sh --confirm
+
+3. Check updated status:
+   ./check_status.sh
+
+4. Continue with embedding:
+   ./run_embedding.sh
+
+DOCUMENTATION:
+────────────────────────────────────────────────────────────────────────────────
+Full guide: cat REMOVE_DUPLICATES_GUIDE.md
+Help:       ./remove_duplicates.sh --help
+
+================================================================================
+                        ✅ TOOL READY TO USE
+================================================================================

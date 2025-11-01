@@ -1,0 +1,71 @@
+================================================================================
+🚀 EMBEDDING MANAGER - QUICK REFERENCE CARD
+================================================================================
+
+SHELL SCRIPTS (Recommended)
+────────────────────────────────────────────────────────────────────────────────
+./check_status.sh              Check status (no changes)
+./embed.sh                     Interactive mode (asks before embedding)
+./embed.sh --stats             Show statistics only
+./embed.sh --auto              Auto-embed all pending images
+./embed.sh --facenet           Auto-embed with FaceNet model
+./run_embedding.sh             Auto-run (no prompts)
+
+PYTHON CLI (Advanced)
+────────────────────────────────────────────────────────────────────────────────
+python3 embedding_manager_cli.py                      Interactive mode
+python3 embedding_manager_cli.py --stats-only         Statistics only
+python3 embedding_manager_cli.py --auto-embed         Auto-embed
+python3 embedding_manager_cli.py --model facenet      Use FaceNet
+python3 embedding_manager_cli.py --help               Show help
+
+CURRENT STATUS
+────────────────────────────────────────────────────────────────────────────────
+Database Vectors:     29,135
+Total Images:         58,660
+Already Embedded:     58,063 (99.0%)
+Pending:              597 (1.0%)
+
+EMBEDDING MODELS
+────────────────────────────────────────────────────────────────────────────────
+statistical          Fast (0.1-0.5s)    ⭐⭐        Default
+facenet              Medium (0.5-1.5s)  ⭐⭐⭐      Recommended
+arcface              Slow (1-3s)        ⭐⭐⭐⭐    Most accurate
+
+QUICK START
+────────────────────────────────────────────────────────────────────────────────
+1. Check status:     ./check_status.sh
+2. Run embedding:    ./run_embedding.sh
+3. Verify:           ./check_status.sh
+
+AUTOMATION
+────────────────────────────────────────────────────────────────────────────────
+# Daily at 2 AM
+crontab -e
+0 2 * * * ./run_embedding.sh >> /var/log/embeddings.log 2>&1
+
+TROUBLESHOOTING
+────────────────────────────────────────────────────────────────────────────────
+Test DB:    PGPASSWORD=postgres psql -h localhost -U postgres -d vector_db -c "SELECT COUNT(*) FROM faces;"
+Fix perms:  chmod +x *.sh
+View docs:  cat README_EMBEDDING_SYSTEM.md
+
+FILES
+────────────────────────────────────────────────────────────────────────────────
+embed.sh                          Main shell script
+check_status.sh                   Status checker
+run_embedding.sh                  Auto-runner
+embedding_manager_cli.py          Python CLI
+README_EMBEDDING_SYSTEM.md        Complete guide
+EMBEDDING_CLI_README.md           Full documentation
+EMBEDDING_CLI_QUICKSTART.md       Quick start guide
+SHELL_SCRIPTS_GUIDE.md            Shell script guide
+
+SUPPORT
+────────────────────────────────────────────────────────────────────────────────
+./embed.sh --help                 Shell script help
+python3 embedding_manager_cli.py --help    Full CLI help
+
+================================================================================
+                      🎉 SYSTEM READY TO USE! 🎉
+================================================================================
