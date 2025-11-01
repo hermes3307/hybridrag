@@ -114,6 +114,10 @@ class PgVectorDatabaseManager:
                     cursor.close()
                     logger.info("Database initialized successfully")
                     self.initialized = True
+
+                    # Check and create indexes for better performance
+                    self._ensure_indexes()
+
                     return True
 
                 finally:
@@ -124,6 +128,64 @@ class PgVectorDatabaseManager:
         except Exception as e:
             logger.error(f"Failed to initialize database: {e}")
             return False
+
+    def _ensure_indexes(self):
+        """Create indexes if they don't exist for optimal performance"""
+        conn = None
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+
+            # Check if vector index exists
+            cursor.execute("""
+                SELECT COUNT(*) FROM pg_indexes
+                WHERE tablename = 'faces' AND indexname = 'faces_embedding_idx'
+            """)
+
+            if cursor.fetchone()[0] == 0:
+                logger.info("Creating vector index for faster similarity search...")
+                # HNSW is generally faster for queries, IVFFlat is faster for inserts
+                # Using HNSW with m=16, ef_construction=64 for balanced performance
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS faces_embedding_idx
+                    ON faces USING hnsw (embedding vector_cosine_ops)
+                    WITH (m = 16, ef_construction = 64)
+                """)
+                conn.commit()
+                logger.info("Vector index created successfully (HNSW)")
+
+            # Create indexes on commonly filtered metadata columns
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS faces_metadata_sex_idx
+                ON faces ((metadata->>'sex'))
+            """)
+
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS faces_metadata_age_group_idx
+                ON faces ((metadata->>'age_group'))
+            """)
+
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS faces_embedding_model_idx
+                ON faces (embedding_model)
+            """)
+
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS faces_timestamp_idx
+                ON faces (timestamp)
+            """)
+
+            conn.commit()
+            cursor.close()
+            logger.info("Metadata indexes ensured")
+
+        except Exception as e:
+            logger.warning(f"Could not create indexes: {e}")
+            if conn:
+                conn.rollback()
+        finally:
+            if conn:
+                self.return_connection(conn)
 
     def get_connection(self):
         """Get a connection from the pool"""
@@ -373,6 +435,7 @@ class PgVectorDatabaseManager:
                 distance_op = '<=>'  # Default to cosine
 
             # Build query
+            # Note: For HNSW indexes, ordering by distance and using LIMIT is optimized
             query = f"""
                 SELECT
                     face_id, file_path, timestamp, image_hash,
@@ -866,6 +929,70 @@ class PgVectorDatabaseManager:
             bool: True if successful, False otherwise
         """
         return self.reset_database()
+
+    def create_performance_indexes(self) -> bool:
+        """
+        Manually create/rebuild performance indexes.
+        Useful for existing databases that don't have indexes yet.
+
+        Returns:
+            bool: True if successful
+        """
+        try:
+            logger.info("Creating performance indexes...")
+            self._ensure_indexes()
+            logger.info("Performance indexes created successfully")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to create indexes: {e}")
+            return False
+
+    def analyze_table_stats(self) -> Dict[str, Any]:
+        """
+        Analyze table statistics for query optimization
+
+        Returns:
+            Dictionary with table statistics
+        """
+        conn = None
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+
+            # Run ANALYZE to update statistics
+            cursor.execute("ANALYZE faces")
+
+            # Get index information
+            cursor.execute("""
+                SELECT
+                    indexname,
+                    indexdef
+                FROM pg_indexes
+                WHERE tablename = 'faces'
+                ORDER BY indexname
+            """)
+            indexes = cursor.fetchall()
+
+            # Get table size
+            cursor.execute("""
+                SELECT pg_size_pretty(pg_total_relation_size('faces'))
+            """)
+            table_size = cursor.fetchone()[0]
+
+            cursor.close()
+
+            return {
+                'indexes': [{'name': idx[0], 'definition': idx[1]} for idx in indexes],
+                'table_size': table_size,
+                'analyzed': True
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to analyze table stats: {e}")
+            return {'error': str(e)}
+        finally:
+            if conn:
+                self.return_connection(conn)
 
     def close(self):
         """Close all database connections"""
