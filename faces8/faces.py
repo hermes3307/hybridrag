@@ -1894,9 +1894,9 @@ Embedding Models:
         """Build metadata filter from GUI selections"""
         metadata_filter = {}
 
-        # Demographic filters
+        # Demographic filters - use correct metadata key names
         if self.sex_filter_var.get() != "any":
-            metadata_filter['sex'] = self.sex_filter_var.get()
+            metadata_filter['estimated_sex'] = self.sex_filter_var.get()
 
         if self.age_filter_var.get() != "any":
             metadata_filter['age_group'] = self.age_filter_var.get()
@@ -1945,7 +1945,9 @@ Embedding Models:
             result_frame.pack(fill="x", padx=5, pady=5)
 
             # Result info
-            info_text = f"Result {i+1}: Distance: {result['distance']:.3f}\nPath: {result['metadata'].get('file_path', 'Unknown')}"
+            distance = result.get('distance', 0.0)
+            distance_str = "N/A" if distance == 0.0 else f"{distance:.3f}"
+            info_text = f"Result {i+1}: Distance: {distance_str}\nPath: {result['metadata'].get('file_path', 'Unknown')}"
             ttk.Label(result_frame, text=info_text).pack(side="left", padx=5)
 
             # Try to display image thumbnail
@@ -1998,17 +2000,18 @@ Embedding Models:
             self.comparison_preview_photo = photo  # Keep reference
 
             # Update info label with result details
-            distance = result['distance']
+            distance = result.get('distance', 0.0)
+            distance_str = "N/A" if distance == 0.0 else f"{distance:.4f}"
             metadata = result['metadata']
             info_text = (
                 f"Result #{result_number}\n"
-                f"Distance: {distance:.4f}\n"
+                f"Distance: {distance_str}\n"
                 f"File: {os.path.basename(image_path)}"
             )
 
-            # Add metadata if available
-            if 'sex' in metadata:
-                info_text += f"\nSex: {metadata['sex']}"
+            # Add metadata if available - use correct field names
+            if 'estimated_sex' in metadata:
+                info_text += f"\nSex: {metadata['estimated_sex']}"
             if 'age_group' in metadata:
                 info_text += f"\nAge: {metadata['age_group']}"
             if 'skin_tone' in metadata:

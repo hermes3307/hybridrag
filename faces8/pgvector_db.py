@@ -292,6 +292,17 @@ class PgVectorDatabaseManager:
                     updated_at = NOW()
             """
 
+            # Extract age_estimate as integer only if it's numeric
+            age_estimate_value = None
+            age_val = features.get('age_estimate')
+            if age_val is not None:
+                try:
+                    # Only use numeric values, skip strings like "60+", "40-60"
+                    age_estimate_value = int(age_val)
+                except (ValueError, TypeError):
+                    # Keep as None for non-numeric values
+                    age_estimate_value = None
+
             cursor.execute(query, (
                 face_data.face_id,
                 face_data.file_path,
@@ -299,7 +310,7 @@ class PgVectorDatabaseManager:
                 face_data.image_hash,
                 embedding_model,
                 embedding,
-                features.get('age_estimate'),
+                age_estimate_value,
                 features.get('gender'),
                 features.get('brightness'),
                 features.get('contrast'),
@@ -364,6 +375,17 @@ class PgVectorDatabaseManager:
                 features = face_data.features
                 features_serializable = self._convert_to_json_serializable(features)
 
+                # Extract age_estimate as integer only if it's numeric
+                age_estimate_value = None
+                age_val = features_serializable.get('age_estimate')
+                if age_val is not None:
+                    try:
+                        # Only use numeric values, skip strings like "60+", "40-60"
+                        age_estimate_value = int(age_val)
+                    except (ValueError, TypeError):
+                        # Keep as None for non-numeric values
+                        age_estimate_value = None
+
                 batch_data.append((
                     face_data.face_id,
                     face_data.file_path,
@@ -371,7 +393,7 @@ class PgVectorDatabaseManager:
                     face_data.image_hash,
                     embedding_model,
                     embedding,
-                    features_serializable.get('age_estimate'),
+                    age_estimate_value,
                     features_serializable.get('gender'),
                     features_serializable.get('brightness'),
                     features_serializable.get('contrast'),
@@ -625,7 +647,8 @@ class PgVectorDatabaseManager:
 
                 formatted_results.append({
                     'id': row[0],
-                    'metadata': metadata
+                    'metadata': metadata,
+                    'distance': 0.0  # Metadata search has no distance
                 })
 
             cursor.close()

@@ -342,6 +342,18 @@ class FaceAnalyzer:
                 'format': image.format
             }
 
+            # Extract EXIF metadata
+            exif_data = self._extract_exif_data(image)
+            features.update(exif_data)
+
+            # Extract file metadata
+            file_metadata = self._extract_file_metadata(image_path)
+            features.update(file_metadata)
+
+            # Calculate image quality metrics
+            quality_metrics = self._calculate_quality_metrics(image)
+            features.update(quality_metrics)
+
             # Advanced features with OpenCV or PIL
             if self.cv2_available:
                 cv_image = cv2.imread(image_path)
@@ -692,6 +704,226 @@ class FaceAnalyzer:
 
         except:
             return 'unknown'
+
+    def _extract_exif_data(self, image: Image.Image) -> Dict[str, Any]:
+        """
+        Extract EXIF metadata from image
+
+        Returns comprehensive camera, GPS, and shooting information
+        """
+        exif_info = {}
+
+        try:
+            # Get EXIF data
+            exif = image.getexif()
+
+            if exif:
+                # Import EXIF tags
+                from PIL.ExifTags import TAGS, GPSTAGS
+
+                # Extract common EXIF fields
+                for tag_id, value in exif.items():
+                    tag_name = TAGS.get(tag_id, tag_id)
+
+                    # Convert bytes to string
+                    if isinstance(value, bytes):
+                        try:
+                            value = value.decode('utf-8', errors='ignore')
+                        except:
+                            value = str(value)
+
+                    # Store useful metadata
+                    if tag_name in ['Make', 'Model', 'Software', 'DateTime',
+                                   'DateTimeOriginal', 'DateTimeDigitized',
+                                   'Orientation', 'XResolution', 'YResolution',
+                                   'ResolutionUnit', 'ExposureTime', 'FNumber',
+                                   'ISO', 'ISOSpeedRatings', 'Flash', 'FocalLength',
+                                   'WhiteBalance', 'ExposureMode', 'ColorSpace']:
+                        exif_info[f'exif_{tag_name.lower()}'] = value
+
+                # GPS data extraction
+                gps_data = exif.get_ifd(0x8825)  # GPS IFD
+                if gps_data:
+                    gps_info = {}
+                    for tag_id, value in gps_data.items():
+                        tag_name = GPSTAGS.get(tag_id, tag_id)
+                        gps_info[tag_name] = value
+
+                    # Convert GPS coordinates if available
+                    if 'GPSLatitude' in gps_info and 'GPSLongitude' in gps_info:
+                        lat = self._convert_gps_to_decimal(
+                            gps_info['GPSLatitude'],
+                            gps_info.get('GPSLatitudeRef', 'N')
+                        )
+                        lon = self._convert_gps_to_decimal(
+                            gps_info['GPSLongitude'],
+                            gps_info.get('GPSLongitudeRef', 'E')
+                        )
+                        exif_info['gps_latitude'] = lat
+                        exif_info['gps_longitude'] = lon
+                        exif_info['has_gps'] = True
+                    else:
+                        exif_info['has_gps'] = False
+                else:
+                    exif_info['has_gps'] = False
+
+                exif_info['has_exif'] = True
+            else:
+                exif_info['has_exif'] = False
+
+        except Exception as e:
+            logger.debug(f"EXIF extraction error: {e}")
+            exif_info['has_exif'] = False
+            exif_info['exif_error'] = str(e)
+
+        return exif_info
+
+    def _convert_gps_to_decimal(self, coord_tuple, ref):
+        """Convert GPS coordinates from degrees/minutes/seconds to decimal"""
+        try:
+            degrees = float(coord_tuple[0])
+            minutes = float(coord_tuple[1])
+            seconds = float(coord_tuple[2])
+
+            decimal = degrees + (minutes / 60.0) + (seconds / 3600.0)
+
+            if ref in ['S', 'W']:
+                decimal = -decimal
+
+            return decimal
+        except:
+            return None
+
+    def _extract_file_metadata(self, image_path: str) -> Dict[str, Any]:
+        """
+        Extract file system metadata
+
+        Returns file creation, modification times, and file properties
+        """
+        file_meta = {}
+
+        try:
+            from pathlib import Path
+            import time
+
+            path = Path(image_path)
+            stat = path.stat()
+
+            file_meta['file_name'] = path.name
+            file_meta['file_extension'] = path.suffix.lower()
+            file_meta['file_size_kb'] = round(stat.st_size / 1024, 2)
+            file_meta['file_size_mb'] = round(stat.st_size / (1024 * 1024), 2)
+
+            # Timestamps
+            file_meta['file_created_timestamp'] = stat.st_ctime
+            file_meta['file_modified_timestamp'] = stat.st_mtime
+            file_meta['file_accessed_timestamp'] = stat.st_atime
+
+            # Human-readable dates
+            file_meta['file_created_date'] = time.ctime(stat.st_ctime)
+            file_meta['file_modified_date'] = time.ctime(stat.st_mtime)
+
+        except Exception as e:
+            logger.debug(f"File metadata extraction error: {e}")
+            file_meta['file_meta_error'] = str(e)
+
+        return file_meta
+
+    def _calculate_quality_metrics(self, image: Image.Image) -> Dict[str, Any]:
+        """
+        Calculate advanced image quality metrics
+
+        Returns sharpness, noise level, compression artifacts, etc.
+        """
+        quality = {}
+
+        try:
+            # Convert to numpy array
+            img_array = np.array(image.convert('RGB'))
+
+            # Calculate aspect ratio
+            width, height = image.size
+            quality['aspect_ratio'] = round(width / height, 3)
+            quality['is_square'] = abs(width - height) < 10
+            quality['is_landscape'] = width > height
+            quality['is_portrait'] = height > width
+
+            # Calculate megapixels
+            quality['megapixels'] = round((width * height) / 1_000_000, 2)
+
+            # Sharpness estimation (Laplacian variance)
+            if self.cv2_available:
+                gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+                laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
+                quality['sharpness_score'] = float(laplacian_var)
+
+                # Classify sharpness
+                if laplacian_var > 500:
+                    quality['sharpness_level'] = 'high'
+                elif laplacian_var > 100:
+                    quality['sharpness_level'] = 'medium'
+                else:
+                    quality['sharpness_level'] = 'low'
+
+                # Noise estimation
+                noise_level = self._estimate_noise(gray)
+                quality['noise_level'] = float(noise_level)
+
+                # Edge density
+                edges = cv2.Canny(gray, 100, 200)
+                edge_density = np.count_nonzero(edges) / (width * height)
+                quality['edge_density'] = float(edge_density)
+            else:
+                # Fallback using numpy
+                if len(img_array.shape) == 3:
+                    gray = np.mean(img_array, axis=2)
+                else:
+                    gray = img_array
+
+                # Simple sharpness estimation
+                dx = np.diff(gray, axis=0)
+                dy = np.diff(gray, axis=1)
+                sharpness = np.mean(np.abs(dx)) + np.mean(np.abs(dy))
+                quality['sharpness_score'] = float(sharpness)
+
+            # Color diversity (standard deviation across channels)
+            if len(img_array.shape) == 3:
+                color_std = np.std(img_array, axis=(0, 1))
+                quality['color_diversity'] = float(np.mean(color_std))
+                quality['red_std'] = float(color_std[0])
+                quality['green_std'] = float(color_std[1])
+                quality['blue_std'] = float(color_std[2])
+
+            # Dynamic range
+            img_min, img_max = np.min(img_array), np.max(img_array)
+            quality['dynamic_range'] = int(img_max - img_min)
+            quality['uses_full_range'] = (img_min < 10) and (img_max > 245)
+
+        except Exception as e:
+            logger.debug(f"Quality metrics calculation error: {e}")
+            quality['quality_error'] = str(e)
+
+        return quality
+
+    def _estimate_noise(self, gray_image):
+        """Estimate noise level in image using median absolute deviation"""
+        try:
+            # Use median absolute deviation method
+            h, w = gray_image.shape
+            center_h, center_w = h // 2, w // 2
+            size = min(h, w) // 4
+
+            # Sample from center
+            patch = gray_image[
+                center_h - size:center_h + size,
+                center_w - size:center_w + size
+            ]
+
+            # Calculate noise
+            sigma = np.median(np.abs(patch - np.median(patch))) * 1.4826
+            return sigma
+        except:
+            return 0.0
 
 # ============================================================================
 # VECTOR EMBEDDING
