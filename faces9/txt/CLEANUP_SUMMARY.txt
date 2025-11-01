@@ -1,0 +1,213 @@
+================================================================================
+📋 FILE CLEANUP SUMMARY
+================================================================================
+
+Current Status: 42 script files (.py and .sh)
+Goal: Organize and reduce to ~24 essential files
+
+================================================================================
+🚀 QUICK START - HOW TO CLEANUP
+================================================================================
+
+Option 1: DRY RUN (See what would happen, no changes)
+------------------------------------------------------
+./cleanup_files.sh --dry-run
+
+Option 2: INTERACTIVE CLEANUP (Recommended)
+------------------------------------------------------
+./cleanup_files.sh
+
+This will:
+✅ Create automatic backup
+✅ Move old files to archive/
+✅ Move test files to tests/
+✅ Rename files for clarity
+
+Option 3: Review Plan First
+------------------------------------------------------
+cat FILE_CLEANUP_PLAN.md
+
+================================================================================
+📊 WHAT WILL BE CLEANED UP
+================================================================================
+
+Files to ARCHIVE (6 files):
+----------------------------
+❌ fix_demographics.py              → archive/  (superseded)
+❌ fix_demographics_simple.py       → archive/  (superseded)
+❌ monitor_demo.py                  → archive/  (demo version)
+❌ embed.sh                         → archive/  (use run_embedding.sh)
+❌ quick_download.sh                → archive/  (use download_faces.sh)
+❌ download_with_metadata.sh        → archive/  (superseded)
+
+Files to MOVE to tests/ (5 files):
+-----------------------------------
+🧪 test_download_speed.py          → tests/
+🧪 test_metadata_search.py         → tests/
+🧪 test_monitor.py                 → tests/
+🧪 test_opencv.py                  → tests/
+🧪 test_pgvector.py                → tests/
+
+Files to RENAME (3 files):
+---------------------------
+✏️  start.sh                        → start_system.sh
+✏️  check_status.sh                 → check_system_status.sh
+✏️  run_monitor.sh                  → start_monitor.sh
+
+================================================================================
+📁 RESULT: ORGANIZED STRUCTURE
+================================================================================
+
+After cleanup, you'll have 3 main categories:
+
+1. MAIN DIRECTORY (24 essential files)
+   ├── Core system files (core.py, pgvector_db.py, faces.py)
+   ├── CLI tools (embedding_manager_cli.py, search_cli.py, etc.)
+   ├── Shell scripts (run_embedding.sh, start_system.sh, etc.)
+   ├── Download tools (download_faces.sh, download_10k_faces.sh)
+   └── Maintenance (remove_duplicates.sh, fix_demographics_stable.py)
+
+2. ARCHIVE/ (6 old files)
+   └── Old/superseded files (safe to delete after 1 month)
+
+3. TESTS/ (5 test files)
+   └── Test scripts (for development/debugging)
+
+================================================================================
+✅ ESSENTIAL FILES AFTER CLEANUP
+================================================================================
+
+🎯 MOST IMPORTANT (Daily Use):
+-------------------------------
+run_embedding.sh              ⭐ Main embedding tool
+embedding_manager_cli.py      ⭐ Embedding CLI
+check_system_status.sh        ⭐ Check status
+remove_apple_files.sh         ⭐ Clean macOS files
+
+📦 CORE SYSTEM:
+-------------------------------
+core.py                       # Main face processing
+pgvector_db.py                # Database management
+faces.py                      # GUI application
+
+🔍 SEARCH/QUERY:
+-------------------------------
+search_cli.py                 # Search interface
+vector_query_cli.py           # Vector queries
+advanced_search.py            # Advanced search
+
+📥 DOWNLOAD:
+-------------------------------
+download_faces.sh             # General download
+download_10k_faces.sh         # 10K dataset
+download_large_dataset.sh     # Large datasets
+bulk_download_cli.py          # Bulk download CLI
+
+🛠️ MAINTENANCE:
+-------------------------------
+remove_duplicates.sh          # Remove duplicates
+delete_duplicates_python.py   # Python duplicate tool
+delete_all_duplicates.sh      # Batch delete
+delete_embeddings_by_model.sh # Delete embeddings
+fix_demographics_stable.py    # Fix demographics
+generate_missing_metadata.py  # Generate metadata
+analyze_metadata.py           # Analyze metadata
+
+💾 DATABASE:
+-------------------------------
+db_manage.sh                  # Database management
+migrate_to_pgvector.py        # pgvector migration
+inspect_database.py           # Database inspector
+
+📊 MONITORING:
+-------------------------------
+monitor_enhanced.py           # Enhanced monitor
+monitor.py                    # Basic monitor
+
+🚀 SYSTEM:
+-------------------------------
+start_system.sh               # Start system
+install.sh                    # Installation
+
+================================================================================
+📝 AFTER CLEANUP - QUICK COMMANDS
+================================================================================
+
+# Most common tasks:
+./run_embedding.sh                    # Embed images (interactive)
+./check_system_status.sh              # Check status
+./remove_apple_files.sh               # Clean macOS junk
+
+# Download faces:
+./download_faces.sh                   # Download faces
+./download_10k_faces.sh               # Download 10K dataset
+
+# Search/Query:
+python3 search_cli.py                 # Search interface
+python3 vector_query_cli.py           # Vector queries
+
+# Maintenance:
+./remove_duplicates.sh                # Remove duplicates
+python3 fix_demographics_stable.py    # Fix demographics
+
+# Database:
+./db_manage.sh                        # Database management
+python3 inspect_database.py           # Inspect database
+
+# Monitoring:
+python3 monitor_enhanced.py           # Enhanced monitoring
+
+================================================================================
+🔒 SAFETY FEATURES
+================================================================================
+
+✅ Automatic backup created before any changes
+✅ No files are deleted, only moved to archive/
+✅ Dry-run mode available (--dry-run flag)
+✅ Can restore from backup if needed
+✅ Archive can be deleted after 1 month if unused
+
+Restore from backup:
+--------------------
+tar -xzf ../faces8_backup_YYYYMMDD_HHMMSS.tar.gz
+
+================================================================================
+⚠️ IMPORTANT NOTES
+================================================================================
+
+1. Run ./cleanup_files.sh --dry-run first to see what will happen
+2. Backup is automatically created (no data loss)
+3. Archive directory can be deleted after 1 month if unused
+4. Test that run_embedding.sh still works after cleanup
+5. Review FILE_CLEANUP_PLAN.md for detailed explanations
+
+================================================================================
+📈 BENEFITS
+================================================================================
+
+Before:  42 files (confusing, duplicates)
+After:   24 files (organized, clear purpose)
+Reduction: 43% fewer files
+Result:  Easier to find and use scripts!
+
+================================================================================
+🎯 RECOMMENDED ACTION
+================================================================================
+
+1. Review this summary
+2. Run dry-run to see changes:
+   ./cleanup_files.sh --dry-run
+
+3. If happy, run actual cleanup:
+   ./cleanup_files.sh
+
+4. Verify everything works:
+   ./run_embedding.sh
+
+5. Check archived files:
+   ls -la archive/
+
+6. After 1 month, if archive unused:
+   rm -rf archive/
+
+================================================================================
