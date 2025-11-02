@@ -1244,23 +1244,107 @@ class FaceDownloader:
         self.stats = stats
         self.running = False
         self.downloaded_hashes = set()
+        self._hashes_loaded = False
+        self._hash_loading_thread = None
+        self._hash_loading_callback = None
 
         # Create faces directory
         os.makedirs(self.config.faces_dir, exist_ok=True)
 
-        # Load existing hashes
-        self._load_existing_hashes()
+        logger.info("FaceDownloader initialized (hash loading can be started in background)")
+
+    def start_background_hash_loading(self, progress_callback=None, completion_callback=None):
+        """Start loading hashes in background thread
+
+        Args:
+            progress_callback: Called with (current, total, message) for progress updates
+            completion_callback: Called when loading completes with (total_loaded, elapsed_time)
+        """
+        if self._hashes_loaded:
+            if completion_callback:
+                completion_callback(len(self.downloaded_hashes), 0)
+            return
+
+        if self._hash_loading_thread and self._hash_loading_thread.is_alive():
+            logger.info("Hash loading already in progress")
+            return
+
+        logger.info("Starting background hash loading...")
+
+        def load_worker():
+            try:
+                self._load_existing_hashes_with_callback(progress_callback, completion_callback)
+            except Exception as e:
+                logger.error(f"Error loading hashes in background: {e}")
+
+        import threading
+        self._hash_loading_thread = threading.Thread(target=load_worker, daemon=True)
+        self._hash_loading_thread.start()
 
     def _load_existing_hashes(self):
-        """Load hashes of existing images"""
+        """Load hashes of existing images (lazy-loaded on first download)"""
+        if self._hashes_loaded:
+            return  # Already loaded
+
+        logger.info("Loading existing face image hashes for duplicate detection...")
+        start_time = time.time()
+        count = 0
+
         for file_path in Path(self.config.faces_dir).rglob("*.jpg"):
             if file_path.is_file():
                 try:
                     file_hash = self._get_file_hash(str(file_path))
                     if file_hash:
                         self.downloaded_hashes.add(file_hash)
+                        count += 1
+                        # Log progress every 5000 files
+                        if count % 5000 == 0:
+                            logger.info(f"  Processed {count} images...")
                 except Exception:
                     pass
+
+        elapsed = time.time() - start_time
+        logger.info(f"✓ Loaded {count} image hashes in {elapsed:.2f}s")
+        self._hashes_loaded = True
+
+    def _load_existing_hashes_with_callback(self, progress_callback=None, completion_callback=None):
+        """Load hashes with progress callbacks for GUI updates"""
+        if self._hashes_loaded:
+            return
+
+        logger.info("Loading existing face image hashes for duplicate detection...")
+        start_time = time.time()
+        count = 0
+
+        # First, count total files for progress percentage
+        all_files = list(Path(self.config.faces_dir).rglob("*.jpg"))
+        total_files = len(all_files)
+
+        if progress_callback:
+            progress_callback(0, total_files, "Starting hash loading...")
+
+        for file_path in all_files:
+            if file_path.is_file():
+                try:
+                    file_hash = self._get_file_hash(str(file_path))
+                    if file_hash:
+                        self.downloaded_hashes.add(file_hash)
+                        count += 1
+
+                        # Progress callback every 1000 files
+                        if progress_callback and count % 1000 == 0:
+                            progress_callback(count, total_files, f"Processed {count}/{total_files} images...")
+
+                except Exception:
+                    pass
+
+        elapsed = time.time() - start_time
+        self._hashes_loaded = True
+
+        logger.info(f"✓ Loaded {count} image hashes in {elapsed:.2f}s")
+
+        if completion_callback:
+            completion_callback(count, elapsed)
 
     def _get_file_hash(self, file_path: str) -> str:
         """Calculate hash of file"""
@@ -1272,6 +1356,10 @@ class FaceDownloader:
 
     def download_face(self) -> Optional[str]:
         """Download a single face image with metadata JSON"""
+        # Lazy-load hashes on first download
+        if not self._hashes_loaded:
+            self._load_existing_hashes()
+
         self.stats.increment_download_attempts()
         download_start = time.time()
 
@@ -1582,18 +1670,30 @@ class FaceProcessor:
         logger.info(f"Found {len(new_files)} new files out of {len(all_face_files)} total files")
         return new_files
 
-    def process_new_faces_only(self, callback=None) -> Dict[str, int]:
-        """Process only new faces (not in database)"""
+    def process_new_faces_only(self, callback=None, progress_callback=None) -> Dict[str, int]:
+        """Process only new faces (not in database)
+
+        Args:
+            callback: Called for each processed face with FaceData
+            progress_callback: Called with (current, total, message) for progress updates
+        """
         new_files = self.get_new_files_only()
+        total_files = len(new_files)
 
         stats = {
-            'total_files': len(new_files),
+            'total_files': total_files,
             'processed': 0,
             'skipped': 0,
             'errors': 0
         }
 
-        for file_path in new_files:
+        logger.info(f"Starting to process {total_files} new files")
+
+        for idx, file_path in enumerate(new_files, 1):
+            # Update progress
+            if progress_callback:
+                progress_callback(idx, total_files, f"Processing {idx}/{total_files}")
+
             if self.process_face_file(file_path, callback=callback):
                 stats['processed'] += 1
             else:
@@ -1602,8 +1702,13 @@ class FaceProcessor:
         logger.info(f"Processed {stats['processed']} new files, {stats['errors']} errors")
         return stats
 
-    def process_all_faces(self, callback=None):
-        """Process all faces in the faces directory"""
+    def process_all_faces(self, callback=None, progress_callback=None):
+        """Process all faces in the faces directory
+
+        Args:
+            callback: Called for each processed face with FaceData
+            progress_callback: Called with (current, total, message) for progress updates
+        """
         face_files = []
         for ext in ['*.jpg', '*.jpeg', '*.png']:
             face_files.extend(Path(self.config.faces_dir).rglob(ext))
@@ -1611,7 +1716,14 @@ class FaceProcessor:
         # Filter out macOS metadata files (._*)
         face_files = [f for f in face_files if not f.name.startswith('._')]
 
-        for file_path in face_files:
+        total_files = len(face_files)
+        logger.info(f"Starting to process {total_files} total files")
+
+        for idx, file_path in enumerate(face_files, 1):
+            # Update progress
+            if progress_callback:
+                progress_callback(idx, total_files, f"Processing {idx}/{total_files}")
+
             # Pass callback to process_face_file - it will call it with FaceData
             self.process_face_file(str(file_path), callback=callback)
 

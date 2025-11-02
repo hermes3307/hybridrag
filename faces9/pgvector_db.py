@@ -78,46 +78,68 @@ class PgVectorDatabaseManager:
         Returns:
             bool: True if successful, False otherwise
         """
+        import time
         try:
+            start_time = time.time()
+            logger.info(f"Attempting to connect to PostgreSQL at {self.db_params.get('host', 'localhost')}:{self.db_params.get('port', 5432)}")
+            logger.info(f"Database: {self.db_params.get('database', 'N/A')}, User: {self.db_params.get('user', 'N/A')}")
+
             # Create connection pool
+            pool_start = time.time()
             self.connection_pool = psycopg2.pool.SimpleConnectionPool(
                 self.min_connections,
                 self.max_connections,
                 **self.db_params
             )
+            logger.info(f"✓ Connection pool created in {time.time() - pool_start:.2f}s")
 
             if self.connection_pool:
-                logger.info("PostgreSQL connection pool created successfully")
-
                 # Test connection and verify pgvector extension
+                logger.info("Testing database connection...")
                 conn = self.connection_pool.getconn()
                 try:
                     cursor = conn.cursor()
 
                     # Check if pgvector extension is available
+                    ext_start = time.time()
                     cursor.execute(
                         "SELECT COUNT(*) FROM pg_extension WHERE extname = 'vector'"
                     )
                     if cursor.fetchone()[0] == 0:
-                        logger.error("pgvector extension not found. Run: CREATE EXTENSION vector;")
+                        logger.error("✗ pgvector extension not found. Run: CREATE EXTENSION vector;")
                         return False
+                    logger.info(f"✓ pgvector extension found ({time.time() - ext_start:.2f}s)")
 
                     # Check if faces table exists
+                    table_start = time.time()
                     cursor.execute(
                         "SELECT COUNT(*) FROM information_schema.tables "
                         "WHERE table_name = 'faces'"
                     )
                     if cursor.fetchone()[0] == 0:
-                        logger.error("faces table not found. Run schema.sql to create it.")
+                        logger.error("✗ faces table not found. Run schema.sql to create it.")
                         return False
+                    logger.info(f"✓ faces table found ({time.time() - table_start:.2f}s)")
 
                     cursor.close()
-                    logger.info("Database initialized successfully")
                     self.initialized = True
 
                     # Check and create indexes for better performance
+                    logger.info("=" * 60)
+                    logger.info("STARTING INDEX VERIFICATION")
+                    logger.info("=" * 60)
+                    logger.info("Checking if database indexes exist and are up-to-date...")
+                    logger.info("This ensures optimal query performance for similarity search")
+                    index_start = time.time()
+
+                    # Call the index verification function
                     self._ensure_indexes()
 
+                    logger.info("=" * 60)
+                    logger.info(f"INDEX VERIFICATION COMPLETED in {time.time() - index_start:.2f}s")
+                    logger.info("=" * 60)
+
+                    logger.info(f"✓ Database initialized successfully (total: {time.time() - start_time:.2f}s)")
                     return True
 
                 finally:
@@ -125,59 +147,135 @@ class PgVectorDatabaseManager:
 
             return False
 
+        except psycopg2.OperationalError as e:
+            logger.error(f"✗ PostgreSQL connection failed: {e}")
+            logger.error("  Please check:")
+            logger.error("  1. PostgreSQL is running (systemctl status postgresql)")
+            logger.error("  2. Connection parameters are correct")
+            logger.error("  3. User has proper permissions")
+            return False
         except Exception as e:
-            logger.error(f"Failed to initialize database: {e}")
+            logger.error(f"✗ Failed to initialize database: {e}")
             return False
 
     def _ensure_indexes(self):
         """Create indexes if they don't exist for optimal performance"""
+        import time
         conn = None
         try:
             conn = self.get_connection()
             cursor = conn.cursor()
 
-            # Check if vector index exists
+            # Get all existing indexes in one query (much faster than multiple checks)
+            logger.info("→ Querying PostgreSQL for existing indexes on 'faces' table...")
+            check_start = time.time()
             cursor.execute("""
-                SELECT COUNT(*) FROM pg_indexes
-                WHERE tablename = 'faces' AND indexname = 'faces_embedding_idx'
+                SELECT indexname, indexdef FROM pg_indexes
+                WHERE tablename = 'faces'
+                ORDER BY indexname
             """)
+            existing_indexes_data = cursor.fetchall()
+            existing_indexes = {row[0] for row in existing_indexes_data}
+            check_time = time.time() - check_start
 
-            if cursor.fetchone()[0] == 0:
-                logger.info("Creating vector index for faster similarity search...")
-                # HNSW is generally faster for queries, IVFFlat is faster for inserts
-                # Using HNSW with m=16, ef_construction=64 for balanced performance
-                cursor.execute("""
-                    CREATE INDEX IF NOT EXISTS faces_embedding_idx
+            logger.info(f"→ Query completed in {check_time:.3f}s")
+            logger.info(f"→ Found {len(existing_indexes)} existing indexes:")
+            logger.info("")
+
+            # Show all existing indexes
+            for idx_name, idx_def in existing_indexes_data:
+                # Shorten the definition for readability
+                short_def = idx_def.replace('public.faces', 'faces')
+                if 'hnsw' in short_def.lower():
+                    idx_type = "[VECTOR-HNSW]"
+                elif 'gin' in short_def.lower():
+                    idx_type = "[JSONB-GIN]"
+                elif 'btree' in short_def.lower():
+                    idx_type = "[BTREE]"
+                else:
+                    idx_type = "[OTHER]"
+                logger.info(f"   {idx_type:15s} {idx_name}")
+
+            logger.info("")
+            logger.info("→ Checking which required indexes are missing...")
+
+            # Define required indexes
+            required_indexes = {
+                'Vector similarity (HNSW)': ['faces_embedding_idx', 'idx_embedding_hnsw_cosine'],
+                'Metadata: sex': ['faces_metadata_sex_idx'],
+                'Metadata: age_group': ['faces_metadata_age_group_idx'],
+                'Embedding model': ['faces_embedding_model_idx', 'idx_embedding_model'],
+                'Timestamp': ['faces_timestamp_idx', 'idx_timestamp']
+            }
+
+            indexes_to_create = []
+
+            # Check vector index
+            if not any(idx in existing_indexes for idx in required_indexes['Vector similarity (HNSW)']):
+                indexes_to_create.append(('faces_embedding_idx', """
+                    CREATE INDEX faces_embedding_idx
                     ON faces USING hnsw (embedding vector_cosine_ops)
                     WITH (m = 16, ef_construction = 64)
-                """)
-                conn.commit()
-                logger.info("Vector index created successfully (HNSW)")
+                """))
+                logger.info("   ✗ Missing: Vector similarity index (HNSW)")
+            else:
+                logger.info("   ✓ Found: Vector similarity index")
 
-            # Create indexes on commonly filtered metadata columns
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS faces_metadata_sex_idx
-                ON faces ((metadata->>'sex'))
-            """)
+            # Check metadata indexes
+            if not any(idx in existing_indexes for idx in required_indexes['Metadata: sex']):
+                indexes_to_create.append(('faces_metadata_sex_idx', """
+                    CREATE INDEX faces_metadata_sex_idx
+                    ON faces ((metadata->>'sex'))
+                """))
+                logger.info("   ✗ Missing: Metadata sex index")
+            else:
+                logger.info("   ✓ Found: Metadata sex index")
 
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS faces_metadata_age_group_idx
-                ON faces ((metadata->>'age_group'))
-            """)
+            if not any(idx in existing_indexes for idx in required_indexes['Metadata: age_group']):
+                indexes_to_create.append(('faces_metadata_age_group_idx', """
+                    CREATE INDEX faces_metadata_age_group_idx
+                    ON faces ((metadata->>'age_group'))
+                """))
+                logger.info("   ✗ Missing: Metadata age_group index")
+            else:
+                logger.info("   ✓ Found: Metadata age_group index")
 
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS faces_embedding_model_idx
-                ON faces (embedding_model)
-            """)
+            if not any(idx in existing_indexes for idx in required_indexes['Embedding model']):
+                indexes_to_create.append(('faces_embedding_model_idx', """
+                    CREATE INDEX faces_embedding_model_idx
+                    ON faces (embedding_model)
+                """))
+                logger.info("   ✗ Missing: Embedding model index")
+            else:
+                logger.info("   ✓ Found: Embedding model index")
 
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS faces_timestamp_idx
-                ON faces (timestamp)
-            """)
+            if not any(idx in existing_indexes for idx in required_indexes['Timestamp']):
+                indexes_to_create.append(('faces_timestamp_idx', """
+                    CREATE INDEX faces_timestamp_idx
+                    ON faces (timestamp)
+                """))
+                logger.info("   ✗ Missing: Timestamp index")
+            else:
+                logger.info("   ✓ Found: Timestamp index")
 
-            conn.commit()
+            logger.info("")
+
+            # Create missing indexes
+            if indexes_to_create:
+                logger.info(f"→ Need to create {len(indexes_to_create)} missing index(es)")
+                logger.info("")
+                for idx_name, idx_sql in indexes_to_create:
+                    create_start = time.time()
+                    logger.info(f"   Creating {idx_name}...")
+                    cursor.execute(idx_sql)
+                    conn.commit()
+                    logger.info(f"   ✓ Created {idx_name} in {time.time() - create_start:.2f}s")
+                logger.info("")
+            else:
+                logger.info("→ ✓ All required indexes already exist - no action needed")
+                logger.info("")
+
             cursor.close()
-            logger.info("Metadata indexes ensured")
 
         except Exception as e:
             logger.warning(f"Could not create indexes: {e}")
