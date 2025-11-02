@@ -72,6 +72,29 @@ def _load_core_modules():
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+class GUILogHandler(logging.Handler):
+    """Custom logging handler that sends logs to the GUI"""
+    def __init__(self, gui_callback):
+        super().__init__()
+        self.gui_callback = gui_callback
+
+    def emit(self, record):
+        """Send log record to GUI"""
+        try:
+            msg = self.format(record)
+            # Extract just the message part (remove timestamp and level)
+            # Format: "2025-11-02 10:59:25,137 - INFO - message"
+            parts = msg.split(' - ', 2)
+            if len(parts) >= 3:
+                message = parts[2]  # Get just the message
+            else:
+                message = msg
+
+            # Call GUI callback with the message
+            self.gui_callback(message)
+        except Exception:
+            self.handleError(record)
+
 class IntegratedFaceGUI:
     """
     Main GUI Application for Face Processing System
@@ -137,6 +160,9 @@ class IntegratedFaceGUI:
 
         # Show a loading message
         self.log_message("Loading system components in background...")
+
+        # Set up logging handler to redirect all Python logger output to GUI
+        self.setup_logging_handler()
 
         # Defer system initialization to run after GUI is shown
         # This makes the window appear much faster
@@ -218,15 +244,25 @@ class IntegratedFaceGUI:
         stats_frame.grid(row=1, column=0, columnspan=2, sticky="ew", padx=5, pady=5)
 
         # Statistics text widget
-        self.stats_text = scrolledtext.ScrolledText(stats_frame, height=15, width=70)
+        self.stats_text = scrolledtext.ScrolledText(stats_frame, height=10, width=70)
         self.stats_text.pack(fill="both", expand=True)
+
+        # System Log frame
+        log_frame = ttk.LabelFrame(self.overview_frame, text="System Log", padding=10)
+        log_frame.grid(row=2, column=0, columnspan=2, sticky="ew", padx=5, pady=5)
+
+        # System log text widget
+        self.overview_log_text = scrolledtext.ScrolledText(log_frame, height=10, width=70)
+        self.overview_log_text.pack(fill="both", expand=True)
 
         # Control buttons
         control_frame = ttk.Frame(self.overview_frame)
-        control_frame.grid(row=2, column=0, columnspan=2, pady=10)
+        control_frame.grid(row=3, column=0, columnspan=2, pady=10)
 
         ttk.Button(control_frame, text="Refresh Status", command=self.refresh_status).pack(side="left", padx=5)
+        ttk.Button(control_frame, text="Check PostgreSQL", command=self.check_postgresql_status).pack(side="left", padx=5)
         ttk.Button(control_frame, text="Reset Statistics", command=self.reset_statistics).pack(side="left", padx=5)
+        ttk.Button(control_frame, text="Clear Log", command=self.clear_overview_log).pack(side="left", padx=5)
         ttk.Button(control_frame, text="Save Configuration", command=self.save_configuration).pack(side="left", padx=5)
 
     def create_download_tab(self):
@@ -296,16 +332,28 @@ class IntegratedFaceGUI:
             self.download_stats_labels[key] = ttk.Label(stats_grid, text="0", font=('TkDefaultFont', 9))
             self.download_stats_labels[key].grid(row=row, column=col+1, sticky="w", padx=(0, 15))
 
+        # Hash Loading Progress Frame
+        self.hash_progress_frame = ttk.LabelFrame(self.download_frame, text="Duplicate Detection Setup", padding=10)
+        self.hash_progress_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=5)
+
+        # Progress bar
+        self.hash_progress_bar = ttk.Progressbar(self.hash_progress_frame, mode='determinate', length=400)
+        self.hash_progress_bar.pack(fill="x", pady=(0, 5))
+
+        # Status label
+        self.hash_progress_label = ttk.Label(self.hash_progress_frame, text="Initializing...", font=('TkDefaultFont', 9))
+        self.hash_progress_label.pack()
+
         # Download status
         status_frame = ttk.LabelFrame(self.download_frame, text="Download Status", padding=10)
-        status_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=5)
+        status_frame.grid(row=3, column=0, sticky="ew", padx=5, pady=5)
 
         self.download_status_text = scrolledtext.ScrolledText(status_frame, height=6, width=70)
         self.download_status_text.pack(fill="both", expand=True)
 
         # Download preview frame - thumbnails with scrolling
         preview_frame = ttk.LabelFrame(self.download_frame, text="Downloaded Images Preview", padding=10)
-        preview_frame.grid(row=3, column=0, sticky="nsew", padx=5, pady=5)
+        preview_frame.grid(row=4, column=0, sticky="nsew", padx=5, pady=5)
         preview_frame.columnconfigure(0, weight=1)
         preview_frame.rowconfigure(0, weight=1)
 
@@ -399,8 +447,13 @@ class IntegratedFaceGUI:
         progress_frame = ttk.LabelFrame(self.process_frame, text="Processing Progress", padding=10)
         progress_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=5)
 
-        self.process_progress = ttk.Progressbar(progress_frame, mode='indeterminate')
-        self.process_progress.pack(fill="x", pady=(0, 10))
+        # Progress bar (determinate - shows actual progress)
+        self.process_progress = ttk.Progressbar(progress_frame, mode='determinate', length=400)
+        self.process_progress.pack(fill="x", pady=(0, 5))
+
+        # Progress label showing X/Y files and percentage
+        self.process_progress_label = ttk.Label(progress_frame, text="Ready to process", font=('TkDefaultFont', 9))
+        self.process_progress_label.pack(pady=(0, 10))
 
         self.process_status_text = scrolledtext.ScrolledText(progress_frame, height=6, width=70)
         self.process_status_text.pack(fill="both", expand=True)
@@ -1072,6 +1125,57 @@ Embedding Models:
             self.root.grid_columnconfigure(i, weight=1)
         self.root.grid_rowconfigure(0, weight=1)
 
+    def _processing_progress(self, current, total, message):
+        """Callback for embedding/processing progress - updates GUI progress bar"""
+        def update_gui():
+            try:
+                if total > 0:
+                    percentage = int((current / total) * 100)
+                    self.process_progress['value'] = percentage
+                    self.process_progress_label['text'] = f"Processing: {current:,}/{total:,} files ({percentage}%)"
+            except Exception as e:
+                print(f"Error updating processing progress: {e}")
+
+        self.root.after(0, update_gui)
+
+    def _hash_loading_progress(self, count, total, message):
+        """Callback for hash loading progress - updates GUI progress bar"""
+        def update_gui():
+            try:
+                if total > 0:
+                    percentage = int((count / total) * 100)
+                    self.hash_progress_bar['value'] = percentage
+                    self.hash_progress_label['text'] = f"Loading: {count:,}/{total:,} images ({percentage}%)"
+            except Exception as e:
+                print(f"Error updating hash progress: {e}")
+
+        self.root.after(0, update_gui)
+
+    def _hash_loading_complete(self, count, elapsed):
+        """Callback when hash loading completes - hide progress bar and show notification"""
+        def update_gui():
+            try:
+                # Update progress to 100%
+                self.hash_progress_bar['value'] = 100
+                self.hash_progress_label['text'] = f"✓ Ready - {count:,} images loaded in {elapsed:.1f}s"
+
+                # Hide progress frame after 3 seconds
+                self.root.after(3000, lambda: self.hash_progress_frame.grid_remove())
+
+                # Log completion
+                self.log_message(f"✓ Duplicate detection ready ({count:,} image hashes loaded)")
+
+                # Show notification popup
+                messagebox.showinfo(
+                    "Duplicate Detection Ready",
+                    f"Successfully loaded {count:,} image hashes in {elapsed:.1f}s\n\n"
+                    f"Duplicate detection is now active for downloads."
+                )
+            except Exception as e:
+                print(f"Error in hash loading complete: {e}")
+
+        self.root.after(0, update_gui)
+
     def initialize_system_deferred(self):
         """Initialize the face processing system in background after UI is shown"""
         def init_worker():
@@ -1080,27 +1184,41 @@ Embedding Models:
                 self.root.after(0, lambda: self.root.title("Face Processing System - Loading..."))
 
                 # Load core modules first (lazy loading)
-                self.root.after(0, lambda: self.log_message("Loading core modules..."))
+                self.root.after(0, lambda: self.log_message("Starting system initialization..."))
+                self.root.after(0, lambda: self.log_message("Loading core modules (this may take a moment)..."))
                 _load_core_modules()
-                self.root.after(0, lambda: self.log_message("Core modules loaded"))
+                self.root.after(0, lambda: self.log_message("✓ Core modules loaded successfully"))
 
                 # Create and initialize system
-                self.root.after(0, lambda: self.log_message("Connecting to database..."))
+                self.root.after(0, lambda: self.log_message("Initializing face processing system..."))
+                self.root.after(0, lambda: self.log_message("Connecting to PostgreSQL database..."))
                 self.system = IntegratedFaceSystem()
+
                 if self.system.initialize():
-                    self.log_message("System initialized successfully")
+                    self.root.after(0, lambda: self.log_message("✓ Database connection established"))
+                    self.root.after(0, lambda: self.log_message("✓ Face processor initialized"))
+                    self.root.after(0, lambda: self.log_message("✓ System initialized successfully"))
                     # Update GUI in main thread
                     self.root.after(0, self.update_configuration_from_system)
+                    self.root.after(0, lambda: self.log_message("Checking embedding models..."))
                     self.root.after(0, self.check_model_mismatch_on_startup)
                     # Restore window title
                     self.root.after(0, lambda: self.root.title("Face Processing System - Ready"))
+                    self.root.after(0, lambda: self.log_message("System is ready for use!"))
+
+                    # Start background hash loading for duplicate detection
+                    self.root.after(0, lambda: self.log_message("Starting background hash loading for duplicate detection..."))
+                    self.system.downloader.start_background_hash_loading(
+                        progress_callback=self._hash_loading_progress,
+                        completion_callback=self._hash_loading_complete
+                    )
                 else:
-                    self.log_message("Failed to initialize system", "error")
+                    self.log_message("✗ Failed to initialize system", "error")
                     self.root.after(0, lambda: self.root.title("Face Processing System - Error"))
                     self.root.after(0, lambda: messagebox.showerror(
                         "Error", "Failed to initialize system. Check dependencies."))
             except Exception as e:
-                self.log_message(f"Error initializing system: {e}", "error")
+                self.log_message(f"✗ Error initializing system: {e}", "error")
                 self.root.after(0, lambda: self.root.title("Face Processing System - Error"))
                 self.root.after(0, lambda: messagebox.showerror(
                     "Error", f"Error initializing system: {e}"))
@@ -1146,10 +1264,53 @@ Embedding Models:
             self.embedding_model_var.set(config.embedding_model)
             self.download_source_var.set(config.download_source)
 
+    def setup_logging_handler(self):
+        """Set up logging handler to redirect all logger output to GUI"""
+        # Create a custom handler that sends logs to GUI
+        gui_handler = GUILogHandler(self._log_from_external)
+        gui_handler.setLevel(logging.INFO)
+        gui_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+
+        # Also keep console handler for terminal output
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
+        console_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+
+        # ONLY add to specific module loggers (not root logger to avoid duplicates)
+        # Don't add to '__main__' to avoid loop with faces.py's log_message()
+        for logger_name in ['pgvector_db', 'core', 'face_processor']:
+            module_logger = logging.getLogger(logger_name)
+            # Check if handler already added
+            if not any(isinstance(h, GUILogHandler) for h in module_logger.handlers):
+                module_logger.addHandler(gui_handler)
+                module_logger.addHandler(console_handler)
+                # Don't propagate to root logger to avoid duplicates
+                module_logger.propagate = False
+
+    def _log_from_external(self, message: str):
+        """Callback for external logger to send messages to GUI (thread-safe)"""
+        # Schedule the GUI update in the main thread
+        self.root.after(0, lambda: self._add_to_gui_log(message))
+
+    def _add_to_gui_log(self, message: str):
+        """Add message to GUI log widgets (must run in main thread)"""
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        formatted_message = f"[{timestamp}] {message}\n"
+
+        # Log to overview log (always show system messages)
+        if hasattr(self, 'overview_log_text'):
+            self.overview_log_text.insert(tk.END, formatted_message)
+            self.overview_log_text.see(tk.END)
+
     def log_message(self, message: str, level: str = "info"):
         """Log message to appropriate text widget"""
         timestamp = datetime.now().strftime("%H:%M:%S")
         formatted_message = f"[{timestamp}] {message}\n"
+
+        # Log to overview log (always show system messages)
+        if hasattr(self, 'overview_log_text'):
+            self.overview_log_text.insert(tk.END, formatted_message)
+            self.overview_log_text.see(tk.END)
 
         # Log to download status if downloading
         if hasattr(self, 'download_status_text'):
@@ -1161,11 +1322,8 @@ Embedding Models:
             self.process_status_text.insert(tk.END, formatted_message)
             self.process_status_text.see(tk.END)
 
-        # Log to logger
-        if level == "error":
-            logger.error(message)
-        else:
-            logger.info(message)
+        # DON'T call logger.info() here to avoid infinite loop
+        # The external modules will log directly via their own loggers
 
     def _bind_main_mousewheel(self):
         """Bind mousewheel scrolling to main canvas"""
@@ -1630,22 +1788,22 @@ Embedding Models:
 
         self.is_processing = True
         self.process_button.config(state="disabled")
-        self.process_progress.start()
+        self.process_progress['value'] = 0
 
         def process_worker():
             try:
                 self.system.processor.process_all_faces(
-                    callback=self.on_face_processed
+                    callback=self.on_face_processed,
+                    progress_callback=self._processing_progress
                 )
                 self.log_message("Processing completed")
+                self.root.after(0, lambda: self.process_progress_label.config(text="✓ Processing completed"))
             except Exception as e:
                 self.log_message(f"Processing error: {e}", "error")
+                self.root.after(0, lambda: self.process_progress_label.config(text=f"✗ Error: {e}"))
             finally:
                 self.is_processing = False
-                self.root.after(0, lambda: [
-                    self.process_button.config(state="normal"),
-                    self.process_progress.stop()
-                ])
+                self.root.after(0, lambda: self.process_button.config(state="normal"))
 
         self.processing_thread = threading.Thread(target=process_worker, daemon=True)
         self.processing_thread.start()
@@ -1687,23 +1845,24 @@ Embedding Models:
 
             self.is_processing = True
             self.process_button.config(state="disabled")
-            self.process_progress.start()
+            self.process_progress['value'] = 0
 
             def process_worker():
                 try:
                     self.log_message(f"Processing {len(new_files)} new files only...")
                     result_stats = self.system.processor.process_new_faces_only(
-                        callback=self.on_face_processed
+                        callback=self.on_face_processed,
+                        progress_callback=self._processing_progress
                     )
                     self.log_message(f"New files processing completed: {result_stats['processed']} processed, {result_stats['errors']} errors")
+                    self.root.after(0, lambda: self.process_progress_label.config(
+                        text=f"✓ Completed: {result_stats['processed']} processed, {result_stats['errors']} errors"))
                 except Exception as e:
                     self.log_message(f"Processing error: {e}", "error")
+                    self.root.after(0, lambda: self.process_progress_label.config(text=f"✗ Error: {e}"))
                 finally:
                     self.is_processing = False
-                    self.root.after(0, lambda: [
-                        self.process_button.config(state="normal"),
-                        self.process_progress.stop()
-                    ])
+                    self.root.after(0, lambda: self.process_button.config(state="normal"))
 
             self.processing_thread = threading.Thread(target=process_worker, daemon=True)
             self.processing_thread.start()
@@ -2127,11 +2286,77 @@ Embedding Models:
         """Refresh system status"""
         self.log_message("Status refreshed")
 
+    def check_postgresql_status(self):
+        """Check PostgreSQL connection and system status"""
+        import subprocess
+
+        self.log_message("=== PostgreSQL System Check ===")
+
+        # Check if PostgreSQL service is running
+        try:
+            result = subprocess.run(['systemctl', 'is-active', 'postgresql'],
+                                  capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                self.log_message("✓ PostgreSQL service is running")
+            else:
+                self.log_message("✗ PostgreSQL service is not running")
+                self.log_message("  Try: sudo systemctl start postgresql")
+        except Exception as e:
+            self.log_message(f"  Could not check service status: {e}")
+
+        # Check database connection if system is initialized
+        if self.system and self.system.db_manager:
+            try:
+                self.log_message("Checking database connection...")
+                conn = self.system.db_manager.get_connection()
+                if conn:
+                    cursor = conn.cursor()
+
+                    # Get PostgreSQL version
+                    cursor.execute("SELECT version()")
+                    version = cursor.fetchone()[0]
+                    self.log_message(f"✓ Connected to: {version.split(',')[0]}")
+
+                    # Check pgvector extension
+                    cursor.execute("SELECT extversion FROM pg_extension WHERE extname = 'vector'")
+                    result = cursor.fetchone()
+                    if result:
+                        self.log_message(f"✓ pgvector extension version: {result[0]}")
+                    else:
+                        self.log_message("✗ pgvector extension not installed")
+
+                    # Check faces table
+                    cursor.execute("SELECT COUNT(*) FROM faces")
+                    count = cursor.fetchone()[0]
+                    self.log_message(f"✓ Faces table contains {count} records")
+
+                    # Check connection pool
+                    cursor.execute("SELECT count(*) FROM pg_stat_activity WHERE datname = current_database()")
+                    connections = cursor.fetchone()[0]
+                    self.log_message(f"✓ Active database connections: {connections}")
+
+                    cursor.close()
+                    self.system.db_manager.return_connection(conn)
+                    self.log_message("✓ Database check completed successfully")
+            except Exception as e:
+                self.log_message(f"✗ Database connection error: {e}", "error")
+                self.log_message("  Check connection parameters in Configuration tab")
+        else:
+            self.log_message("✗ System not initialized yet")
+
+        self.log_message("=== End of PostgreSQL Check ===")
+
     def reset_statistics(self):
         """Reset system statistics"""
         if self.system:
             self.system.stats = type(self.system.stats)()
             self.log_message("Statistics reset")
+
+    def clear_overview_log(self):
+        """Clear the overview system log"""
+        if hasattr(self, 'overview_log_text'):
+            self.overview_log_text.delete(1.0, tk.END)
+            self.log_message("Log cleared")
 
     def save_configuration(self):
         """Save current configuration"""
