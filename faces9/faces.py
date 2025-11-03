@@ -1358,21 +1358,96 @@ Embedding Models:
         frame.bind("<Configure>", on_frame_configure)
 
     def initialize_vector_database(self):
-        """Initialize vector database"""
+        """Initialize vector database - recreate schema from scratch"""
         try:
-            if self.system:
-                # Reinitialize database with current configuration
-                if self.system.db_manager.initialize():
-                    self.log_message(f"PostgreSQL database initialized successfully")
-                    messagebox.showinfo("Success", "PostgreSQL database initialized successfully!")
-                else:
-                    self.log_message("Failed to initialize PostgreSQL database", "error")
-                    messagebox.showerror("Error", "Failed to initialize PostgreSQL database. Check connection and configuration.")
-            else:
+            if not self.system:
                 messagebox.showerror("Error", "System not initialized")
+                return
+
+            # Get current database info
+            db_info = self.system.db_manager.get_collection_info()
+            current_count = db_info.get('count', 0)
+
+            # Show warning dialog
+            warning_message = (
+                "⚠️  WARNING: DESTRUCTIVE OPERATION ⚠️\n\n"
+                "This will completely REINITIALIZE the vector database:\n\n"
+                "• DROP all existing tables\n"
+                "• DELETE all face embeddings\n"
+                "• RECREATE schema from scratch\n"
+                "• CREATE all indexes and functions\n\n"
+                f"Current database contains {current_count} face records.\n\n"
+                "This action CANNOT be undone!\n\n"
+                "Do you want to proceed?"
+            )
+
+            # Ask for confirmation
+            confirmed = messagebox.askyesno(
+                "Confirm Database Reinitialization",
+                warning_message,
+                icon='warning'
+            )
+
+            if not confirmed:
+                self.log_message("Database reinitialization cancelled by user")
+                return
+
+            # Second confirmation for safety
+            final_confirm = messagebox.askyesno(
+                "Final Confirmation",
+                f"Are you ABSOLUTELY SURE you want to delete all {current_count} records?\n\n"
+                "This is your last chance to cancel!",
+                icon='warning'
+            )
+
+            if not final_confirm:
+                self.log_message("Database reinitialization cancelled by user")
+                return
+
+            self.log_message("=" * 70)
+            self.log_message("Starting database reinitialization...")
+            self.log_message("=" * 70)
+
+            # Perform reinitialization
+            if self.system.db_manager.reinitialize_schema():
+                self.log_message("✓ Database schema reinitialized successfully!")
+
+                # Re-initialize the connection
+                if self.system.db_manager.initialize():
+                    self.log_message("✓ Database connection re-established")
+
+                    messagebox.showinfo(
+                        "Success",
+                        "Vector database reinitialized successfully!\n\n"
+                        "The database schema has been recreated with:\n"
+                        "• Empty faces table\n"
+                        "• All indexes created\n"
+                        "• All helper functions available\n\n"
+                        "You can now start processing face images."
+                    )
+                else:
+                    self.log_message("⚠️  Warning: Database reinitialized but connection failed", "warning")
+                    messagebox.showwarning(
+                        "Partial Success",
+                        "Database schema was recreated, but connection verification failed.\n"
+                        "Please check the logs and try reconnecting."
+                    )
+            else:
+                self.log_message("✗ Failed to reinitialize database schema", "error")
+                messagebox.showerror(
+                    "Error",
+                    "Failed to reinitialize database schema.\n\n"
+                    "Please check:\n"
+                    "• PostgreSQL is running\n"
+                    "• Connection parameters are correct\n"
+                    "• User has proper permissions\n"
+                    "• schema.sql file exists\n\n"
+                    "Check the logs for more details."
+                )
+
         except Exception as e:
-            self.log_message(f"Error initializing vector database: {e}", "error")
-            messagebox.showerror("Error", f"Error initializing vector database: {e}")
+            self.log_message(f"✗ Error reinitializing vector database: {e}", "error")
+            messagebox.showerror("Error", f"Error reinitializing vector database:\n\n{e}")
 
     def initialize_download_directory(self):
         """Initialize download directory"""

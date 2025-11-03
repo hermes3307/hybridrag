@@ -1115,6 +1115,109 @@ class PgVectorDatabaseManager:
             if conn:
                 self.return_connection(conn)
 
+    def reinitialize_schema(self) -> bool:
+        """
+        Completely reinitialize the database schema from scratch
+        WARNING: This will DROP all existing data!
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        conn = None
+        try:
+            logger.info("=" * 70)
+            logger.info("REINITIALIZING VECTOR DATABASE SCHEMA")
+            logger.info("=" * 70)
+            logger.info("⚠️  WARNING: This will DROP all existing data!")
+
+            conn = self.get_connection()
+            cursor = conn.cursor()
+
+            # Read and execute schema.sql
+            schema_file = os.path.join(os.path.dirname(__file__), 'schema.sql')
+
+            if not os.path.exists(schema_file):
+                logger.error(f"Schema file not found: {schema_file}")
+                return False
+
+            logger.info(f"→ Reading schema from: {schema_file}")
+
+            with open(schema_file, 'r') as f:
+                schema_sql = f.read()
+
+            logger.info("→ Executing schema SQL...")
+            logger.info("")
+
+            # Execute the schema
+            cursor.execute(schema_sql)
+            conn.commit()
+
+            logger.info("✓ Schema created successfully")
+            logger.info("")
+
+            # Verify the schema was created
+            logger.info("→ Verifying schema creation...")
+
+            # Check if pgvector extension exists
+            cursor.execute(
+                "SELECT COUNT(*) FROM pg_extension WHERE extname = 'vector'"
+            )
+            if cursor.fetchone()[0] == 0:
+                logger.error("✗ pgvector extension not found after schema creation")
+                return False
+            logger.info("  ✓ pgvector extension verified")
+
+            # Check if faces table exists
+            cursor.execute(
+                "SELECT COUNT(*) FROM information_schema.tables "
+                "WHERE table_name = 'faces'"
+            )
+            if cursor.fetchone()[0] == 0:
+                logger.error("✗ faces table not found after schema creation")
+                return False
+            logger.info("  ✓ faces table verified")
+
+            # Check indexes
+            cursor.execute("""
+                SELECT COUNT(*) FROM pg_indexes
+                WHERE tablename = 'faces'
+            """)
+            index_count = cursor.fetchone()[0]
+            logger.info(f"  ✓ {index_count} indexes created")
+
+            # Check functions
+            cursor.execute("""
+                SELECT COUNT(*) FROM pg_proc
+                WHERE proname IN ('search_similar_faces', 'get_database_stats')
+            """)
+            function_count = cursor.fetchone()[0]
+            logger.info(f"  ✓ {function_count} helper functions created")
+
+            cursor.close()
+
+            logger.info("")
+            logger.info("=" * 70)
+            logger.info("✓ DATABASE SCHEMA REINITIALIZED SUCCESSFULLY")
+            logger.info("=" * 70)
+            logger.info("")
+            logger.info("The database is now ready for use with:")
+            logger.info("  • Empty faces table")
+            logger.info("  • All indexes created")
+            logger.info("  • All helper functions available")
+            logger.info("")
+
+            return True
+
+        except Exception as e:
+            logger.error(f"✗ Failed to reinitialize schema: {e}")
+            if conn:
+                conn.rollback()
+            return False
+
+        finally:
+            if conn:
+                self.return_connection(conn)
+
     def close(self):
         """Close all database connections"""
         if self.connection_pool:

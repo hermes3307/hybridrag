@@ -1291,6 +1291,9 @@ class FaceDownloader:
         count = 0
 
         for file_path in Path(self.config.faces_dir).rglob("*.jpg"):
+            # Skip macOS metadata files
+            if file_path.name.startswith('._'):
+                continue
             if file_path.is_file():
                 try:
                     file_hash = self._get_file_hash(str(file_path))
@@ -1316,8 +1319,8 @@ class FaceDownloader:
         start_time = time.time()
         count = 0
 
-        # First, count total files for progress percentage
-        all_files = list(Path(self.config.faces_dir).rglob("*.jpg"))
+        # First, count total files for progress percentage (exclude macOS metadata files)
+        all_files = [f for f in Path(self.config.faces_dir).rglob("*.jpg") if not f.name.startswith('._')]
         total_files = len(all_files)
 
         if progress_callback:
@@ -1782,5 +1785,5 @@ class IntegratedFaceSystem:
             'statistics': stats,
             'config': asdict(self.config),
             'faces_directory': self.config.faces_dir,
-            'faces_count': len(list(Path(self.config.faces_dir).rglob("*.jpg"))) if os.path.exists(self.config.faces_dir) else 0
+            'faces_count': len([f for f in Path(self.config.faces_dir).rglob("*.jpg") if not f.name.startswith('._')]) if os.path.exists(self.config.faces_dir) else 0
         }
