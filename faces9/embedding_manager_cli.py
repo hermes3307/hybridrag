@@ -147,14 +147,15 @@ class EmbeddingManagerCLI:
                 'unmatched_jsons': []
             }
 
-        # Find all image files
+        # Find all image files (exclude macOS metadata files starting with ._ )
         image_extensions = {'.jpg', '.jpeg', '.png'}
         image_files = []
         for ext in image_extensions:
-            image_files.extend(faces_path.glob(f'*{ext}'))
+            # Filter out macOS metadata files (._*)
+            image_files.extend([f for f in faces_path.glob(f'*{ext}') if not f.name.startswith('._')])
 
-        # Find all JSON files
-        json_files = list(faces_path.glob('*.json'))
+        # Find all JSON files (exclude macOS metadata files starting with ._ )
+        json_files = [f for f in faces_path.glob('*.json') if not f.name.startswith('._')]
 
         # Create mapping of base names
         images_by_base = {}
