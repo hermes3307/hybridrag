@@ -4,6 +4,8 @@ chroma_db/
 indexer.log
 batch/
 test_images/
+backup/
+backups/
 vector/ 
 venv/
 .csv
