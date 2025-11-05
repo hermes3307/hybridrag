@@ -25,3 +25,8 @@ collected_news/
 altibase_rag/
 chroma_db/
 .csv
+
+# Backup files
+backups/
+*.sql
+!schema.sql
