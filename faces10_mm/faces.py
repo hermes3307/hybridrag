@@ -111,7 +111,16 @@ class IntegratedFaceGUI:
         """Initialize the GUI application"""
         # Create main window
         self.root = tk.Tk()
-        self.root.title("Face Processing System")
+
+        # Set window title based on system mode
+        mode = os.getenv('SYSTEM_MODE', 'auto')
+        mode_display = {
+            'multimodel': 'Multi-Model',
+            'legacy': 'Legacy',
+            'auto': 'Auto'
+        }.get(mode, mode.capitalize())
+
+        self.root.title(f"Face Processing System - {mode_display} Mode")
         self.root.geometry("1200x800")
 
         # Core system components
@@ -509,25 +518,49 @@ class IntegratedFaceGUI:
         ttk.Button(control_frame, text="Browse", command=self.browse_search_image).grid(row=0, column=2, padx=5)
         ttk.Button(control_frame, text="Take a Picture", command=self.take_picture_search).grid(row=0, column=3, padx=5)
 
+        # Embedding Model Selection for Search
+        ttk.Label(control_frame, text="Embedding Model:").grid(row=1, column=0, sticky="w")
+        self.search_model_var = tk.StringVar(value=os.getenv('DEFAULT_SEARCH_MODEL', 'facenet'))
+
+        # Get available models from environment or use defaults
+        available_models = os.getenv('EMBEDDING_MODELS', 'facenet,arcface,statistical').split(',')
+        available_models = [m.strip() for m in available_models]
+
+        search_model_combo = ttk.Combobox(control_frame, textvariable=self.search_model_var,
+                                         values=available_models, width=15, state="readonly")
+        search_model_combo.grid(row=1, column=1, sticky="w", padx=(5, 0))
+
+        # Model info label
+        self.search_model_info = ttk.Label(control_frame, text="", foreground="blue", font=('TkDefaultFont', 8))
+        self.search_model_info.grid(row=1, column=2, columnspan=2, sticky="w", padx=(10, 0))
+
+        # Update info when model changes
+        def on_search_model_change(*args):
+            model = self.search_model_var.get()
+            self.search_model_info.config(text=f"Searching with {model} embeddings")
+
+        self.search_model_var.trace('w', on_search_model_change)
+        on_search_model_change()  # Initialize
+
         # Number of results
-        ttk.Label(control_frame, text="Number of Results:").grid(row=1, column=0, sticky="w")
+        ttk.Label(control_frame, text="Number of Results:").grid(row=2, column=0, sticky="w")
         self.num_results_var = tk.IntVar(value=10)
         results_spin = ttk.Spinbox(control_frame, from_=1, to=50, increment=1,
                                   textvariable=self.num_results_var, width=10)
-        results_spin.grid(row=1, column=1, sticky="w", padx=(5, 0))
+        results_spin.grid(row=2, column=1, sticky="w", padx=(5, 0))
 
         # Search mode selection
-        ttk.Label(control_frame, text="Search Mode:").grid(row=2, column=0, sticky="w")
+        ttk.Label(control_frame, text="Search Mode:").grid(row=3, column=0, sticky="w")
         self.search_mode_var = tk.StringVar(value="vector")
         mode_frame = ttk.Frame(control_frame)
-        mode_frame.grid(row=2, column=1, sticky="w", padx=(5, 0))
+        mode_frame.grid(row=3, column=1, sticky="w", padx=(5, 0))
         ttk.Radiobutton(mode_frame, text="Vector (Image)", variable=self.search_mode_var, value="vector").pack(side="left", padx=5)
         ttk.Radiobutton(mode_frame, text="Metadata", variable=self.search_mode_var, value="metadata").pack(side="left", padx=5)
         ttk.Radiobutton(mode_frame, text="Hybrid", variable=self.search_mode_var, value="hybrid").pack(side="left", padx=5)
 
         # Metadata filter frame
         metadata_frame = ttk.LabelFrame(control_frame, text="Metadata Filters (Optional)", padding=5)
-        metadata_frame.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(10, 0))
+        metadata_frame.grid(row=4, column=0, columnspan=4, sticky="ew", pady=(10, 0))
 
         # Column 1 - Demographics
         demo_label = ttk.Label(metadata_frame, text="Demographics", font=('TkDefaultFont', 9, 'bold'))
@@ -598,7 +631,7 @@ class IntegratedFaceGUI:
         face_combo.grid(row=3, column=3, sticky="w", padx=(5, 0))
 
         # Search button
-        ttk.Button(control_frame, text="Search Faces", command=self.search_faces).grid(row=4, column=0, columnspan=3, pady=10)
+        ttk.Button(control_frame, text="Search Faces", command=self.search_faces).grid(row=5, column=0, columnspan=4, pady=10)
 
         # Query image preview frame (right side) - spans both rows
         query_preview_frame = ttk.LabelFrame(self.search_frame, text="Query Image Preview", padding=10)
@@ -2048,29 +2081,39 @@ Embedding Models:
             messagebox.showerror("Error", "System not initialized")
             return
 
+        # Get selected search model
+        search_model = self.search_model_var.get() if hasattr(self, 'search_model_var') else self.system.config.embedding_model
+
         # Check for model mismatch before searching
-        mismatch_info = self.system.db_manager.check_embedding_model_mismatch(
-            self.system.config.embedding_model
-        )
+        mismatch_info = self.system.db_manager.check_embedding_model_mismatch(search_model)
 
+        # In multi-model schema, mismatch is expected, so just log it
+        # In legacy schema, warn if there's a mismatch
         if mismatch_info['has_mismatch'] and mismatch_info['total_count'] > 0:
-            warning = (
-                f"⚠️ CANNOT SEARCH - MODEL MISMATCH!\n\n"
-                f"Current model: {mismatch_info['current_model']}\n"
-                f"Database contains embeddings from different models:\n"
-            )
-            for model, count in mismatch_info['models_found'].items():
-                warning += f"  • {model}: {count} embeddings\n"
+            # Only block search in legacy mode (single-model schema)
+            system_mode = os.getenv('SYSTEM_MODE', 'auto')
+            if system_mode == 'legacy':
+                warning = (
+                    f"⚠️ CANNOT SEARCH - MODEL MISMATCH!\n\n"
+                    f"Current model: {mismatch_info['current_model']}\n"
+                    f"Database contains embeddings from different models:\n"
+                )
+                for model, count in mismatch_info['models_found'].items():
+                    warning += f"  • {model}: {count} embeddings\n"
 
-            warning += (
-                f"\nSearching with mismatched models produces INCORRECT results.\n\n"
-                f"Please click 'Re-embed All Data' button in Configuration tab\n"
-                f"to update all embeddings with '{mismatch_info['current_model']}' model."
-            )
+                warning += (
+                    f"\nSearching with mismatched models produces INCORRECT results.\n\n"
+                    f"Please click 'Re-embed All Data' button in Configuration tab\n"
+                    f"to update all embeddings with '{search_model}' model."
+                )
 
-            messagebox.showerror("Model Mismatch - Cannot Search", warning)
-            self.log_message("Search blocked due to model mismatch", "error")
-            return
+                messagebox.showerror("Model Mismatch - Cannot Search", warning)
+                self.log_message("Search blocked due to model mismatch", "error")
+                return
+            else:
+                # In multi-model mode, just log available models
+                self.log_message(f"Available models in database: {', '.join(mismatch_info['models_found'].keys())}")
+                self.log_message(f"Searching with selected model: {search_model}")
 
         search_mode = self.search_mode_var.get()
 
@@ -2094,21 +2137,29 @@ Embedding Models:
                     messagebox.showerror("Error", "Please select a valid image file for vector/hybrid search")
                     return
 
-                # Create embedding for search image using configured model
+                # Get the selected embedding model for search
+                search_model = self.search_model_var.get()
+                self.log_message(f"Using embedding model: {search_model}")
+
+                # Create embedding for search image using selected model
                 analyzer = FaceAnalyzer()
-                embedder = FaceEmbedder(model_name=self.system.config.embedding_model)
+                embedder = FaceEmbedder(model_name=search_model)
 
                 features = analyzer.analyze_face(image_path)
                 embedding = embedder.create_embedding(image_path, features)
 
                 if search_mode == "hybrid" and metadata_filter:
                     # Hybrid search - vector + metadata
-                    results = self.system.db_manager.hybrid_search(embedding, metadata_filter, self.num_results_var.get())
-                    self.log_message(f"Hybrid search with filters: {metadata_filter}")
+                    results = self.system.db_manager.hybrid_search(
+                        embedding, metadata_filter, self.num_results_var.get(), embedding_model=search_model
+                    )
+                    self.log_message(f"Hybrid search with model '{search_model}' and filters: {metadata_filter}")
                 else:
-                    # Vector-only search
-                    results = self.system.db_manager.search_faces(embedding, self.num_results_var.get())
-                    self.log_message("Vector similarity search")
+                    # Vector-only search with specified model
+                    results = self.system.db_manager.search_faces(
+                        embedding, self.num_results_var.get(), embedding_model=search_model
+                    )
+                    self.log_message(f"Vector similarity search using '{search_model}' model")
 
             else:
                 messagebox.showerror("Error", f"Unknown search mode: {search_mode}")
@@ -2768,7 +2819,38 @@ def main():
     - Processing and embedding faces
     - Searching for similar faces
     - Managing system configuration
+
+    Command-line arguments:
+    --mode [multimodel|legacy|auto]  : Set operating mode
     """
+    import argparse
+
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description='Face Processing System GUI')
+    parser.add_argument('--mode',
+                       choices=['multimodel', 'legacy', 'auto'],
+                       default='auto',
+                       help='Operating mode: multimodel (multiple embedding models), '
+                            'legacy (single embedding model), auto (detect from environment)')
+
+    args = parser.parse_args()
+
+    # Set environment variable for mode (can be read by backend)
+    os.environ['SYSTEM_MODE'] = args.mode
+
+    # Log the mode
+    logger.info(f"Starting Face Processing System in {args.mode} mode")
+
+    if args.mode == 'multimodel':
+        logger.info("Multi-Model Mode: Supporting multiple embedding models simultaneously")
+        os.environ['USE_MULTIMODEL_SCHEMA'] = 'true'
+    elif args.mode == 'legacy':
+        logger.info("Legacy Mode: Single embedding model for backward compatibility")
+        os.environ['USE_LEGACY_SCHEMA'] = 'true'
+    else:
+        logger.info("Auto Mode: Detecting schema from database")
+
+    # Create and run the GUI application
     app = IntegratedFaceGUI()
     app.run()
 

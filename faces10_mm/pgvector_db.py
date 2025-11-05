@@ -638,7 +638,7 @@ class PgVectorDatabaseManager:
                 self.return_connection(conn)
 
     def hybrid_search(self, query_embedding: List[float], metadata_filter: Dict[str, Any],
-                     n_results: int = 10) -> List[Dict[str, Any]]:
+                     n_results: int = 10, embedding_model: str = 'facenet') -> List[Dict[str, Any]]:
         """
         Hybrid search combining vector similarity and metadata filtering
         (Compatibility method - just calls search_faces with metadata_filter)
@@ -647,11 +647,12 @@ class PgVectorDatabaseManager:
             query_embedding: Query embedding vector
             metadata_filter: Metadata filters
             n_results: Number of results to return
+            embedding_model: Model to use for search (facenet, arcface, vggface2, insightface, statistical)
 
         Returns:
             List of matching faces with distances
         """
-        return self.search_faces(query_embedding, n_results, metadata_filter)
+        return self.search_faces(query_embedding, n_results, metadata_filter, embedding_model=embedding_model)
 
     def search_by_metadata(self, metadata_filter: Dict[str, Any],
                           n_results: int = 10) -> List[Dict[str, Any]]:
@@ -825,37 +826,73 @@ class PgVectorDatabaseManager:
             conn = self.get_connection()
             cursor = conn.cursor()
 
-            # Get count of each embedding model
+            # Check if this is a multi-model schema or legacy schema
+            # Multi-model has multiple embedding_* columns, legacy has single embedding_model column
             cursor.execute("""
-                SELECT embedding_model, COUNT(*) as count
-                FROM faces
-                WHERE embedding_model IS NOT NULL
-                GROUP BY embedding_model
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name='faces' AND column_name='embedding_model'
             """)
+            has_legacy_column = cursor.fetchone() is not None
 
-            results = cursor.fetchall()
+            if has_legacy_column:
+                # Legacy schema: check embedding_model column
+                cursor.execute("""
+                    SELECT embedding_model, COUNT(*) as count
+                    FROM faces
+                    WHERE embedding_model IS NOT NULL
+                    GROUP BY embedding_model
+                """)
+
+                results = cursor.fetchall()
+
+                # Build model counts dictionary
+                model_counts = {}
+                total = 0
+                for row in results:
+                    model_name = row[0]
+                    count = row[1]
+                    model_counts[model_name] = count
+                    total += count
+
+                # Check for mismatch
+                has_mismatch = False
+                if current_model not in model_counts:
+                    # Current model not in database at all
+                    has_mismatch = len(model_counts) > 0
+                elif len(model_counts) > 1:
+                    # Multiple models in database
+                    has_mismatch = True
+                elif model_counts.get(current_model, 0) != total:
+                    # Some entries don't have current model
+                    has_mismatch = True
+
+            else:
+                # Multi-model schema: check models_processed array
+                cursor.execute("""
+                    SELECT DISTINCT unnest(models_processed) as model, COUNT(*) as count
+                    FROM faces
+                    WHERE models_processed IS NOT NULL AND array_length(models_processed, 1) > 0
+                    GROUP BY model
+                """)
+
+                results = cursor.fetchall()
+
+                # Build model counts dictionary
+                model_counts = {}
+                total = 0
+                for row in results:
+                    model_name = row[0]
+                    count = row[1]
+                    model_counts[model_name] = count
+                    # Note: total is sum of all model embeddings, not unique faces
+                    total += count
+
+                # For multi-model schema, mismatch is not really applicable
+                # since multiple models are expected. Return info but no mismatch.
+                has_mismatch = False
+
             cursor.close()
-
-            # Build model counts dictionary
-            model_counts = {}
-            total = 0
-            for row in results:
-                model_name = row[0]
-                count = row[1]
-                model_counts[model_name] = count
-                total += count
-
-            # Check for mismatch
-            has_mismatch = False
-            if current_model not in model_counts:
-                # Current model not in database at all
-                has_mismatch = len(model_counts) > 0
-            elif len(model_counts) > 1:
-                # Multiple models in database
-                has_mismatch = True
-            elif model_counts.get(current_model, 0) != total:
-                # Some entries don't have current model
-                has_mismatch = True
 
             return {
                 'has_mismatch': has_mismatch,
