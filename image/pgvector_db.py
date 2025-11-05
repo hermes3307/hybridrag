@@ -63,19 +63,19 @@ class PgVectorDatabaseManager:
             logger.error(f"Error checking hash: {e}")
             return False
 
-    def add_image(self, image_data, embedding_model):
+    def add_image(self, image_data):
+        """Add image metadata (without embeddings)"""
         try:
             with self.conn.cursor() as cursor:
                 cursor.execute(
-                    """INSERT INTO images (image_id, file_path, timestamp, image_hash, embedding_model, embedding, metadata)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                    """INSERT INTO images (image_id, file_path, timestamp, image_hash, metadata)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (image_id) DO NOTHING""",
                     (
                         image_data.image_id,
                         image_data.file_path,
                         image_data.timestamp,
                         image_data.image_hash,
-                        embedding_model,
-                        image_data.embedding,
                         psycopg2.extras.Json(image_data.features)
                     )
                 )
@@ -86,31 +86,100 @@ class PgVectorDatabaseManager:
             self.conn.rollback()
             return False
 
-    def search_images(self, embedding, limit):
+    def add_embedding(self, image_id, model_name, embedding):
+        """Add an embedding for an image"""
+        try:
+            # Determine embedding dimension and which column to use
+            embedding_dim = len(embedding)
+
+            if embedding_dim == 512:
+                column_name = 'embedding_512'
+            elif embedding_dim == 1024:
+                column_name = 'embedding_1024'
+            else:
+                # Pad or truncate to 512
+                if embedding_dim < 512:
+                    embedding = embedding + [0.0] * (512 - embedding_dim)
+                else:
+                    embedding = embedding[:512]
+                column_name = 'embedding_512'
+                embedding_dim = 512
+
+            with self.conn.cursor() as cursor:
+                cursor.execute(
+                    f"""INSERT INTO image_embeddings (image_id, embedding_model, embedding_dimension, {column_name})
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (image_id, embedding_model)
+                    DO UPDATE SET {column_name} = EXCLUDED.{column_name}, embedding_dimension = EXCLUDED.embedding_dimension""",
+                    (image_id, model_name, embedding_dim, embedding)
+                )
+            self.conn.commit()
+            return True
+        except psycopg2.Error as e:
+            logger.error(f"Error adding embedding: {e}")
+            self.conn.rollback()
+            return False
+
+    def search_images(self, embedding, model_name, limit=10):
+        """Search for similar images using a specific model"""
         try:
             with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
-                cursor.execute("SELECT * FROM search_similar_images(%s, %s)", (embedding, limit))
+                cursor.execute(
+                    "SELECT * FROM search_similar_images(%s, %s, %s)",
+                    (embedding, model_name, limit)
+                )
                 return cursor.fetchall()
         except psycopg2.Error as e:
             logger.error(f"Error searching images: {e}")
             return []
 
-    def mixed_search(self, clip_embedding, yolo_embedding, action_embedding, limit):
+    def multi_embedding_search(self, clip_emb, yolo_emb, resnet_emb, limit=10,
+                               clip_weight=0.5, yolo_weight=0.25, resnet_weight=0.25):
+        """Search using multiple embeddings with weighted fusion"""
+        try:
+            with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                cursor.execute(
+                    """SELECT * FROM search_multi_embedding(%s, %s, %s, %s, %s, %s, %s)""",
+                    (clip_emb, yolo_emb, resnet_emb, clip_weight, yolo_weight, resnet_weight, limit)
+                )
+                return cursor.fetchall()
+        except psycopg2.Error as e:
+            logger.error(f"Error in multi-embedding search: {e}")
+            return []
+
+    def text_to_image_search(self, text_query, limit=10):
+        """Search images using text query via CLIP"""
+        try:
+            # Generate CLIP text embedding
+            from transformers import CLIPProcessor, CLIPModel
+            import torch
+
+            model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
+            processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+
+            inputs = processor(text=[text_query], return_tensors="pt", padding=True)
+            with torch.no_grad():
+                text_features = model.get_text_features(**inputs)
+            text_embedding = text_features.cpu().numpy().flatten().tolist()
+
+            # Search using CLIP model
+            return self.search_images(text_embedding, 'clip', limit)
+        except Exception as e:
+            logger.error(f"Error in text-to-image search: {e}")
+            return []
+
+    def check_embedding_model_mismatch(self):
+        """Check if there are embedding model mismatches in database"""
         try:
             with self.conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 cursor.execute("""
-                    SELECT
-                        i.image_id,
-                        i.file_path,
-                        i.metadata,
-                        (i.embedding <-> %s) * 0.33 + (i.embedding <-> %s) * 0.33 + (i.embedding <-> %s) * 0.33 AS distance
-                    FROM images i
-                    WHERE i.embedding_model = 'clip' OR i.embedding_model = 'yolo' OR i.embedding_model = 'action'
-                    ORDER BY distance
-                    LIMIT %s
-                """, (clip_embedding, yolo_embedding, action_embedding, limit))
-                return cursor.fetchall()
-        except psycopg2.Error as e:
-            logger.error(f"Error in mixed search: {e}")
-            return []
+                    SELECT embedding_model, COUNT(*) as count
+                    FROM image_embeddings
+                    GROUP BY embedding_model
+                """)
+                results = cursor.fetchall()
+                return {row['embedding_model']: row['count'] for row in results}
+        except Exception as e:
+            logger.error(f"Error checking model mismatch: {e}")
+            return {}
 

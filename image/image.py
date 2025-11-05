@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-Face Processing GUI Application
+Image Processing GUI Application
 
-A comprehensive graphical interface for face image processing including:
-- Face image downloading from AI generation services
-- Face detection and analysis
+A comprehensive graphical interface for image processing including:
+- Image downloading from AI generation services
+- Image analysis
 - Vector embedding generation
 - Similarity search and metadata filtering
 
 This application provides a complete workflow for building and querying
-a face recognition database using PostgreSQL with pgvector and various embedding models.
+an image recognition database using PostgreSQL with pgvector and various embedding models.
 """
 
 import tkinter as tk
@@ -111,11 +111,11 @@ class IntegratedImageGUI:
         """Initialize the GUI application"""
         # Create main window
         self.root = tk.Tk()
-        self.root.title("Face Processing System")
+        self.root.title("Image Processing System")
         self.root.geometry("1200x800")
 
         # Core system components
-        self.system = None  # IntegratedFaceSystem instance
+        self.system = None  # IntegratedImageSystem instance
         self.download_thread = None  # Background download thread
         self.processing_thread = None  # Background processing thread
 
@@ -181,9 +181,9 @@ class IntegratedImageGUI:
 
         Creates a tabbed interface with five main tabs:
         - System Overview: Monitor status and statistics
-        - Download Faces: Acquire face images
+        - Download Images: Acquire image data
         - Process & Embed: Generate vector embeddings
-        - Search Faces: Query the database
+        - Search Images: Query the database
         - Configuration: System settings
         """
         # Main notebook for tabs
@@ -266,7 +266,7 @@ class IntegratedImageGUI:
         ttk.Button(control_frame, text="Save Configuration", command=self.save_configuration).pack(side="left", padx=5)
 
     def create_download_tab(self):
-        """Create download faces tab"""
+        """Create download images tab"""
 
         # Configure grid weights for proper resizing
         self.download_frame.columnconfigure(0, weight=1)
@@ -279,7 +279,7 @@ class IntegratedImageGUI:
         # Download settings
         ttk.Label(control_frame, text="Download Source:").grid(row=0, column=0, sticky="w")
         self.download_source_var = tk.StringVar(value="thispersondoesnotexist")
-        source_options = ["thispersondoesnotexist", "100k-faces"]
+        source_options = ["thispersondoesnotexist"]
         source_combo = ttk.Combobox(control_frame, textvariable=self.download_source_var,
                                    values=source_options, width=25, state="readonly")
         source_combo.grid(row=0, column=1, sticky="w", padx=(5, 0))
@@ -709,29 +709,13 @@ Embedding Models:
 
     def setup_layout(self):
         """Setup the main layout"""
-        self.notebook.pack(fill="both", expand=True, padx=10, pady=10)
-
-    def create_system_menu(self):
-        """Create the main system menu."""
-        menubar = tk.Menu(self.root)
-        self.root.config(menu=menubar)
-
-        system_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="System", menu=system_menu)
-
-        system_menu.add_command(label="Validate and Fix Metadata", command=self.validate_metadata_files)
-        system_menu.add_separator()
-        system_menu.add_command(label="Exit", command=self.root.quit)
-
-    def validate_metadata_files(self):
-        """Validate and fix metadata JSON files."""
         if not self.system:
             messagebox.showerror("Error", "System not initialized")
             return
 
-        faces_dir = self.faces_dir_var.get()
-        if not os.path.isdir(faces_dir):
-            messagebox.showerror("Error", f"Faces directory not found: {faces_dir}")
+        images_dir = self.images_dir_var.get()
+        if not os.path.isdir(images_dir):
+            messagebox.showerror("Error", f"Images directory not found: {images_dir}")
             return
 
         self.log_message("Starting metadata validation...")
@@ -741,10 +725,10 @@ Embedding Models:
 
     def _run_metadata_validation(self):
         """The actual validation logic running in a background thread."""
-        faces_dir = self.faces_dir_var.get()
+        images_dir = self.images_dir_var.get()
         image_files = []
         for ext in ['*.jpg', '*.jpeg', '*.png']:
-            image_files.extend(Path(faces_dir).rglob(ext))
+            image_files.extend(Path(images_dir).rglob(ext))
 
         missing_json = []
         invalid_json = []
@@ -916,7 +900,7 @@ Embedding Models:
             messagebox.showerror("Error", "System not initialized")
             return
 
-        faces_dir = self.faces_dir_var.get()
+        faces_dir = self.images_dir_var.get()
         if not os.path.isdir(faces_dir):
             messagebox.showerror("Error", f"Faces directory not found: {faces_dir}")
             return
@@ -928,7 +912,7 @@ Embedding Models:
 
     def _run_metadata_validation(self):
         """The actual validation logic running in a background thread."""
-        faces_dir = self.faces_dir_var.get()
+        faces_dir = self.images_dir_var.get()
         image_files = []
         for ext in ['*.jpg', '*.jpeg', '*.png']:
             image_files.extend(Path(faces_dir).rglob(ext))
@@ -1230,7 +1214,7 @@ Embedding Models:
 
         # ONLY add to specific module loggers (not root logger to avoid duplicates)
         # Don't add to '__main__' to avoid loop with faces.py's log_message()
-        for logger_name in ['pgvector_images', 'core', 'face_processor']:
+        for logger_name in ['pgvector_images', 'core', 'image_processor']:
             module_logger = logging.getLogger(logger_name)
             # Check if handler already added
             if not any(isinstance(h, GUILogHandler) for h in module_logger.handlers):
@@ -1325,10 +1309,10 @@ Embedding Models:
                 "⚠️  WARNING: DESTRUCTIVE OPERATION ⚠️\n\n"
                 "This will completely REINITIALIZE the vector database:\n\n"
                 "• DROP all existing tables\n"
-                "• DELETE all face embeddings\n"
+                "• DELETE all image embeddings\n"
                 "• RECREATE schema from scratch\n"
                 "• CREATE all indexes and functions\n\n"
-                f"Current database contains {current_count} face records.\n\n"
+                f"Current database contains {current_count} image records.\n\n"
                 "This action CANNOT be undone!\n\n"
                 "Do you want to proceed?"
             )
@@ -1372,10 +1356,10 @@ Embedding Models:
                         "Success",
                         "Vector database reinitialized successfully!\n\n"
                         "The database schema has been recreated with:\n"
-                        "• Empty faces table\n"
+                        "• Empty images table\n"
                         "• All indexes created\n"
                         "• All helper functions available\n\n"
-                        "You can now start processing face images."
+                        "You can now start processing image data."
                     )
                 else:
                     self.log_message("⚠️  Warning: Database reinitialized but connection failed", "warning")
@@ -1405,15 +1389,15 @@ Embedding Models:
         """Initialize download directory"""
         try:
             # Get directory path from GUI
-            download_dir = self.faces_dir_var.get()
+            download_dir = self.images_dir_var.get()
 
             # Create directory if it doesn't exist
             os.makedirs(download_dir, exist_ok=True)
 
             # Update system config if system exists
             if self.system:
-                self.system.config.faces_dir = download_dir
-                self.system.downloader.config.faces_dir = download_dir
+                self.system.config.images_dir = download_dir
+                self.system.downloader.config.images_dir = download_dir
 
             # Count existing files
             existing_files = []
@@ -1451,7 +1435,7 @@ Embedding Models:
                     stats = status.get('statistics', {})
 
                     self.status_labels['db_status'].config(text="Connected" if db_info else "Disconnected")
-                    self.status_labels['total_faces'].config(text=str(db_info.get('count', 0)))
+                    self.status_labels['total_images'].config(text=str(db_info.get('count', 0)))
                     self.status_labels['download_rate'].config(text=f"{stats.get('download_rate', 0):.2f}/sec")
                     self.status_labels['process_rate'].config(text=f"{stats.get('embed_rate', 0):.2f}/sec")
                     self.status_labels['uptime'].config(text=f"{stats.get('elapsed_time', 0):.0f}s")
@@ -1515,15 +1499,15 @@ Embedding Models:
         try:
             # Update configuration
             self.system.config.download_delay = self.download_delay_var.get()
-            self.system.config.faces_dir = self.faces_dir_var.get()
+            self.system.config.images_dir = self.images_dir_var.get()
             self.system.config.download_source = self.download_source_var.get()
 
             # Create faces directory
-            os.makedirs(self.system.config.faces_dir, exist_ok=True)
+            os.makedirs(self.system.config.images_dir, exist_ok=True)
 
             # Start download
             self.download_thread = self.system.downloader.start_download_loop(
-                callback=self.on_face_downloaded
+                callback=self.on_image_downloaded
             )
 
             self.is_downloading = True
@@ -1543,17 +1527,17 @@ Embedding Models:
         self.log_message("Download stopped")
 
     def download_single(self):
-        """Download a single face"""
+        """Download a single image"""
         if not self.system:
             messagebox.showerror("Error", "System not initialized")
             return
 
         try:
-            file_path = self.system.downloader.download_face()
+            file_path = self.system.downloader.download_image()
             if file_path:
                 self.log_message(f"Downloaded: {os.path.basename(file_path)}")
             else:
-                self.log_message("No new face downloaded (duplicate or error)")
+                self.log_message("No new image downloaded (duplicate or error)")
         except Exception as e:
             self.log_message(f"Download error: {e}", "error")
 
@@ -1613,7 +1597,7 @@ Embedding Models:
                 # Generate filename
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
                 filename = f"camera_capture_{timestamp}.jpg"
-                file_path = os.path.join(self.system.config.faces_dir, filename)
+                file_path = os.path.join(self.system.config.images_dir, filename)
 
                 # Save image
                 cv2.imwrite(file_path, captured_frame)
@@ -1679,7 +1663,7 @@ Embedding Models:
             # Save captured image if available
             if captured_frame is not None:
                 # Create temp directory if it doesn't exist
-                temp_dir = os.path.join(self.system.config.faces_dir, "temp")
+                temp_dir = os.path.join(self.system.config.images_dir, "temp")
                 os.makedirs(temp_dir, exist_ok=True)
 
                 # Generate filename
@@ -1697,18 +1681,18 @@ Embedding Models:
                 # Update query preview
                 self.update_query_preview(file_path)
 
-                messagebox.showinfo("Success", f"Picture captured for search!\n\nYou can now click 'Search Faces' to find similar faces.")
+                messagebox.showinfo("Success", f"Picture captured for search!\n\nYou can now click 'Search Images' to find similar images.")
 
         except Exception as e:
             self.log_message(f"Camera capture error: {e}", "error")
             messagebox.showerror("Error", f"Failed to capture picture: {e}")
 
-    def on_face_downloaded(self, file_path: str):
-        """Callback when a face is downloaded"""
+    def on_image_downloaded(self, file_path: str):
+        """Callback when an image is downloaded"""
         # Use root.after to schedule GUI updates on the main thread
-        self.root.after(0, lambda: self._update_download_ui(file_path))
+        self.root.after(0, lambda: self._update_download_image_ui(file_path))
 
-    def _update_download_ui(self, file_path: str):
+    def _update_download_image_ui(self, file_path: str):
         """Update download UI on main thread"""
         self.log_message(f"Downloaded: {os.path.basename(file_path)}")
         # Add thumbnail to preview
@@ -1766,39 +1750,39 @@ Embedding Models:
             logger.error(f"Error adding download thumbnail: {e}")
 
     # ============================================================================
-    # FACE PROCESSING METHODS
+    # IMAGE PROCESSING METHODS
     # ============================================================================
 
     def start_processing(self):
-        """Start processing all faces"""
+        """Start processing all images"""
         if not self.system:
             messagebox.showerror("Error", "System not initialized")
             return
-
+    
         if self.is_processing:
             messagebox.showwarning("Warning", "Processing already in progress")
             return
-
+    
         # Get file counts
         try:
             from pathlib import Path
             all_files = []
             for ext in ['*.jpg', '*.jpeg', '*.png']:
-                all_files.extend(Path(self.system.config.faces_dir).rglob(ext))
-
+                all_files.extend(Path(self.system.config.images_dir).rglob(ext))
+    
             new_files = self.system.processor.get_new_files_only()
             existing_count = len(all_files) - len(new_files)
-
+    
             if len(all_files) == 0:
                 messagebox.showinfo("No Files",
-                    "No image files found in the faces directory!\n\n"
-                    f"Directory: {self.system.config.faces_dir}")
+                    "No image files found in the images directory!\n\n"
+                    f"Directory: {self.system.config.images_dir}")
                 return
-
+    
             # Show confirmation with details
             response = messagebox.askokcancel(
-                "Process All Faces",
-                f"Process ALL faces in directory:\n\n"
+                "Process All Images",
+                f"Process ALL images in directory:\n\n"
                 f"Total files: {len(all_files)}\n"
                 f"  • New files: {len(new_files)} (will be processed)\n"
                 f"  • Already in DB: {existing_count} (will be skipped)\n\n"
@@ -1806,21 +1790,21 @@ Embedding Models:
                 f"Duplicates will be automatically skipped.\n\n"
                 f"Continue?"
             )
-
+    
             if not response:
                 return
-
+    
         except Exception as e:
             self.log_message(f"Error checking files: {e}", "error")
-
+    
         self.is_processing = True
         self.process_button.config(state="disabled")
         self.process_progress['value'] = 0
-
+    
         def process_worker():
             try:
-                self.system.processor.process_all_faces(
-                    callback=self.on_face_processed,
+                self.system.processor.process_all_images(
+                    callback=self.on_image_processed,
                     progress_callback=self._processing_progress
                 )
                 self.log_message("Processing completed")
@@ -1831,54 +1815,54 @@ Embedding Models:
             finally:
                 self.is_processing = False
                 self.root.after(0, lambda: self.process_button.config(state="normal"))
-
+    
         self.processing_thread = threading.Thread(target=process_worker, daemon=True)
         self.processing_thread.start()
-
+    
     def process_new_images(self):
-        """Process only new faces (not in database)"""
+        """Process only new images (not in database)"""
         if not self.system:
             messagebox.showerror("Error", "System not initialized")
             return
-
+    
         if self.is_processing:
             messagebox.showwarning("Warning", "Processing already in progress")
             return
-
+    
         # Get count of new files first
         try:
             new_files = self.system.processor.get_new_files_only()
-
+    
             if len(new_files) == 0:
                 messagebox.showinfo("No New Files",
-                    "All files in the faces directory have already been processed!\n\n"
-                    "No new faces to embed.")
+                    "All files in the images directory have already been processed!\n\n"
+                    "No new images to embed.")
                 return
-
+    
             # Ask for confirmation
             response = messagebox.askokcancel(
                 "Process New Files Only",
                 f"Found {len(new_files)} NEW files that haven't been processed yet.\n\n"
                 f"These files will be:\n"
-                f"1. Analyzed for facial features\n"
+                f"1. Analyzed for image features\n"
                 f"2. Embedded using '{self.system.config.embedding_model}' model\n"
                 f"3. Added to the database\n\n"
                 f"Already processed files will be skipped.\n\n"
                 f"Continue?"
             )
-
+    
             if not response:
                 return
-
+    
             self.is_processing = True
             self.process_button.config(state="disabled")
             self.process_progress['value'] = 0
-
+    
             def process_worker():
                 try:
                     self.log_message(f"Processing {len(new_files)} new files only...")
-                    result_stats = self.system.processor.process_new_faces_only(
-                        callback=self.on_face_processed,
+                    result_stats = self.system.processor.process_new_images_only(
+                        callback=self.on_image_processed,
                         progress_callback=self._processing_progress
                     )
                     self.log_message(f"New files processing completed: {result_stats['processed']} processed, {result_stats['errors']} errors")
@@ -1890,55 +1874,54 @@ Embedding Models:
                 finally:
                     self.is_processing = False
                     self.root.after(0, lambda: self.process_button.config(state="normal"))
-
+    
             self.processing_thread = threading.Thread(target=process_worker, daemon=True)
             self.processing_thread.start()
-
+    
         except Exception as e:
             self.log_message(f"Error checking new files: {e}", "error")
             messagebox.showerror("Error", f"Failed to check for new files: {e}")
-
+    
     def stop_processing(self):
         """Stop processing"""
         self.is_processing = False
         self.process_button.config(state="normal")
         self.process_progress.stop()
         self.log_message("Processing stopped")
-
-    def on_face_processed(self, face_data):
-        """Callback when a face is processed"""
+    
+    def on_image_processed(self, image_data):
+        """Callback when an image is processed"""
         # Use root.after to schedule GUI updates on the main thread
-        self.root.after(0, lambda: self._update_process_ui(face_data))
-
-    def _update_process_ui(self, face_data):
+        self.root.after(0, lambda: self._update_process_image_ui(image_data))
+    
+    def _update_process_image_ui(self, image_data):
         """Update process UI on main thread"""
         # Display detailed file information
-        file_path = face_data.file_path
+        file_path = image_data.file_path
         filename = os.path.basename(file_path)
-        features = face_data.features
-
+        features = image_data.features
+    
         # Format detailed log message
         log_msg = f"✅ Processed: {filename}\n"
         log_msg += f"   📁 Size: {features.get('size_bytes', 0) / 1024:.1f} KB\n"
         log_msg += f"   📐 Dimensions: {features.get('width', 'N/A')}x{features.get('height', 'N/A')}\n"
         log_msg += f"   🎨 Format: {features.get('format', 'N/A')}\n"
-
+    
         if 'brightness' in features:
             log_msg += f"   💡 Brightness: {features.get('brightness', 0):.1f}\n"
         if 'contrast' in features:
             log_msg += f"   🔆 Contrast: {features.get('contrast', 0):.1f}\n"
         if 'faces_detected' in features:
             log_msg += f"   👤 Faces Detected: {features.get('faces_detected', 0)}\n"
-
-        log_msg += f"   🔑 Hash: {face_data.image_hash[:12]}...\n"
-        log_msg += f"   🧬 Embedding: {len(face_data.embedding)} dimensions\n"
+    
+        log_msg += f"   🔑 Hash: {image_data.image_hash[:12]}...\n"
+        log_msg += f"   🧬 Embedding: {len(image_data.embedding)} dimensions\n"
         log_msg += "   " + "-" * 60 + "\n"
-
+    
         self.log_message(log_msg)
-
+    
         # Add thumbnail to preview
         self.add_process_thumbnail(file_path)
-
     def add_process_thumbnail(self, file_path: str):
         """Add thumbnail to processing preview"""
         try:
@@ -2395,7 +2378,7 @@ Embedding Models:
         try:
             if self.system:
                 # Update system configuration from GUI
-                self.system.config.faces_dir = self.faces_dir_var.get()
+                self.system.config.images_dir = self.images_dir_var.get()
 
                 # Save PostgreSQL settings
                 self.system.config.db_host = self.pg_host_var.get()
@@ -2419,7 +2402,7 @@ Embedding Models:
 
                 save_summary = (
                     f"Configuration saved to: {config_file}\n\n"
-                    f"Faces Directory: {self.system.config.faces_dir}\n"
+                    f"Faces Directory: {self.system.config.images_dir}\n"
                     f"Database: {db_info}\n"
                     f"Embedding Model: {self.system.config.embedding_model}\n"
                     f"Download Source: {self.system.config.download_source}\n"
@@ -2623,7 +2606,7 @@ Embedding Models:
                 f"RE-EMBED ALL DATA\n\n"
                 f"This will:\n"
                 f"1. Clear all {count} existing embeddings from database\n"
-                f"2. Re-process all face images in {self.system.config.faces_dir}\n"
+                f"2. Re-process all face images in {self.system.config.images_dir}\n"
                 f"3. Create new embeddings using: {current_model}\n\n"
                 f"This operation cannot be undone and may take several minutes.\n\n"
                 f"Continue?"

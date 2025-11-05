@@ -40,6 +40,10 @@ from dataclasses import dataclass, asdict
 import shutil
 from pathlib import Path
 
+# Load environment variables
+from dotenv import load_dotenv
+load_dotenv()
+
 # ============================================================================
 # DEPENDENCY CHECKS
 # ============================================================================
@@ -82,6 +86,14 @@ def check_embedding_models():
     except Exception:
         models_status['action'] = False
 
+    # ResNet
+    try:
+        import torch
+        import torchvision
+        models_status['resnet'] = True
+    except Exception:
+        models_status['resnet'] = False
+
     # Statistical (always available)
     models_status['statistical'] = True
 
@@ -115,21 +127,21 @@ class ImageData:
 @dataclass
 class SystemConfig:
     """Configuration for the entire system"""
-    images_dir: str = "./images"
+    images_dir: str = os.getenv("IMAGES_DIR", "./images")
 
     # PostgreSQL + pgvector settings
-    db_host: str = "localhost"
-    db_port: int = 5432
-    db_name: str = "vector_db"
-    db_user: str = "postgres"
-    db_password: str = "postgres"
+    db_host: str = os.getenv("DB_HOST", "localhost")
+    db_port: int = int(os.getenv("DB_PORT", "5432"))
+    db_name: str = os.getenv("DB_NAME", "image_vector")
+    db_user: str = os.getenv("DB_USER", "pi")
+    db_password: str = os.getenv("DB_PASSWORD", "")
 
     # Application settings
-    download_delay: float = 1.0
+    download_delay: float = float(os.getenv("DOWNLOAD_DELAY", "1.0"))
     max_workers: int = 2
     batch_size: int = 50
-    embedding_model: str = "statistical"  # Options: statistical, clip, yolo, action
-    download_source: str = "thispersondoesnotexist"  # Options: thispersondoesnotexist, fakeface, randomface
+    embedding_model: str = os.getenv("EMBEDDING_MODEL", "statistical")  # Options: statistical, clip, yolo, action
+    download_source: str = os.getenv("DOWNLOAD_SOURCE", "picsum_landscape")  # Options: see ImageDownloader.DOWNLOAD_SOURCES
     config_file: str = "system_config.json"
 
     @classmethod
@@ -292,18 +304,18 @@ class SystemStats:
             self.session_start_time = time.time()
 
 # ============================================================================
-# FACE ANALYSIS
+# IMAGE ANALYSIS
 # ============================================================================
 
 class ImageAnalyzer:
     """
-    Face Image Analysis Engine
+    Image Analysis Engine
 
-    Analyzes face images to extract:
+    Analyzes images to extract:
     - Basic image properties (dimensions, format, size)
     - Color analysis (brightness, contrast, saturation)
-    - Face detection using Haar cascades
-    - Demographic estimation (age, sex, skin tone, hair color)
+    - Quality metrics (sharpness, noise, edge density)
+    - Advanced features using OpenCV when available
 
     Uses OpenCV when available for advanced analysis,
     falls back to PIL/numpy for basic analysis.
@@ -631,6 +643,8 @@ class ImageEmbedder:
     - Statistical: Basic statistical features (always available)
     - CLIP: For image and text similarity
     - YOLO: For object detection
+    - ResNet: For deep visual features
+    - Action: For action recognition
 
     Automatically falls back to statistical model if specified model unavailable.
     """
@@ -652,6 +666,8 @@ class ImageEmbedder:
                 self._init_yolo()
             elif self.model_name == "action":
                 self._init_action()
+            elif self.model_name == "resnet":
+                self._init_resnet()
             elif self.model_name == "statistical":
                 self.embedding_size = 512
                 logger.info("Using statistical embedding (default)")
@@ -683,18 +699,22 @@ class ImageEmbedder:
         """Initialize YOLO model"""
         try:
             import torch
+            from ultralytics import YOLO
 
-            self.model = torch.hub.load('ultralytics/yolov5', 'yolov5s', pretrained=True)
+            # Use ultralytics YOLO instead of torch.hub
+            self.model = YOLO('yolov8n.pt')  # YOLOv8 nano model
             self.embedding_size = 80 # For bag of objects, this will be the number of classes in COCO
             self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-            self.model = self.model.to(self.device)
-            logger.info("YOLOv5 model initialized successfully")
+            logger.info("YOLOv8 model initialized successfully")
         except ImportError:
             raise ImportError("YOLO requires: pip install torch torchvision ultralytics")
+        except Exception as e:
+            raise ImportError(f"YOLO initialization failed: {e}")
 
     def _init_action(self):
         """Initialize Action model"""
         try:
+            import torch
             from transformers import AutoImageProcessor, SiglipForImageClassification
 
             self.model = SiglipForImageClassification.from_pretrained("prithivMLmods/Human-Action-Recognition")
@@ -705,6 +725,34 @@ class ImageEmbedder:
             logger.info("Action model initialized successfully")
         except ImportError:
             raise ImportError("Action model requires: pip install torch transformers")
+
+    def _init_resnet(self):
+        """Initialize ResNet model"""
+        try:
+            import torch
+            import torchvision.models as models
+            from torchvision import transforms
+
+            # Use ResNet50 pretrained on ImageNet
+            self.model = models.resnet50(pretrained=True)
+            # Remove the final classification layer to get features
+            self.model = torch.nn.Sequential(*list(self.model.children())[:-1])
+            self.model.eval()
+            self.embedding_size = 2048  # ResNet50 produces 2048-dim features
+            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            self.model = self.model.to(self.device)
+
+            # Define preprocessing transforms
+            self.transform = transforms.Compose([
+                transforms.Resize(256),
+                transforms.CenterCrop(224),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            ])
+
+            logger.info("ResNet50 model initialized successfully")
+        except ImportError:
+            raise ImportError("ResNet requires: pip install torch torchvision")
 
 
 
@@ -718,6 +766,8 @@ class ImageEmbedder:
                 return self._embed_yolo(image_path)
             elif self.model_name == "action":
                 return self._embed_action(image_path)
+            elif self.model_name == "resnet":
+                return self._embed_resnet(image_path)
             else:
                 # Statistical embedding (default)
                 image = Image.open(image_path)
@@ -769,19 +819,51 @@ class ImageEmbedder:
     def _embed_yolo(self, image_path: str) -> List[float]:
         """Create embedding using YOLO"""
         try:
-            from PIL import Image
-            import torch
+            # Run YOLO inference
+            results = self.model(image_path, verbose=False)
 
-            img = Image.open(image_path)
-            results = self.model(img)
             # Create a bag-of-objects embedding
             embedding = [0.0] * self.embedding_size
-            if results.pred[0] is not None:
-                for *xyxy, conf, cls in results.pred[0]:
-                    embedding[int(cls)] += 1
+
+            # Extract detected objects
+            if len(results) > 0 and results[0].boxes is not None:
+                boxes = results[0].boxes
+                for box in boxes:
+                    cls_id = int(box.cls[0])
+                    if cls_id < self.embedding_size:
+                        embedding[cls_id] += 1
+
             return embedding
         except Exception as e:
             logger.error(f"YOLO embedding error: {e}")
+            return [0.0] * self.embedding_size
+
+    def _embed_resnet(self, image_path: str) -> List[float]:
+        """Create embedding using ResNet"""
+        try:
+            from PIL import Image
+            import torch
+
+            # Load and preprocess image
+            image = Image.open(image_path).convert('RGB')
+            img_tensor = self.transform(image).unsqueeze(0)
+            img_tensor = img_tensor.to(self.device)
+
+            # Extract features
+            with torch.no_grad():
+                features = self.model(img_tensor)
+
+            # Flatten and convert to list
+            embedding = features.squeeze().cpu().numpy().flatten().tolist()
+
+            # Normalize to 512 dimensions via pooling for consistency with other models
+            if len(embedding) == 2048:
+                # Average pool to 512 dimensions
+                embedding = [sum(embedding[i:i+4])/4 for i in range(0, 2048, 4)]
+
+            return embedding
+        except Exception as e:
+            logger.error(f"ResNet embedding error: {e}")
             return [0.0] * self.embedding_size
 
 
@@ -861,35 +943,58 @@ class ImageEmbedder:
         return embedding
 
 # ============================================================================
-# FACE IMAGE DOWNLOADING
+# AI IMAGE DOWNLOADING
 # ============================================================================
 
 class ImageDownloader:
     """
     AI-Generated Image Downloader
 
-    Downloads images from AI generation services:
-    - ThisPersonDoesNotExist.com (high quality 1024x1024)
-    - 100K Faces API (generated.photos dataset)
+    Downloads diverse AI-generated images from multiple sources:
+    - Faces: ThisPersonDoesNotExist, 100K Faces
+    - Artwork: ThisArtworkDoesNotExist
+    - Animals: ThisCatDoesNotExist, ThisHorseDoesNotExist
+    - Mixed: UnrealPerson
 
     Features:
     - Automatic duplicate detection via MD5 hashing
     - Comprehensive metadata generation and storage
     - Configurable download delays
     - Background download loop support
+    - Support for diverse image categories (not just faces)
     """
 
-    # Available download sources
+    # Available download sources - diverse real and AI-generated images
     DOWNLOAD_SOURCES = {
-        'thispersondoesnotexist': {
-            'name': 'ThisPersonDoesNotExist.com',
-            'url': 'https://thispersondoesnotexist.com/',
-            'description': 'High quality AI-generated faces (1024x1024)',
+        'picsum_general': {
+            'name': 'Picsum Photos - General',
+            'url': 'https://picsum.photos/1024/768',
+            'description': 'Random high-quality photos from Unsplash (general)',
+            'category': 'general'
         },
-        '100k-faces': {
-            'name': '100K AI Faces',
-            'url': 'https://100k-faces.vercel.app/api/random-image',
-            'description': '100K AI-generated faces from generated.photos',
+        'picsum_landscape': {
+            'name': 'Picsum Photos - Landscape',
+            'url': 'https://picsum.photos/1920/1080',
+            'description': 'Random high-quality landscape format photos',
+            'category': 'landscape'
+        },
+        'picsum_square': {
+            'name': 'Picsum Photos - Square',
+            'url': 'https://picsum.photos/1024/1024',
+            'description': 'Random high-quality square photos',
+            'category': 'general'
+        },
+        'picsum_portrait': {
+            'name': 'Picsum Photos - Portrait',
+            'url': 'https://picsum.photos/768/1024',
+            'description': 'Random high-quality portrait format photos',
+            'category': 'general'
+        },
+        'picsum_hd': {
+            'name': 'Picsum Photos - HD',
+            'url': 'https://picsum.photos/2560/1440',
+            'description': 'Random high-quality HD photos',
+            'category': 'landscape'
         }
     }
 
@@ -1025,13 +1130,13 @@ class ImageDownloader:
             download_time = datetime.now()
             source = self.config.download_source
 
-            if source == 'thispersondoesnotexist':
-                response = self._download_from_thispersondoesnotexist()
-            elif source == '100k-faces':
-                response = self._download_from_100k_faces()
+            # Get source info
+            if source in self.DOWNLOAD_SOURCES:
+                source_url = self.DOWNLOAD_SOURCES[source]['url']
+                response = self._download_from_generic_source(source_url)
             else:
-                logger.warning(f"Unknown download source: {source}, using default")
-                response = self._download_from_thispersondoesnotexist()
+                logger.warning(f"Unknown download source: {source}, using default (picsum_general)")
+                response = self._download_from_generic_source(self.DOWNLOAD_SOURCES['picsum_general']['url'])
 
             if response is None:
                 self.stats.increment_download_errors()
@@ -1076,7 +1181,9 @@ class ImageDownloader:
                     # Download info
                     'download_timestamp': download_time.isoformat(),
                     'download_date': download_time.strftime("%Y-%m-%d %H:%M:%S"),
-                    'source_url': "https://thispersondoesnotexist.com/",
+                    'source': self.config.download_source,
+                    'source_url': self.DOWNLOAD_SOURCES.get(self.config.download_source, {}).get('url', 'unknown'),
+                    'source_category': self.DOWNLOAD_SOURCES.get(self.config.download_source, {}).get('category', 'unknown'),
                     'http_status_code': response.status_code,
 
                     # File properties
@@ -1092,22 +1199,17 @@ class ImageDownloader:
                         'dimensions': f"{image_width}x{image_height}"
                     },
 
-                    # Face features from analyzer (IMPORTANT FOR QUERYING)
-                    'face_features': features,
+                    # Image features from analyzer (IMPORTANT FOR QUERYING)
+                    'image_features': features,
 
                     # Queryable attributes extracted from features
                     'queryable_attributes': {
                         'brightness_level': 'bright' if features.get('brightness', 0) > 150 else 'dark',
                         'image_quality': 'high' if features.get('contrast', 0) > 50 else 'medium',
-                        'has_face': features.get('faces_detected', 0) > 0,
-                        'face_count': features.get('faces_detected', 0),
-                        # Demographic attributes
-                        'sex': features.get('estimated_sex', 'unknown'),
-                        'age_group': features.get('age_group', 'unknown'),
-                        'estimated_age': features.get('estimated_age', 'unknown'),
-                        'skin_tone': features.get('skin_tone', 'unknown'),
-                        'skin_color': features.get('skin_color', 'unknown'),
-                        'hair_color': features.get('hair_color', 'unknown')
+                        'sharpness_level': features.get('sharpness_level', 'unknown'),
+                        'color_diversity': features.get('color_diversity', 0),
+                        'aspect_ratio': features.get('aspect_ratio', 1.0),
+                        'megapixels': features.get('megapixels', 0)
                     },
 
                     # HTTP headers for debugging
@@ -1121,7 +1223,7 @@ class ImageDownloader:
                 }
 
                 # Save metadata JSON alongside image
-                json_filename = f"face_{timestamp}_{image_hash[:8]}.json"
+                json_filename = f"image_{timestamp}_{image_hash[:8]}.json"
                 json_path = os.path.join(self.config.images_dir, json_filename)
 
                 with open(json_path, 'w') as json_file:
@@ -1146,34 +1248,18 @@ class ImageDownloader:
             logger.error(f"Download error: {e}")
             return None
 
-    def _download_from_thispersondoesnotexist(self) -> Optional[requests.Response]:
-        """Download from thispersondoesnotexist.com"""
+    def _download_from_generic_source(self, url: str) -> Optional[requests.Response]:
+        """Download from a generic AI image generation source"""
         try:
             response = requests.get(
-                "https://thispersondoesnotexist.com/",
+                url,
                 headers={'User-Agent': 'Mozilla/5.0'},
                 timeout=30
             )
             response.raise_for_status()
             return response
         except Exception as e:
-            logger.error(f"Error downloading from thispersondoesnotexist: {e}")
-            return None
-
-    def _download_from_100k_faces(self) -> Optional[requests.Response]:
-        """Download from 100k-faces.vercel.app API"""
-        try:
-            # This API redirects to a random face image
-            response = requests.get(
-                "https://100k-faces.vercel.app/api/random-image",
-                headers={'User-Agent': 'Mozilla/5.0'},
-                timeout=30,
-                allow_redirects=True
-            )
-            response.raise_for_status()
-            return response
-        except Exception as e:
-            logger.error(f"Error downloading from 100k-faces: {e}")
+            logger.error(f"Error downloading from {url}: {e}")
             return None
 
     def _json_numpy_fallback(self, obj):
@@ -1206,7 +1292,7 @@ class ImageDownloader:
         self.running = False
 
 # ============================================================================
-# FACE PROCESSING
+# IMAGE PROCESSING
 # ============================================================================
 
 class ImageProcessor:
@@ -1228,8 +1314,27 @@ class ImageProcessor:
         self.stats = stats
         self.db_manager = db_manager
         self.analyzer = ImageAnalyzer()
-        self.embedder = ImageEmbedder(model_name=config.embedding_model)
+
+        # Initialize multiple embedders for comprehensive feature extraction
+        self.embedders = {}
+        self.embedders['clip'] = ImageEmbedder(model_name='clip') if AVAILABLE_MODELS.get('clip') else None
+        self.embedders['yolo'] = ImageEmbedder(model_name='yolo') if AVAILABLE_MODELS.get('yolo') else None
+        self.embedders['resnet'] = ImageEmbedder(model_name='resnet') if AVAILABLE_MODELS.get('resnet') else None
+        self.embedders['statistical'] = ImageEmbedder(model_name='statistical')  # Always available
+
+        # Filter out None embedders
+        self.embedders = {k: v for k, v in self.embedders.items() if v is not None}
+        logger.info(f"Initialized embedders: {list(self.embedders.keys())}")
+
         self.processed_files = set()
+
+    def _get_file_hash(self, file_path: str) -> str:
+        """Calculate MD5 hash of file"""
+        try:
+            with open(file_path, 'rb') as f:
+                return hashlib.md5(f.read()).hexdigest()
+        except Exception:
+            return ""
 
     def get_new_files_only(self) -> List[str]:
         """Get list of files that are NOT in the database yet"""
@@ -1289,6 +1394,84 @@ class ImageProcessor:
 
         logger.info(f"Processed {stats['processed']} new files, {stats['errors']} errors")
         return stats
+
+    def process_image_file(self, file_path: str, callback=None) -> bool:
+        """Process a single image file and store its embeddings
+
+        Args:
+            file_path: Path to image file
+            callback: Optional callback function to call with ImageData
+
+        Returns:
+            True if processing was successful, False otherwise
+        """
+        start_time = time.time()
+        self.stats.increment_embed_processed()
+
+        try:
+            # Check if already in database
+            file_hash = self._get_file_hash(file_path)
+            if self.db_manager.hash_exists(file_hash):
+                self.stats.increment_embed_duplicates()
+                logger.debug(f"Image already in database: {file_path}")
+                return False
+
+            # Analyze image
+            features = self.analyzer.analyze_image(file_path)
+            if 'error' in features:
+                logger.error(f"Failed to analyze image {file_path}: {features['error']}")
+                self.stats.increment_embed_errors()
+                return False
+
+            # Generate embeddings using all available models
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
+            image_id = f"img_{timestamp}_{file_hash[:8]}"
+
+            # First, add the image record (without embeddings)
+            image_data = ImageData(
+                image_id=image_id,
+                file_path=file_path,
+                features=features,
+                embedding=None,  # No single embedding anymore
+                timestamp=datetime.now().isoformat(),
+                image_hash=file_hash
+            )
+
+            # Add image to database
+            if not self.db_manager.add_image(image_data):
+                logger.error(f"Failed to add image to database: {file_path}")
+                self.stats.increment_embed_errors()
+                return False
+
+            # Generate and store embeddings for each model
+            for model_name, embedder in self.embedders.items():
+                try:
+                    embedding = embedder.create_embedding(file_path, features)
+                    if embedding and any(v != 0.0 for v in embedding):
+                        # Store embedding
+                        if not self.db_manager.add_embedding(image_id, model_name, embedding):
+                            logger.warning(f"Failed to store {model_name} embedding for {file_path}")
+                except Exception as e:
+                    logger.error(f"Error creating {model_name} embedding for {file_path}: {e}")
+
+            # Track as processed
+            self.processed_files.add(file_path)
+
+            # Calculate time and update stats
+            elapsed_time = time.time() - start_time
+            self.stats.increment_embed_success(elapsed_time)
+            logger.info(f"Processed {file_path} in {elapsed_time:.2f}s with {len(self.embedders)} embeddings")
+
+            # Call callback if provided
+            if callback:
+                callback(image_data)
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Error processing {file_path}: {e}")
+            self.stats.increment_embed_errors()
+            return False
 
     def process_all_images(self, callback=None, progress_callback=None):
         """Process all images in the images directory
