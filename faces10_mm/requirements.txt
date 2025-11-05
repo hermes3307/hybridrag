@@ -1,0 +1,48 @@
+# System Dependencies (install via apt-get):
+# - python3-tk (for GUI support)
+# - python3-pil.imagetk (for PIL/Tkinter image integration)
+# - python3-pip (for package management)
+#
+# Install system dependencies:
+#   sudo apt-get install -y python3-tk python3-pil.imagetk python3-pip
+
+# Python Package Dependencies
+numpy<2.0.0  # Required for older models compatibility
+Pillow>=9.0.0
+requests>=2.25.0
+opencv-python>=4.5.0
+scikit-learn>=1.0.0  # For statistical model
+scipy>=1.7.0  # For statistical features
+
+# Deep Learning Frameworks
+torch>=2.0.0
+torchvision>=0.15.0
+tensorflow>=2.16.0  # Required for DeepFace and VGGFace2
+tf-keras>=2.16.0  # Required for TensorFlow 2.16+
+
+# Face Recognition Models
+facenet-pytorch>=2.5.0  # FaceNet model
+insightface>=0.7.0  # InsightFace and ArcFace models
+deepface>=0.0.75  # VGGFace2, OpenFace, and other models
+onnxruntime>=1.15.0  # Required by InsightFace
+
+# PostgreSQL and pgvector support
+psycopg2-binary>=2.9.0
+python-dotenv>=0.19.0
+
+# Additional dependencies for face detection
+mtcnn>=0.1.1  # MTCNN face detector (used by FaceNet)
+retina-face>=0.0.13  # RetinaFace detector (used by InsightFace)
+
+# Utilities
+tqdm>=4.60.0  # Progress bars
+gdown>=4.0.0  # Google Drive downloads (for model weights)
+
+# Note: If you get "externally-managed-environment" error, use:
+# pip3 install --break-system-packages -r requirements.txt
+#
+# Installation order for best compatibility:
+# 1. pip install numpy<2.0.0
+# 2. pip install torch torchvision
+# 3. pip install tensorflow tf-keras
+# 4. pip install -r requirements.txt
