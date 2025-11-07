@@ -258,7 +258,7 @@ class IntegratedImageGUI:
         stats_frame.grid(row=1, column=0, columnspan=2, sticky="ew", padx=5, pady=5)
 
         # Statistics text widget
-        self.stats_text = scrolledtext.ScrolledText(stats_frame, height=4, width=70)
+        self.stats_text = scrolledtext.ScrolledText(stats_frame, height=10, width=70)
         self.stats_text.pack(fill="both", expand=True)
 
 
@@ -353,7 +353,7 @@ class IntegratedImageGUI:
         preview_frame.rowconfigure(0, weight=1)
 
         # Create canvas with both horizontal and vertical scrollbars
-        self.download_canvas = tk.Canvas(preview_frame, height=90)
+        self.download_canvas = tk.Canvas(preview_frame, height=135)
         download_h_scrollbar = ttk.Scrollbar(preview_frame, orient="horizontal", command=self.download_canvas.xview)
         download_v_scrollbar = ttk.Scrollbar(preview_frame, orient="vertical", command=self.download_canvas.yview)
         self.download_thumbnails_frame = ttk.Frame(self.download_canvas)
@@ -454,7 +454,7 @@ class IntegratedImageGUI:
         process_preview_frame.rowconfigure(0, weight=1)
 
         # Create canvas with both horizontal and vertical scrollbars
-        self.process_canvas = tk.Canvas(process_preview_frame, height=90)
+        self.process_canvas = tk.Canvas(process_preview_frame, height=135)
         process_h_scrollbar = ttk.Scrollbar(process_preview_frame, orient="horizontal", command=self.process_canvas.xview)
         process_v_scrollbar = ttk.Scrollbar(process_preview_frame, orient="vertical", command=self.process_canvas.yview)
         self.process_thumbnails_frame = ttk.Frame(self.process_canvas)
@@ -589,7 +589,7 @@ class IntegratedImageGUI:
         self.results_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
 
         # Results display
-        self.results_canvas = tk.Canvas(self.results_frame, height=90)
+        self.results_canvas = tk.Canvas(self.results_frame, height=108)
         self.results_scrollbar = ttk.Scrollbar(self.results_frame, orient="vertical", command=self.results_canvas.yview)
         self.results_frame_inner = ttk.Frame(self.results_canvas)
 
@@ -652,17 +652,9 @@ class IntegratedImageGUI:
         self.model_warning_label = ttk.Label(embedding_frame, text="", foreground="red", font=('TkDefaultFont', 9, 'bold'))
         self.model_warning_label.grid(row=1, column=0, columnspan=3, sticky="w", pady=(5, 0))
 
-
-
-        # System config frame
-        system_frame = ttk.LabelFrame(self.config_frame, text="System Configuration", padding=10)
-        system_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=5)
-
-
-
         # Config buttons
         button_frame = ttk.Frame(self.config_frame)
-        button_frame.grid(row=4, column=0, pady=10)
+        button_frame.grid(row=2, column=0, pady=10)
 
         ttk.Button(button_frame, text="Initialize Vector Database", command=self.initialize_vector_database).pack(side="left", padx=5)
         ttk.Button(button_frame, text="Check Dependencies", command=self.check_dependencies).pack(side="left", padx=5)
