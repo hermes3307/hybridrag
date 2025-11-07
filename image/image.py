@@ -258,7 +258,7 @@ class IntegratedImageGUI:
         stats_frame.grid(row=1, column=0, columnspan=2, sticky="ew", padx=5, pady=5)
 
         # Statistics text widget
-        self.stats_text = scrolledtext.ScrolledText(stats_frame, height=6, width=70)
+        self.stats_text = scrolledtext.ScrolledText(stats_frame, height=4, width=70)
         self.stats_text.pack(fill="both", expand=True)
 
 
@@ -353,7 +353,7 @@ class IntegratedImageGUI:
         preview_frame.rowconfigure(0, weight=1)
 
         # Create canvas with both horizontal and vertical scrollbars
-        self.download_canvas = tk.Canvas(preview_frame, height=60)
+        self.download_canvas = tk.Canvas(preview_frame, height=30)
         download_h_scrollbar = ttk.Scrollbar(preview_frame, orient="horizontal", command=self.download_canvas.xview)
         download_v_scrollbar = ttk.Scrollbar(preview_frame, orient="vertical", command=self.download_canvas.yview)
         self.download_thumbnails_frame = ttk.Frame(self.download_canvas)
@@ -454,7 +454,7 @@ class IntegratedImageGUI:
         process_preview_frame.rowconfigure(0, weight=1)
 
         # Create canvas with both horizontal and vertical scrollbars
-        self.process_canvas = tk.Canvas(process_preview_frame, height=60)
+        self.process_canvas = tk.Canvas(process_preview_frame, height=30)
         process_h_scrollbar = ttk.Scrollbar(process_preview_frame, orient="horizontal", command=self.process_canvas.xview)
         process_v_scrollbar = ttk.Scrollbar(process_preview_frame, orient="vertical", command=self.process_canvas.yview)
         self.process_thumbnails_frame = ttk.Frame(self.process_canvas)
@@ -589,7 +589,7 @@ class IntegratedImageGUI:
         self.results_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
 
         # Results display
-        self.results_canvas = tk.Canvas(self.results_frame, height=60)
+        self.results_canvas = tk.Canvas(self.results_frame, height=30)
         self.results_scrollbar = ttk.Scrollbar(self.results_frame, orient="vertical", command=self.results_canvas.yview)
         self.results_frame_inner = ttk.Frame(self.results_canvas)
 
@@ -2172,25 +2172,8 @@ class IntegratedImageGUI:
             self.comparison_preview_label.config(image=photo, text='')
             self.comparison_preview_photo = photo  # Keep reference
 
-            # Update info label with result details
-            distance = result.get('distance', 0.0)
-            distance_str = "N/A" if distance == 0.0 else f"{distance:.4f}"
-            metadata = result['metadata']
-            info_text = (
-                f"Result #{result_number}\n"
-                f"Distance: {distance_str}\n"
-                f"File: {os.path.basename(image_path)}"
-            )
-
-            # Add metadata if available - use correct field names
-            if 'estimated_sex' in metadata:
-                info_text += f"\nSex: {metadata['estimated_sex']}"
-            if 'age_group' in metadata:
-                info_text += f"\nAge: {metadata['age_group']}"
-            if 'skin_tone' in metadata:
-                info_text += f"\nSkin Tone: {metadata['skin_tone']}"
-
-            self.comparison_info_label.config(text=info_text)
+            # Clear info label - don't show any text
+            self.comparison_info_label.config(text="")
 
             self.log_message(f"Comparison preview updated: Result #{result_number}")
 
