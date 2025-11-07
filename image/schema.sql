@@ -4,7 +4,8 @@
 -- Enable pgvector extension
 CREATE EXTENSION IF NOT EXISTS vector;
 
--- Drop existing table if it exists (for clean setup)
+-- Drop existing tables if they exist (for clean setup)
+DROP TABLE IF EXISTS image_embeddings CASCADE;
 DROP TABLE IF EXISTS images CASCADE;
 
 -- Main images table

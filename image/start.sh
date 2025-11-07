@@ -55,11 +55,17 @@ echo ""
 # Check database connection (optional)
 echo -e "${YELLOW}Checking database connection...${NC}"
 if command -v psql &> /dev/null; then
-    if psql -U postgres -d image_vector -c "SELECT 1;" &> /dev/null; then
-        echo -e "${GREEN}✓${NC} Database 'image_vector' is accessible"
+    # Load database credentials from .env file
+    if [ -f ".env" ]; then
+        export $(grep -v '^#' .env | xargs)
+    fi
+
+    # Use PGPASSWORD environment variable to avoid password prompt
+    if PGPASSWORD="${DB_PASSWORD:-postgres}" psql -h "${DB_HOST:-localhost}" -p "${DB_PORT:-5432}" -U "${DB_USER:-pi}" -d "${DB_NAME:-image_vector}" -c "SELECT 1;" &> /dev/null; then
+        echo -e "${GREEN}✓${NC} Database '${DB_NAME:-image_vector}' is accessible"
     else
-        echo -e "${YELLOW}⚠${NC}  Database 'image_vector' not accessible"
-        echo -e "${YELLOW}   Run setup_database.sh if you haven't set up the database yet${NC}"
+        echo -e "${YELLOW}⚠${NC}  Database '${DB_NAME:-image_vector}' not accessible"
+        echo -e "${YELLOW}   The application will try to connect when it starts${NC}"
     fi
 else
     echo -e "${YELLOW}⚠${NC}  psql not found - skipping database check"

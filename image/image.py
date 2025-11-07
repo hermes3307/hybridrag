@@ -107,6 +107,22 @@ class IntegratedImageGUI:
     5. Configuration - Manage system settings and database
     """
 
+    # Model name mapping: Display Name -> Internal Name
+    MODEL_DISPLAY_TO_INTERNAL = {
+        "Statistical": "statistical",
+        "CLIP": "clip",
+        "YOLO": "yolo",
+        "ResNet": "resnet"
+    }
+
+    # Model name mapping: Internal Name -> Display Name
+    MODEL_INTERNAL_TO_DISPLAY = {
+        "statistical": "Statistical",
+        "clip": "CLIP",
+        "yolo": "YOLO",
+        "resnet": "ResNet"
+    }
+
     def __init__(self):
         """Initialize the GUI application"""
         # Create main window
@@ -154,9 +170,11 @@ class IntegratedImageGUI:
         # Bind mousewheel to main canvas
         self._bind_main_mousewheel()
 
-        # Create GUI
+        # Create GUI widgets (tabs)
         self.create_widgets()
-        self.setup_layout()
+
+        # Pack the notebook immediately so tabs are visible
+        self.notebook.pack(fill="both", expand=True, padx=5, pady=5)
 
         # Show a loading message
         self.log_message("Loading system components in background...")
@@ -229,6 +247,7 @@ class IntegratedImageGUI:
         status_items = [
             ("Database Status", "db_status"),
             ("Total Images", "total_images"),
+            ("Embedding Models", "embedding_models"),
             ("Download Rate", "download_rate"),
             ("Processing Rate", "process_rate"),
             ("System Uptime", "uptime")
@@ -236,7 +255,12 @@ class IntegratedImageGUI:
 
         for i, (label, key) in enumerate(status_items):
             ttk.Label(status_frame, text=f"{label}:").grid(row=i, column=0, sticky="w", padx=(0, 10))
-            self.status_labels[key] = ttk.Label(status_frame, text="Loading..." if i == 0 else "Waiting for system...")
+            if key == "embedding_models":
+                # Embedding models label with colored text
+                self.status_labels[key] = ttk.Label(status_frame, text="Loading...",
+                                                   font=('TkDefaultFont', 9))
+            else:
+                self.status_labels[key] = ttk.Label(status_frame, text="Loading..." if i == 0 else "Waiting for system...")
             self.status_labels[key].grid(row=i, column=1, sticky="w")
 
         # Statistics frame
@@ -278,8 +302,15 @@ class IntegratedImageGUI:
 
         # Download settings
         ttk.Label(control_frame, text="Download Source:").grid(row=0, column=0, sticky="w")
-        self.download_source_var = tk.StringVar(value="thispersondoesnotexist")
-        source_options = ["thispersondoesnotexist"]
+        self.download_source_var = tk.StringVar(value="picsum_landscape")
+        # Available download sources from ImageDownloader
+        source_options = [
+            "picsum_general",
+            "picsum_landscape",
+            "picsum_square",
+            "picsum_portrait",
+            "picsum_hd"
+        ]
         source_combo = ttk.Combobox(control_frame, textvariable=self.download_source_var,
                                    values=source_options, width=25, state="readonly")
         source_combo.grid(row=0, column=1, sticky="w", padx=(5, 0))
@@ -394,21 +425,25 @@ class IntegratedImageGUI:
         control_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
 
         # Processing settings
-        ttk.Label(control_frame, text="Batch Size:").grid(row=0, column=0, sticky="w")
+        ttk.Label(control_frame, text="Embedding Models:").grid(row=0, column=0, sticky="w")
+        self.process_embedding_model_label = ttk.Label(control_frame, text="Loading...")
+        self.process_embedding_model_label.grid(row=0, column=1, sticky="w", padx=(5, 0))
+
+        ttk.Label(control_frame, text="Batch Size:").grid(row=1, column=0, sticky="w")
         self.batch_size_var = tk.IntVar(value=50)
         batch_spin = ttk.Spinbox(control_frame, from_=1, to=200, increment=1,
                                 textvariable=self.batch_size_var, width=10)
-        batch_spin.grid(row=0, column=1, sticky="w", padx=(5, 0))
+        batch_spin.grid(row=1, column=1, sticky="w", padx=(5, 0))
 
-        ttk.Label(control_frame, text="Max Workers:").grid(row=1, column=0, sticky="w")
+        ttk.Label(control_frame, text="Max Workers:").grid(row=2, column=0, sticky="w")
         self.max_workers_var = tk.IntVar(value=4)
         workers_spin = ttk.Spinbox(control_frame, from_=1, to=8, increment=1,
                                   textvariable=self.max_workers_var, width=10)
-        workers_spin.grid(row=1, column=1, sticky="w", padx=(5, 0))
+        workers_spin.grid(row=2, column=1, sticky="w", padx=(5, 0))
 
         # Processing buttons
         button_frame = ttk.Frame(control_frame)
-        button_frame.grid(row=2, column=0, columnspan=2, pady=10)
+        button_frame.grid(row=3, column=0, columnspan=3, pady=10)
 
         self.process_button = ttk.Button(button_frame, text="Process All Images", command=self.start_processing)
         self.process_button.pack(side="left", padx=5)
@@ -509,12 +544,21 @@ class IntegratedImageGUI:
         ttk.Button(control_frame, text="Browse", command=self.browse_search_image).grid(row=0, column=2, padx=5)
         ttk.Button(control_frame, text="Take a Picture", command=self.take_picture_search).grid(row=0, column=3, padx=5)
 
+        # Embedding model for search
+        ttk.Label(control_frame, text="Search Model:").grid(row=1, column=0, sticky="w")
+        self.search_embedding_model_var = tk.StringVar(value="CLIP")
+        model_options = ["CLIP", "YOLO", "ResNet", "Statistical"]
+        embedding_combo = ttk.Combobox(control_frame, textvariable=self.search_embedding_model_var,
+                                      values=model_options, width=20, state="readonly")
+        embedding_combo.grid(row=1, column=1, sticky="w", padx=(5, 0))
+
+
         # Number of results
-        ttk.Label(control_frame, text="Number of Results:").grid(row=1, column=0, sticky="w")
+        ttk.Label(control_frame, text="Number of Results:").grid(row=2, column=0, sticky="w")
         self.num_results_var = tk.IntVar(value=10)
         results_spin = ttk.Spinbox(control_frame, from_=1, to=50, increment=1,
                                   textvariable=self.num_results_var, width=10)
-        results_spin.grid(row=1, column=1, sticky="w", padx=(5, 0))
+        results_spin.grid(row=2, column=1, sticky="w", padx=(5, 0))
 
         # Search mode selection
         ttk.Label(control_frame, text="Search Mode:").grid(row=2, column=0, sticky="w")
@@ -637,10 +681,10 @@ class IntegratedImageGUI:
         embedding_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=5)
 
         ttk.Label(embedding_frame, text="Embedding Model:").grid(row=0, column=0, sticky="w")
-        self.embedding_model_var = tk.StringVar(value="statistical")
+        self.embedding_model_var = tk.StringVar(value="CLIP")
 
-        # Create dropdown with all models
-        model_options = ["statistical", "clip", "yolo", "action"]
+        # Create dropdown with all models (display names)
+        model_options = ["CLIP", "YOLO", "ResNet", "Statistical"]
         embedding_combo = ttk.Combobox(embedding_frame, textvariable=self.embedding_model_var,
                                       values=model_options, width=20, state="readonly")
         embedding_combo.grid(row=0, column=1, sticky="w", padx=(5, 10))
@@ -677,9 +721,9 @@ Embedding Models:
   Install: pip install torch torchvision ultralytics
   Size: 80 dimensions
 
-• Action: Human action recognition model.
-  Install: pip install torch transformers
-  Size: 15 dimensions
+• ResNet: For deep visual features
+  Install: pip install torch torchvision
+  Size: 2048 dimensions
 """
         self.model_info_text.insert('1.0', model_descriptions)
         self.model_info_text.config(state='disabled')
@@ -733,7 +777,8 @@ Embedding Models:
         missing_json = []
         invalid_json = []
         
-        required_keys = ['filename', 'face_id', 'md5_hash', 'image_properties', 'face_features']
+        # Updated required keys for image recognition (not face recognition)
+        required_keys = ['filename', 'image_id', 'md5_hash']
 
         for image_path in image_files:
             json_path = image_path.with_suffix('.json')
@@ -920,7 +965,8 @@ Embedding Models:
         missing_json = []
         invalid_json = []
         
-        required_keys = ['filename', 'face_id', 'md5_hash', 'image_properties', 'face_features']
+        # Updated required keys for image recognition (not face recognition)
+        required_keys = ['filename', 'image_id', 'md5_hash']
 
         for image_path in image_files:
             json_path = image_path.with_suffix('.json')
@@ -1136,10 +1182,15 @@ Embedding Models:
                     self.root.after(0, lambda: self.log_message("✓ System initialized successfully"))
                     # Update GUI in main thread
                     self.root.after(0, self.update_configuration_from_system)
+                    self.root.after(0, self.update_available_models_label)
                     self.root.after(0, lambda: self.log_message("Checking embedding models..."))
-                    self.root.after(0, self.check_model_mismatch_on_startup)
+                    # self.root.after(0, self.check_model_mismatch_on_startup)
                     # Restore window title
                     self.root.after(0, lambda: self.root.title("Image Processing System - Ready"))
+
+                    # Now run setup_layout since system is initialized
+                    self.root.after(0, self.setup_layout)
+
                     self.root.after(0, lambda: self.log_message("System is ready for use!"))
 
                     # Start background hash loading for duplicate detection
@@ -1173,7 +1224,7 @@ Embedding Models:
                 self.log_message("System initialized successfully")
                 self.update_configuration_from_system()
                 # Check for model mismatch after initialization
-                self.check_model_mismatch_on_startup()
+                # self.check_model_mismatch_on_startup()
             else:
                 self.log_message("Failed to initialize system", "error")
                 messagebox.showerror("Error", "Failed to initialize system. Check dependencies.")
@@ -1197,8 +1248,23 @@ Embedding Models:
             self.download_delay_var.set(config.download_delay)
             self.batch_size_var.set(config.batch_size)
             self.max_workers_var.set(config.max_workers)
-            self.embedding_model_var.set(config.embedding_model)
+            # Convert internal model name to display name
+            internal_model = config.embedding_model
+            display_model = self.MODEL_INTERNAL_TO_DISPLAY.get(internal_model, "CLIP")
+            self.embedding_model_var.set(display_model)
+
+            # Update the Process & Embed tab label to show current model
+            if hasattr(self, 'process_embedding_model_label'):
+                self.process_embedding_model_label.config(text=display_model)
+
             self.download_source_var.set(config.download_source)
+
+    def update_available_models_label(self):
+        """Update the label in the Process & Embed tab with the list of available models."""
+        if self.system:
+            available_models = [self.MODEL_INTERNAL_TO_DISPLAY.get(model, model) for model, available in AVAILABLE_MODELS.items() if available]
+            models_text = ", ".join(available_models)
+            self.process_embedding_model_label.config(text=models_text)
 
     def setup_logging_handler(self):
         """Set up logging handler to redirect all logger output to GUI"""
@@ -1439,6 +1505,36 @@ Embedding Models:
                     self.status_labels['download_rate'].config(text=f"{stats.get('download_rate', 0):.2f}/sec")
                     self.status_labels['process_rate'].config(text=f"{stats.get('embed_rate', 0):.2f}/sec")
                     self.status_labels['uptime'].config(text=f"{stats.get('elapsed_time', 0):.0f}s")
+
+                    # Update embedding model statistics
+                    if 'embedding_models' in self.status_labels:
+                        try:
+                            model_info = self.system.db_manager.check_embedding_model_mismatch()
+                            models_found = model_info.get('models_found', {})
+
+                            if models_found:
+                                # Desired order
+                                model_order = ['clip', 'yolo', 'resnet', 'statistical']
+
+                                # Create a list of model strings in the desired order
+                                sorted_models = []
+                                for model_name in model_order:
+                                    if model_name in models_found:
+                                        display_name = self.MODEL_INTERNAL_TO_DISPLAY.get(model_name, model_name)
+                                        sorted_models.append(f"{display_name}: {models_found[model_name]}")
+
+                                # Add any other models that might not be in the desired order list
+                                for model, count in models_found.items():
+                                    if model not in model_order:
+                                        display_name = self.MODEL_INTERNAL_TO_DISPLAY.get(model, model)
+                                        sorted_models.append(f"{display_name}: {count}")
+
+                                model_text = ", ".join(sorted_models)
+                                self.status_labels['embedding_models'].config(text=model_text)
+                            else:
+                                self.status_labels['embedding_models'].config(text="No embeddings yet")
+                        except Exception as e:
+                            self.status_labels['embedding_models'].config(text="Error loading")
 
                 # Update download statistics display
                 if hasattr(self, 'download_stats_labels'):
@@ -1786,7 +1882,7 @@ Embedding Models:
                 f"Total files: {len(all_files)}\n"
                 f"  • New files: {len(new_files)} (will be processed)\n"
                 f"  • Already in DB: {existing_count} (will be skipped)\n\n"
-                f"Using '{self.system.config.embedding_model}' model\n\n"
+                f"Using '{self.MODEL_INTERNAL_TO_DISPLAY.get(self.system.config.embedding_model, self.system.config.embedding_model)}' model\n\n"
                 f"Duplicates will be automatically skipped.\n\n"
                 f"Continue?"
             )
@@ -1845,7 +1941,7 @@ Embedding Models:
                 f"Found {len(new_files)} NEW files that haven't been processed yet.\n\n"
                 f"These files will be:\n"
                 f"1. Analyzed for image features\n"
-                f"2. Embedded using '{self.system.config.embedding_model}' model\n"
+                f"2. Embedded using '{self.MODEL_INTERNAL_TO_DISPLAY.get(self.system.config.embedding_model, self.system.config.embedding_model)}' model\n"
                 f"3. Added to the database\n\n"
                 f"Already processed files will be skipped.\n\n"
                 f"Continue?"
@@ -1915,7 +2011,10 @@ Embedding Models:
             log_msg += f"   👤 Faces Detected: {features.get('faces_detected', 0)}\n"
     
         log_msg += f"   🔑 Hash: {image_data.image_hash[:12]}...\n"
-        log_msg += f"   🧬 Embedding: {len(image_data.embedding)} dimensions\n"
+
+        # Note: In multi-model system, embeddings are stored separately per model
+        # image_data.embedding is None - this is expected
+        log_msg += f"   🧬 Embeddings: Created for all available models\n"
         log_msg += "   " + "-" * 60 + "\n"
     
         self.log_message(log_msg)
@@ -1983,29 +2082,42 @@ Embedding Models:
             messagebox.showerror("Error", "System not initialized")
             return
 
-        # Check for model mismatch before searching
+        # Get the selected model from the dropdown
+        display_model = self.search_embedding_model_var.get()
+        model_name = self.MODEL_DISPLAY_TO_INTERNAL.get(display_model, "clip")
+
+        # Check if the configured model has embeddings in the database
         mismatch_info = self.system.db_manager.check_embedding_model_mismatch(
-            self.system.config.embedding_model
+            model_name
         )
 
-        if mismatch_info['has_mismatch'] and mismatch_info['total_count'] > 0:
+        models_found = mismatch_info.get('models_found', {})
+
+        # Check if the current model has any embeddings
+        if models_found and model_name not in models_found:
+            # Current model has NO embeddings in database
             warning = (
-                f"⚠️ CANNOT SEARCH - MODEL MISMATCH!\n\n"
-                f"Current model: {mismatch_info['current_model']}\n"
-                f"Database contains embeddings from different models:\n"
+                f"⚠️ CANNOT SEARCH WITH {model_name.upper()}!\n\n"
+                f"The selected model '{model_name}' has no embeddings in the database.\n\n"
+                f"Database contains embeddings from:\n"
             )
-            for model, count in mismatch_info['models_found'].items():
+            for model, count in models_found.items():
                 warning += f"  • {model}: {count} embeddings\n"
 
             warning += (
-                f"\nSearching with mismatched models produces INCORRECT results.\n\n"
-                f"Please click 'Re-embed All Data' button in Configuration tab\n"
-                f"to update all embeddings with '{mismatch_info['current_model']}' model."
+                f"\nPlease either:\n"
+                f"1. Change the search model to one of the above\n"
+                f"2. Click 'Process New Only' to create {model_name} embeddings\n"
+                f"3. Click 'Re-embed All Data' to recreate with {model_name}"
             )
 
-            messagebox.showerror("Model Mismatch - Cannot Search", warning)
-            self.log_message("Search blocked due to model mismatch", "error")
+            messagebox.showerror("No Embeddings for Selected Model", warning)
+            self.log_message(f"Search blocked: No {model_name} embeddings found", "error")
             return
+
+        # Log available models (informational only - multi-model system is normal)
+        if len(models_found) > 1:
+            self.log_message(f"Multi-model database detected. Searching with: {model_name}")
 
         search_mode = self.search_mode_var.get()
 
@@ -2031,19 +2143,35 @@ Embedding Models:
 
                 # Create embedding for search image using configured model
                 analyzer = ImageAnalyzer()
-                embedder = ImageEmbedder(model_name=self.system.config.embedding_model)
+                embedder = ImageEmbedder(model_name=model_name)
 
                 features = analyzer.analyze_image(image_path)
                 embedding = embedder.create_embedding(image_path, features)
 
+                # Normalize embedding to 512 dimensions for search
+                if len(embedding) != 512:
+                    if len(embedding) < 512:
+                        embedding.extend([0.0] * (512 - len(embedding)))
+                    else:
+                        embedding = embedding[:512]
+
                 if search_mode == "hybrid" and metadata_filter:
                     # Hybrid search - vector + metadata
-                    results = self.system.db_manager.hybrid_search(embedding, metadata_filter, self.num_results_var.get())
-                    self.log_message(f"Hybrid search with filters: {metadata_filter}")
+                    results = self.system.db_manager.hybrid_search(
+                        embedding,
+                        model_name,
+                        metadata_filter,
+                        self.num_results_var.get()
+                    )
+                    self.log_message(f"Hybrid search with {model_name} + filters: {metadata_filter}")
                 else:
-                    # Vector-only search
-                    results = self.system.db_manager.search_images(embedding, self.num_results_var.get())
-                    self.log_message("Vector similarity search")
+                    # Vector-only search with configured model
+                    results = self.system.db_manager.search_images(
+                        embedding,
+                        model_name,
+                        self.num_results_var.get()
+                    )
+                    self.log_message(f"Vector similarity search using {model_name} embeddings")
 
             elif search_mode == "mixed":
                 image_path = self.search_image_var.get()
@@ -2054,16 +2182,16 @@ Embedding Models:
                 # Create embeddings for each model
                 clip_embedder = ImageEmbedder(model_name="clip")
                 yolo_embedder = ImageEmbedder(model_name="yolo")
-                action_embedder = ImageEmbedder(model_name="action")
+                resnet_embedder = ImageEmbedder(model_name="resnet")
 
                 analyzer = ImageAnalyzer()
                 features = analyzer.analyze_image(image_path)
 
                 clip_embedding = clip_embedder.create_embedding(image_path, features)
                 yolo_embedding = yolo_embedder.create_embedding(image_path, features)
-                action_embedding = action_embedder.create_embedding(image_path, features)
+                resnet_embedding = resnet_embedder.create_embedding(image_path, features)
 
-                results = self.system.db_manager.mixed_search(clip_embedding, yolo_embedding, action_embedding, self.num_results_var.get())
+                results = self.system.db_manager.multi_embedding_search(clip_embedding, yolo_embedding, resnet_embedding, self.num_results_var.get())
                 self.log_message("Mixed search")
 
             else:
@@ -2121,12 +2249,12 @@ Embedding Models:
             # Result info
             distance = result.get('distance', 0.0)
             distance_str = "N/A" if distance == 0.0 else f"{distance:.3f}"
-            info_text = f"Result {i+1}: Distance: {distance_str}\nPath: {result['metadata'].get('file_path', 'Unknown')}"
+            info_text = f"Result {i+1}: Distance: {distance_str}\nPath: {result.get('file_path', 'Unknown')}"
             ttk.Label(result_frame, text=info_text).pack(side="left", padx=5)
 
             # Try to display image thumbnail
             try:
-                image_path = result['metadata'].get('file_path')
+                image_path = result.get('file_path')
                 if image_path and os.path.exists(image_path):
                     image = Image.open(image_path)
                     image.thumbnail((64, 64), Image.Resampling.LANCZOS)
@@ -2154,7 +2282,7 @@ Embedding Models:
     def show_comparison(self, result: Dict[str, Any], result_number: int):
         """Show selected result in comparison preview under query image"""
         try:
-            image_path = result['metadata'].get('file_path')
+            image_path = result.get('file_path')
             if not image_path or not os.path.exists(image_path):
                 self.comparison_preview_label.config(text="Image not found", image='')
                 self.comparison_preview_photo = None
@@ -2252,12 +2380,10 @@ Embedding Models:
     def test_pg_connection(self):
         """Test PostgreSQL connection"""
         try:
-            from pgvector_images import PgVectorDatabaseManager
-            from core import SystemConfig
+            from core import PgVectorDatabaseManager, SystemConfig
 
             # Create temporary config
             config = SystemConfig()
-            config.db_type = "pgvector"
             config.db_host = self.pg_host_var.get()
             config.db_port = int(self.pg_port_var.get())
             config.db_name = self.pg_db_var.get()
@@ -2274,7 +2400,7 @@ Embedding Models:
                     "Connection Successful",
                     f"Successfully connected to PostgreSQL!\n\n"
                     f"Database: {config.db_name}\n"
-                    f"Total faces: {stats.get('total_faces', 0)}\n"
+                    f"Total images: {stats.get('total_images', 0)}\n"
                     f"Database size: {stats.get('database_size', 'Unknown')}"
                 )
                 self.log_message("PostgreSQL connection test successful")
@@ -2340,10 +2466,10 @@ Embedding Models:
                     else:
                         self.log_message("✗ pgvector extension not installed")
 
-                    # Check faces table
-                    cursor.execute("SELECT COUNT(*) FROM faces")
+                    # Check images table
+                    cursor.execute("SELECT COUNT(*) FROM images")
                     count = cursor.fetchone()[0]
-                    self.log_message(f"✓ Faces table contains {count} records")
+                    self.log_message(f"✓ Images table contains {count} records")
 
                     # Check connection pool
                     cursor.execute("SELECT count(*) FROM pg_stat_activity WHERE datname = current_database()")
@@ -2390,7 +2516,10 @@ Embedding Models:
                 self.system.config.download_delay = self.download_delay_var.get()
                 self.system.config.batch_size = self.batch_size_var.get()
                 self.system.config.max_workers = self.max_workers_var.get()
-                self.system.config.embedding_model = self.embedding_model_var.get()
+                # Convert display name to internal model name
+                display_model = self.embedding_model_var.get()
+                internal_model = self.MODEL_DISPLAY_TO_INTERNAL.get(display_model, "clip")
+                self.system.config.embedding_model = internal_model
                 self.system.config.download_source = self.download_source_var.get()
 
                 # Save to file
@@ -2526,42 +2655,41 @@ Embedding Models:
                 self.system.config.embedding_model
             )
 
-            if mismatch_info['has_mismatch'] and mismatch_info['total_count'] > 0:
-                models_found = mismatch_info['models_found']
-                current_model = mismatch_info['current_model']
-
-                warning_msg = (
-                    f"⚠️ EMBEDDING MODEL MISMATCH DETECTED!\n\n"
-                    f"Current model: {current_model}\n"
-                    f"Database contains:\n"
-                )
-
-                for model, count in models_found.items():
-                    warning_msg += f"  • {model}: {count} embeddings\n"
-
-                warning_msg += (
-                    f"\nTotal embeddings: {mismatch_info['total_count']}\n\n"
-                    f"⚠️ Searching with mismatched models will produce INCORRECT results!\n\n"
-                    f"Recommended actions:\n"
-                    f"1. Click 'Re-embed All Data' to update all embeddings with '{current_model}'\n"
-                    f"2. Or change embedding model back to match database"
-                )
-
-                self.log_message(warning_msg, "error")
-                self.model_warning_label.config(text=f"⚠️ Model Mismatch: {len(models_found)} different models in database!")
-
-                # Show warning dialog
-                response = messagebox.askquestion(
-                    "Embedding Model Mismatch",
-                    f"{warning_msg}\n\nDo you want to RE-EMBED ALL DATA now with '{current_model}'?",
-                    icon='warning'
-                )
-
-                if response == 'yes':
-                    self.reembed_all_data()
-            else:
-                self.model_warning_label.config(text="")
-
+                    # if mismatch_info['has_mismatch'] and mismatch_info['total_count'] > 0:
+                    #     models_found = mismatch_info['models_found']
+                    #     current_model = mismatch_info['current_model']
+            
+                    #     warning_msg = (
+                    #         f"⚠️ EMBEDDING MODEL MISMATCH DETECTED!\n\n"
+                    #         f"Current model: {current_model}\n"
+                    #         f"Database contains:\n"
+                    #     )
+            
+                    #     for model, count in models_found.items():
+                    #         warning_msg += f"  • {model}: {count} embeddings\n"
+            
+                    #     warning_msg += (
+                    #         f"\nTotal embeddings: {mismatch_info['total_count']}\n\n"
+                    #         f"⚠️ Searching with mismatched models will produce INCORRECT results!\n\n"
+                    #         f"Recommended actions:\n"
+                    #         f"1. Click 'Re-embed All Data' to update all embeddings with '{current_model}'\n"
+                    #         f"2. Or change embedding model back to match database"
+                    #     )
+            
+                    #     self.log_message(warning_msg, "error")
+                    #     self.model_warning_label.config(text=f"⚠️ Model Mismatch: {len(models_found)} different models in database!")
+            
+                    #     # Show warning dialog
+                    #     response = messagebox.askquestion(
+                    #         "Embedding Model Mismatch",
+                    #         f"{warning_msg}\n\nDo you want to RE-EMBED ALL DATA now with '{current_model}'?",
+                    #         icon='warning'
+                    #     )
+            
+                    #     if response == 'yes':
+                    #         self.reembed_all_data()
+                    # else:
+                    #     self.model_warning_label.config(text="")
         except Exception as e:
             logger.error(f"Error checking model mismatch: {e}")
 
@@ -2570,8 +2698,22 @@ Embedding Models:
         if not self.system:
             return
 
-        new_model = self.embedding_model_var.get()
+        # Convert display name to internal name
+        display_model = self.embedding_model_var.get()
+        new_model = self.MODEL_DISPLAY_TO_INTERNAL.get(display_model, "clip")
         current_db_model = self.system.config.embedding_model
+
+        # Update the Process & Embed tab label
+        if hasattr(self, 'process_embedding_model_label'):
+            self.process_embedding_model_label.config(text=display_model)
+
+        # Auto-save the configuration when model changes
+        self.system.config.embedding_model = new_model
+        try:
+            self.system.config.save_to_file()
+            self.log_message(f"Embedding model changed to {display_model} and saved")
+        except Exception as e:
+            self.log_message(f"Error saving config: {e}", "error")
 
         if new_model != current_db_model:
             # Check if database has data
@@ -2580,7 +2722,7 @@ Embedding Models:
 
             if count > 0:
                 self.model_warning_label.config(
-                    text=f"⚠️ WARNING: Changing model will require re-embedding {count} faces!"
+                    text=f"⚠️ WARNING: Changing model will require re-embedding {count} images!"
                 )
             else:
                 self.model_warning_label.config(text="")
@@ -2595,7 +2737,10 @@ Embedding Models:
             # Get current database info
             db_info = self.system.db_manager.get_collection_info()
             count = db_info.get('count', 0)
-            current_model = self.system.config.embedding_model
+
+            # Get display name for current model
+            internal_model = self.system.config.embedding_model
+            display_model = self.MODEL_INTERNAL_TO_DISPLAY.get(internal_model, internal_model.upper())
 
             if count == 0:
                 messagebox.showinfo("Info", "No data in database to re-embed.")
@@ -2605,9 +2750,9 @@ Embedding Models:
             confirm_msg = (
                 f"RE-EMBED ALL DATA\n\n"
                 f"This will:\n"
-                f"1. Clear all {count} existing embeddings from database\n"
-                f"2. Re-process all face images in {self.system.config.images_dir}\n"
-                f"3. Create new embeddings using: {current_model}\n\n"
+                f"1. Delete all {count} existing image records from database\n"
+                f"2. Re-process all images in {self.system.config.images_dir}\n"
+                f"3. Create new embeddings using: {display_model}\n\n"
                 f"This operation cannot be undone and may take several minutes.\n\n"
                 f"Continue?"
             )
@@ -2617,25 +2762,33 @@ Embedding Models:
             if not response:
                 return
 
-            self.log_message(f"Starting re-embedding with model: {current_model}")
+            self.log_message("="*70)
+            self.log_message(f"Starting re-embedding with model: {display_model}")
+            self.log_message("="*70)
 
-            # Clear existing data
-            if not self.system.db_manager.clear_all_data():
+            # Reinitialize the database schema (clears all data)
+            self.log_message(f"Clearing {count} existing records from database...")
+            if not self.system.db_manager.reinitialize_schema():
                 messagebox.showerror("Error", "Failed to clear database")
                 return
 
-            self.log_message(f"Cleared {count} existing embeddings")
+            # Re-establish connection after schema reset
+            if not self.system.db_manager.initialize():
+                messagebox.showerror("Error", "Failed to reconnect to database")
+                return
 
-            # Update the processor with new model
-            self.system.processor.embedder = FaceEmbedder(model_name=current_model)
+            self.log_message(f"✓ Cleared all existing data")
+
+            # Clear processed files tracking
             self.system.processor.processed_files.clear()
 
-            # Start processing all faces
-            self.log_message("Re-embedding all faces...")
+            # Start processing all images
+            self.log_message("Re-embedding all images with all available models...")
             self.start_processing()
 
             # Clear warning
-            self.model_warning_label.config(text="")
+            if hasattr(self, 'model_warning_label'):
+                self.model_warning_label.config(text="")
 
         except Exception as e:
             messagebox.showerror("Error", f"Re-embedding failed: {e}")

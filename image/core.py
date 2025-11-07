@@ -78,13 +78,6 @@ def check_embedding_models():
     except Exception:
         models_status['yolo'] = False
 
-    # Action
-    try:
-        import torch
-        from transformers import AutoImageProcessor, SiglipForImageClassification
-        models_status['action'] = True
-    except Exception:
-        models_status['action'] = False
 
     # ResNet
     try:
@@ -140,7 +133,7 @@ class SystemConfig:
     download_delay: float = float(os.getenv("DOWNLOAD_DELAY", "1.0"))
     max_workers: int = 2
     batch_size: int = 50
-    embedding_model: str = os.getenv("EMBEDDING_MODEL", "statistical")  # Options: statistical, clip, yolo, action
+    embedding_model: str = os.getenv("EMBEDDING_MODEL", "statistical")  # Options: statistical, clip, yolo
     download_source: str = os.getenv("DOWNLOAD_SOURCE", "picsum_landscape")  # Options: see ImageDownloader.DOWNLOAD_SOURCES
     config_file: str = "system_config.json"
 
@@ -367,6 +360,9 @@ class ImageAnalyzer:
                 features.update(self._analyze_colors_pil(img_array))
                 features.update(self._analyze_demographics_pil(img_array))
 
+            # Convert all values to JSON-serializable format
+            features = self._make_json_serializable(features)
+
             return features
 
         except Exception as e:
@@ -411,6 +407,51 @@ class ImageAnalyzer:
 
 
 
+    def _make_json_serializable(self, value):
+        """Convert non-JSON-serializable types to serializable formats"""
+        # Handle None
+        if value is None:
+            return None
+
+        # Handle numpy types
+        if hasattr(value, 'item'):
+            # numpy scalar (np.int64, np.float64, np.bool_, etc.)
+            return value.item()
+
+        # Handle standard Python types (already JSON serializable)
+        if isinstance(value, (int, float, str, bool)):
+            return value
+
+        # Handle bytes
+        if isinstance(value, bytes):
+            try:
+                return value.decode('utf-8', errors='ignore')
+            except:
+                return str(value)
+
+        # Handle PIL IFDRational, TiffImagePlugin.IFDRational
+        if hasattr(value, 'numerator') and hasattr(value, 'denominator'):
+            # Convert IFDRational to float
+            try:
+                return float(value)
+            except:
+                return str(value)
+
+        # Handle dict
+        if isinstance(value, dict):
+            return {k: self._make_json_serializable(v) for k, v in value.items()}
+
+        # Handle lists/tuples/iterables (but not strings)
+        if hasattr(value, '__iter__') and not isinstance(value, (str, bytes)):
+            try:
+                # Try to convert to list
+                return [self._make_json_serializable(v) for v in value]
+            except:
+                return str(value)
+
+        # Convert everything else to string
+        return str(value)
+
     def _extract_exif_data(self, image: Image.Image) -> Dict[str, Any]:
         """
         Extract EXIF metadata from image
@@ -431,12 +472,8 @@ class ImageAnalyzer:
                 for tag_id, value in exif.items():
                     tag_name = TAGS.get(tag_id, tag_id)
 
-                    # Convert bytes to string
-                    if isinstance(value, bytes):
-                        try:
-                            value = value.decode('utf-8', errors='ignore')
-                        except:
-                            value = str(value)
+                    # Convert to JSON-serializable format
+                    value = self._make_json_serializable(value)
 
                     # Store useful metadata
                     if tag_name in ['Make', 'Model', 'Software', 'DateTime',
@@ -644,7 +681,6 @@ class ImageEmbedder:
     - CLIP: For image and text similarity
     - YOLO: For object detection
     - ResNet: For deep visual features
-    - Action: For action recognition
 
     Automatically falls back to statistical model if specified model unavailable.
     """
@@ -664,8 +700,6 @@ class ImageEmbedder:
                 self._init_clip()
             elif self.model_name == "yolo":
                 self._init_yolo()
-            elif self.model_name == "action":
-                self._init_action()
             elif self.model_name == "resnet":
                 self._init_resnet()
             elif self.model_name == "statistical":
@@ -711,20 +745,6 @@ class ImageEmbedder:
         except Exception as e:
             raise ImportError(f"YOLO initialization failed: {e}")
 
-    def _init_action(self):
-        """Initialize Action model"""
-        try:
-            import torch
-            from transformers import AutoImageProcessor, SiglipForImageClassification
-
-            self.model = SiglipForImageClassification.from_pretrained("prithivMLmods/Human-Action-Recognition")
-            self.processor = AutoImageProcessor.from_pretrained("prithivMLmods/Human-Action-Recognition")
-            self.embedding_size = 15 # 15 action categories
-            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-            self.model = self.model.to(self.device)
-            logger.info("Action model initialized successfully")
-        except ImportError:
-            raise ImportError("Action model requires: pip install torch transformers")
 
     def _init_resnet(self):
         """Initialize ResNet model"""
@@ -764,8 +784,6 @@ class ImageEmbedder:
                 return self._embed_clip(image_path)
             elif self.model_name == "yolo":
                 return self._embed_yolo(image_path)
-            elif self.model_name == "action":
-                return self._embed_action(image_path)
             elif self.model_name == "resnet":
                 return self._embed_resnet(image_path)
             else:
@@ -779,26 +797,6 @@ class ImageEmbedder:
             logger.error(f"Error creating embedding for {image_path}: {e}")
             return [0.0] * self.embedding_size
 
-    def _embed_action(self, image_path: str) -> List[float]:
-        """Create embedding using Action model"""
-        try:
-            from PIL import Image
-            import torch
-
-            image = Image.open(image_path)
-            inputs = self.processor(images=image, return_tensors="pt")
-            inputs = {k: v.to(self.device) for k, v in inputs.items()}
-            with torch.no_grad():
-                outputs = self.model(**inputs)
-                logits = outputs.logits
-            # Create a one-hot embedding
-            embedding = [0.0] * self.embedding_size
-            predicted_class_idx = logits.argmax(-1).item()
-            embedding[predicted_class_idx] = 1.0
-            return embedding
-        except Exception as e:
-            logger.error(f"Action embedding error: {e}")
-            return [0.0] * self.embedding_size
 
     def _embed_clip(self, image_path: str) -> List[float]:
         """Create embedding using CLIP"""

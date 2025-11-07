@@ -16,6 +16,14 @@ NC='\033[0m'
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
+# Load environment variables from .env file
+if [ -f ".env" ]; then
+    export $(grep -v '^#' .env | xargs)
+fi
+
+# Set PGPASSWORD to avoid password prompts
+export PGPASSWORD="${DB_PASSWORD:-postgres}"
+
 # Functions
 print_header() {
     echo ""
@@ -95,12 +103,12 @@ setup_database() {
     print_info "Setting up database 'image_vector'..."
 
     # Check if database exists
-    if psql -U postgres -lqt | cut -d \| -f 1 | grep -qw image_vector; then
-        print_warning "Database 'image_vector' already exists"
+    if psql -h "${DB_HOST:-localhost}" -p "${DB_PORT:-5432}" -U "${DB_USER:-pi}" -lqt | cut -d \| -f 1 | grep -qw "${DB_NAME:-image_vector}"; then
+        print_warning "Database '${DB_NAME:-image_vector}' already exists"
         read -p "Do you want to recreate it? (yes/no): " recreate
         if [ "$recreate" = "yes" ]; then
             print_info "Dropping existing database..."
-            psql -U postgres -c "DROP DATABASE image_vector;"
+            psql -h "${DB_HOST:-localhost}" -p "${DB_PORT:-5432}" -U "${DB_USER:-pi}" -c "DROP DATABASE ${DB_NAME:-image_vector};"
         else
             print_info "Skipping database creation"
             return 0
@@ -108,16 +116,16 @@ setup_database() {
     fi
 
     print_info "Creating database..."
-    psql -U postgres -c "CREATE DATABASE image_vector;"
+    psql -h "${DB_HOST:-localhost}" -p "${DB_PORT:-5432}" -U "${DB_USER:-pi}" -c "CREATE DATABASE ${DB_NAME:-image_vector};"
     print_success "Database created"
 
     print_info "Enabling pgvector extension..."
-    psql -U postgres -d image_vector -c "CREATE EXTENSION vector;"
+    psql -h "${DB_HOST:-localhost}" -p "${DB_PORT:-5432}" -U "${DB_USER:-pi}" -d "${DB_NAME:-image_vector}" -c "CREATE EXTENSION IF NOT EXISTS vector;"
     print_success "pgvector enabled"
 
     if [ -f "schema.sql" ]; then
         print_info "Applying schema..."
-        psql -U postgres -d image_vector -f schema.sql
+        psql -h "${DB_HOST:-localhost}" -p "${DB_PORT:-5432}" -U "${DB_USER:-pi}" -d "${DB_NAME:-image_vector}" -f schema.sql
         print_success "Schema applied"
     else
         print_warning "schema.sql not found - skipping schema setup"
@@ -205,11 +213,11 @@ check_status() {
 
     # Check database
     if command -v psql &> /dev/null; then
-        if psql -U postgres -d image_vector -c "SELECT 1;" &> /dev/null 2>&1; then
-            print_success "Database: OK (image_vector accessible)"
+        if psql -h "${DB_HOST:-localhost}" -p "${DB_PORT:-5432}" -U "${DB_USER:-pi}" -d "${DB_NAME:-image_vector}" -c "SELECT 1;" &> /dev/null 2>&1; then
+            print_success "Database: OK (${DB_NAME:-image_vector} accessible)"
 
             # Get database stats
-            COUNT=$(psql -U postgres -d image_vector -t -c "SELECT COUNT(*) FROM images;" 2>/dev/null | xargs)
+            COUNT=$(psql -h "${DB_HOST:-localhost}" -p "${DB_PORT:-5432}" -U "${DB_USER:-pi}" -d "${DB_NAME:-image_vector}" -t -c "SELECT COUNT(*) FROM images;" 2>/dev/null | xargs)
             if [ ! -z "$COUNT" ]; then
                 print_info "Total images in database: $COUNT"
             fi
