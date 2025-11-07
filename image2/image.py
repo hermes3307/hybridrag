@@ -497,65 +497,75 @@ class IntegratedImageGUI:
         ttk.Entry(control_frame, textvariable=self.search_image_var, width=20).grid(row=0, column=1, sticky="w", padx=(5, 5))
         ttk.Button(control_frame, text="Browse", command=self.browse_search_image).grid(row=0, column=2, sticky="w", padx=(0, 5))
 
+        # Search by text
+        ttk.Label(control_frame, text="Search by Text:").grid(row=1, column=0, sticky="w")
+        self.search_text_var = tk.StringVar()
+        ttk.Entry(control_frame, textvariable=self.search_text_var, width=20).grid(row=1, column=1, sticky="w", padx=(5, 5))
+        ttk.Button(control_frame, text="Clear", command=self.clear_search_text).grid(row=1, column=2, sticky="w", padx=(0, 5))
+
         # Embedding model for search
-        ttk.Label(control_frame, text="Search Model:").grid(row=1, column=0, sticky="w")
+        ttk.Label(control_frame, text="Search Model:").grid(row=2, column=0, sticky="w")
         self.search_embedding_model_var = tk.StringVar(value="CLIP")
         model_options = ["CLIP", "YOLO", "ResNet", "Statistical"]
         embedding_combo = ttk.Combobox(control_frame, textvariable=self.search_embedding_model_var,
                                       values=model_options, width=20, state="readonly")
-        embedding_combo.grid(row=1, column=1, sticky="w", padx=(5, 0))
+        embedding_combo.grid(row=2, column=1, sticky="w", padx=(5, 0))
 
 
         # Number of results
-        ttk.Label(control_frame, text="Number of Results:").grid(row=2, column=0, sticky="w")
+        ttk.Label(control_frame, text="Number of Results:").grid(row=3, column=0, sticky="w")
         self.num_results_var = tk.IntVar(value=10)
         results_spin = ttk.Spinbox(control_frame, from_=1, to=50, increment=1,
                                   textvariable=self.num_results_var, width=10)
-        results_spin.grid(row=2, column=1, sticky="w", padx=(5, 0))
+        results_spin.grid(row=3, column=1, sticky="w", padx=(5, 0))
 
         # Search mode selection
-        ttk.Label(control_frame, text="Search Mode:").grid(row=2, column=0, sticky="w")
+        ttk.Label(control_frame, text="Search Mode:").grid(row=4, column=0, sticky="w")
         self.search_mode_var = tk.StringVar(value="vector")
         mode_frame = ttk.Frame(control_frame)
-        mode_frame.grid(row=2, column=1, sticky="w", padx=(5, 0))
-        ttk.Radiobutton(mode_frame, text="Vector (Image)", variable=self.search_mode_var, value="vector").pack(side="left", padx=5)
-        ttk.Radiobutton(mode_frame, text="Metadata", variable=self.search_mode_var, value="metadata").pack(side="left", padx=5)
-        ttk.Radiobutton(mode_frame, text="Hybrid", variable=self.search_mode_var, value="hybrid").pack(side="left", padx=5)
-        ttk.Radiobutton(mode_frame, text="Mixed", variable=self.search_mode_var, value="mixed").pack(side="left", padx=5)
+        mode_frame.grid(row=4, column=1, sticky="w", padx=(5, 0))
+        ttk.Radiobutton(mode_frame, text="Vector (Image)", variable=self.search_mode_var, value="vector", 
+                       command=self.on_search_mode_changed).pack(side="left", padx=5)
+        ttk.Radiobutton(mode_frame, text="Text (Natural Language)", variable=self.search_mode_var, value="text",
+                       command=self.on_search_mode_changed).pack(side="left", padx=5)
+        ttk.Radiobutton(mode_frame, text="w/Metadata", variable=self.search_mode_var, value="hybrid",
+                       command=self.on_search_mode_changed).pack(side="left", padx=5)
 
         # Metadata filter frame
         metadata_frame = ttk.LabelFrame(control_frame, text="Metadata Filters (Optional)", padding=5)
-        metadata_frame.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(10, 0))
+        metadata_frame.grid(row=5, column=0, columnspan=3, sticky="ew", pady=(10, 0))
+
+        # Search button (moved to its own row below the metadata filters)
+        ttk.Button(control_frame, text="Search Images", command=self.search_images).grid(row=6, column=0, columnspan=3, pady=10)
 
 
 
-        # Column 2 - Image Properties
+        # Column 0-1 - Image Properties (aligning with main control layout)
         props_label = ttk.Label(metadata_frame, text="Image Properties", font=('TkDefaultFont', 9, 'bold'))
-        props_label.grid(row=0, column=2, columnspan=2, sticky="w", pady=(0, 5))
+        props_label.grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 5))
 
         # Brightness filter
-        ttk.Label(metadata_frame, text="Brightness:").grid(row=1, column=2, sticky="w", padx=(10, 0))
+        ttk.Label(metadata_frame, text="Brightness:").grid(row=1, column=0, sticky="w", padx=(10, 0))
         self.brightness_filter_var = tk.StringVar(value="any")
         brightness_combo = ttk.Combobox(metadata_frame, textvariable=self.brightness_filter_var,
                                        values=["any", "bright", "dark"], width=15, state="readonly")
-        brightness_combo.grid(row=1, column=3, sticky="w", padx=(5, 0))
+        brightness_combo.grid(row=1, column=1, sticky="w", padx=(5, 0))
 
         # Quality filter
-        ttk.Label(metadata_frame, text="Quality:").grid(row=2, column=2, sticky="w", padx=(10, 0))
+        ttk.Label(metadata_frame, text="Quality:").grid(row=2, column=0, sticky="w", padx=(10, 0))
         self.quality_filter_var = tk.StringVar(value="any")
         quality_combo = ttk.Combobox(metadata_frame, textvariable=self.quality_filter_var,
                                     values=["any", "high", "medium"], width=15, state="readonly")
-        quality_combo.grid(row=2, column=3, sticky="w", padx=(5, 0))
+        quality_combo.grid(row=2, column=1, sticky="w", padx=(5, 0))
 
         # Face detection filter
-        ttk.Label(metadata_frame, text="Has Face:").grid(row=3, column=2, sticky="w", padx=(10, 0))
+        ttk.Label(metadata_frame, text="Has Face:").grid(row=3, column=0, sticky="w", padx=(10, 0))
         self.has_face_var = tk.StringVar(value="any")
         face_combo = ttk.Combobox(metadata_frame, textvariable=self.has_face_var,
                                  values=["any", "yes", "no"], width=15, state="readonly")
-        face_combo.grid(row=3, column=3, sticky="w", padx=(5, 0))
+        face_combo.grid(row=3, column=1, sticky="w", padx=(5, 0))
 
-        # Search button
-        ttk.Button(control_frame, text="Search Images", command=self.search_images).grid(row=4, column=0, columnspan=3, pady=10)
+
 
         # Query image preview frame (right side) - spans both rows
         query_preview_frame = ttk.LabelFrame(self.search_frame, text="Query Image Preview", padding=10)
@@ -1949,19 +1959,11 @@ class IntegratedImageGUI:
             metadata_filter = self._build_metadata_filter()
 
             # Perform search based on mode
-            if search_mode == "metadata":
-                # Metadata-only search
-                if not metadata_filter:
-                    messagebox.showwarning("Warning", "Please select at least one metadata filter for metadata search")
-                    return
-                results = self.system.db_manager.search_by_metadata(metadata_filter, self.num_results_var.get())
-                self.log_message(f"Metadata search with filters: {metadata_filter}")
-
-            elif search_mode == "vector" or search_mode == "hybrid":
-                # Vector or hybrid search
+            if search_mode == "vector":
+                # Vector search (image-based)
                 image_path = self.search_image_var.get()
                 if not image_path or not os.path.exists(image_path):
-                    messagebox.showerror("Error", "Please select a valid image file for vector/hybrid search")
+                    messagebox.showerror("Error", "Please select a valid image file for vector search")
                     return
 
                 # Create embedding for search image using configured model
@@ -1978,7 +1980,37 @@ class IntegratedImageGUI:
                     else:
                         embedding = embedding[:512]
 
-                if search_mode == "hybrid" and metadata_filter:
+                # Vector-only search with configured model
+                results = self.system.db_manager.search_images(
+                    embedding,
+                    model_name,
+                    self.num_results_var.get()
+                )
+                self.log_message(f"Vector similarity search using {model_name} embeddings")
+
+            elif search_mode == "hybrid":
+                # Hybrid search - vector + metadata (works with both image and text queries)
+                if self.search_image_var.get() and os.path.exists(self.search_image_var.get()):
+                    # Image-based hybrid search
+                    image_path = self.search_image_var.get()
+                    if not image_path or not os.path.exists(image_path):
+                        messagebox.showerror("Error", "Please select a valid image file for hybrid search")
+                        return
+
+                    # Create embedding for search image using configured model
+                    analyzer = ImageAnalyzer()
+                    embedder = ImageEmbedder(model_name=model_name)
+
+                    features = analyzer.analyze_image(image_path)
+                    embedding = embedder.create_embedding(image_path, features)
+
+                    # Normalize embedding to 512 dimensions for search
+                    if len(embedding) != 512:
+                        if len(embedding) < 512:
+                            embedding.extend([0.0] * (512 - len(embedding)))
+                        else:
+                            embedding = embedding[:512]
+
                     # Hybrid search - vector + metadata
                     results = self.system.db_manager.hybrid_search(
                         embedding,
@@ -1987,35 +2019,66 @@ class IntegratedImageGUI:
                         self.num_results_var.get()
                     )
                     self.log_message(f"Hybrid search with {model_name} + filters: {metadata_filter}")
+                elif self.search_text_var.get().strip():
+                    # Text-based hybrid search (not directly supported, so fallback to text-to-image with metadata filtering)
+                    text_query = self.search_text_var.get().strip()
+                    
+                    # First, do text-to-image search
+                    text_results = self.system.db_manager.text_to_image_search(text_query, 50) # Get more results for filtering
+                    
+                    # Then filter by metadata if available
+                    if metadata_filter:
+                        # Apply metadata filters to the text search results
+                        filtered_results = []
+                        for result in text_results:
+                            metadata = result.get('metadata', {})
+                            match = True
+                            
+                            # Check brightness filter
+                            if 'brightness_level' in metadata_filter:
+                                brightness_level = metadata.get('queryable_attributes', {}).get('brightness_level', 'unknown')
+                                if brightness_level != metadata_filter['brightness_level']:
+                                    match = False
+                                    
+                            # Check quality filter
+                            if 'image_quality' in metadata_filter:
+                                image_quality = metadata.get('queryable_attributes', {}).get('image_quality', 'unknown')
+                                if image_quality != metadata_filter['image_quality']:
+                                    match = False
+                                    
+                            # Check has_face filter
+                            if 'has_face' in metadata_filter:
+                                has_face = metadata.get('queryable_attributes', {}).get('has_face', False)
+                                if has_face != metadata_filter['has_face']:
+                                    match = False
+                                    
+                            if match:
+                                # Make sure the result has the required fields for display
+                                if 'distance' not in result:
+                                    result['distance'] = 0.0  # Default distance if not available
+                                filtered_results.append(result)
+                        results = filtered_results[:self.num_results_var.get()]
+                    else:
+                        results = text_results[:self.num_results_var.get()]
+                        
+                    self.log_message(f"Text+metadata search: '{text_query}' with filters: {metadata_filter}")
                 else:
-                    # Vector-only search with configured model
-                    results = self.system.db_manager.search_images(
-                        embedding,
-                        model_name,
-                        self.num_results_var.get()
-                    )
-                    self.log_message(f"Vector similarity search using {model_name} embeddings")
-
-            elif search_mode == "mixed":
-                image_path = self.search_image_var.get()
-                if not image_path or not os.path.exists(image_path):
-                    messagebox.showerror("Error", "Please select a valid image file for mixed search")
+                    messagebox.showerror("Error", "Please select a valid image file or enter text for hybrid search")
                     return
 
-                # Create embeddings for each model
-                clip_embedder = ImageEmbedder(model_name="clip")
-                yolo_embedder = ImageEmbedder(model_name="yolo")
-                resnet_embedder = ImageEmbedder(model_name="resnet")
+            elif search_mode == "text":
+                # Text-to-image search
+                text_query = self.search_text_var.get().strip()
+                if not text_query:
+                    messagebox.showerror("Error", "Please enter a text query for text search")
+                    return
 
-                analyzer = ImageAnalyzer()
-                features = analyzer.analyze_image(image_path)
-
-                clip_embedding = clip_embedder.create_embedding(image_path, features)
-                yolo_embedding = yolo_embedder.create_embedding(image_path, features)
-                resnet_embedding = resnet_embedder.create_embedding(image_path, features)
-
-                results = self.system.db_manager.multi_embedding_search(clip_embedding, yolo_embedding, resnet_embedding, self.num_results_var.get())
-                self.log_message("Mixed search")
+                # Use CLIP model for text search
+                results = self.system.db_manager.text_to_image_search(text_query, self.num_results_var.get())
+                self.log_message(f"Text-to-image search: '{text_query}'")
+                
+                # Update query preview to show text query
+                self.update_query_preview(text_query=text_query)
 
             else:
                 messagebox.showerror("Error", f"Unknown search mode: {search_mode}")
@@ -2071,6 +2134,10 @@ class IntegratedImageGUI:
         # Display results as image thumbnails only
         for i, result in enumerate(results):
             try:
+                # Ensure the result has the expected structure
+                if not isinstance(result, dict):
+                    continue  # Skip invalid results
+                
                 image_path = result.get('file_path')
                 if image_path and os.path.exists(image_path):
                     image = Image.open(image_path)
@@ -2109,22 +2176,43 @@ class IntegratedImageGUI:
         # Create popup window
         popup = tk.Toplevel(self.root)
         popup.title(f"Result #{result_number} Details")
-        popup.geometry("400x300")
+        popup.geometry("400x500")  # Increased height to accommodate more content
 
         # Center the popup
         popup.transient(self.root)
         popup.grab_set()
 
-        # Result information
-        info_frame = ttk.Frame(popup, padding=10)
-        info_frame.pack(fill="both", expand=True)
+        # Create main frame with scrollbar
+        main_frame = ttk.Frame(popup)
+        main_frame.pack(fill="both", expand=True, padx=10, pady=10)
 
-        distance = result.get('distance', 0.0)
+        # Canvas and scrollbar for scrolling if needed
+        canvas = tk.Canvas(main_frame)
+        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        # Result information
+        info_frame = scrollable_frame  # Use scrollable frame as the container
+
+        # Ensure result has required keys
+        distance = result.get('distance', result.get('clip_distance', result.get('yolo_distance', result.get('resnet_distance', 0.0))))
         distance_str = "N/A" if distance == 0.0 else f"{distance:.4f}"
         image_path = result.get('file_path', 'Unknown')
         metadata = result.get('metadata', {})
 
-        # Display info
+        # If metadata is still a dict, use it, otherwise try to get it from queryable_attributes or as a fallback
+        if not isinstance(metadata, dict):
+            metadata = {}
+
+        # Display main info
         ttk.Label(info_frame, text=f"Result #{result_number}", font=('TkDefaultFont', 12, 'bold')).pack(anchor="w", pady=5)
         ttk.Label(info_frame, text=f"Distance: {distance_str}").pack(anchor="w", pady=2)
         ttk.Label(info_frame, text=f"File: {os.path.basename(image_path)}").pack(anchor="w", pady=2)
@@ -2135,12 +2223,34 @@ class IntegratedImageGUI:
             ttk.Separator(info_frame, orient='horizontal').pack(fill='x', pady=10)
             ttk.Label(info_frame, text="Metadata:", font=('TkDefaultFont', 10, 'bold')).pack(anchor="w", pady=5)
 
+            # Check if metadata has nested structure like queryable_attributes
+            if 'queryable_attributes' in metadata and isinstance(metadata['queryable_attributes'], dict):
+                for key, value in metadata['queryable_attributes'].items():
+                    if key not in ['embedding', 'md5_hash']:  # Skip large/technical fields
+                        ttk.Label(info_frame, text=f"{key}: {value}").pack(anchor="w", pady=1)
+            
+            # Also display other metadata keys
             for key, value in metadata.items():
-                if key not in ['embedding', 'md5_hash']:  # Skip large/technical fields
-                    ttk.Label(info_frame, text=f"{key}: {value}").pack(anchor="w", pady=1)
+                if key not in ['embedding', 'md5_hash', 'queryable_attributes']:  # Skip complex fields
+                    # Handle nested dictionaries
+                    if isinstance(value, dict):
+                        ttk.Label(info_frame, text=f"{key}:", font=('TkDefaultFont', 9, 'bold')).pack(anchor="w", pady=(5, 1))
+                        for sub_key, sub_value in value.items():
+                            ttk.Label(info_frame, text=f"  {sub_key}: {sub_value}").pack(anchor="w", pady=1)
+                    else:
+                        ttk.Label(info_frame, text=f"{key}: {value}").pack(anchor="w", pady=1)
+
+        # Add a separator before the close button
+        ttk.Separator(info_frame, orient='horizontal').pack(fill='x', pady=10)
 
         # Close button
-        ttk.Button(info_frame, text="Close", command=popup.destroy).pack(pady=10)
+        close_frame = ttk.Frame(info_frame)
+        close_frame.pack(fill="x", pady=10)
+        ttk.Button(close_frame, text="Close", command=popup.destroy).pack(side="bottom")
+
+        # Pack canvas and scrollbar
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
 
     def show_comparison(self, result: Dict[str, Any], result_number: int):
         """Show selected result in comparison preview under query image"""
@@ -2192,36 +2302,120 @@ class IntegratedImageGUI:
         )
         if file_path:
             self.search_image_var.set(file_path)
-            self.update_query_preview(file_path)
+            self.search_text_var.set("")  # Clear text when selecting image
+            self.update_query_preview(image_path=file_path)
 
-    def update_query_preview(self, image_path: str):
-        """Update the query image preview"""
-        try:
-            if not os.path.exists(image_path):
-                self.query_preview_label.config(text="Image not found", image='')
+    def clear_search_text(self):
+        """Clear search text field"""
+        self.search_text_var.set("")
+        self.log_message("Text input cleared")
+
+    def update_query_preview(self, image_path: str = None, text_query: str = None):
+        """Update the query image preview or show text query"""
+        if image_path:
+            # Show image preview
+            try:
+                if not os.path.exists(image_path):
+                    self.query_preview_label.config(text="Image not found", image='')
+                    self.query_preview_photo = None
+                    return
+
+                # Load and resize image for preview
+                image = Image.open(image_path)
+
+                # Calculate resize to fit in preview (max 250x250)
+                max_size = 250
+                image.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+
+                # Convert to PhotoImage
+                photo = ImageTk.PhotoImage(image)
+
+                # Update label
+                self.query_preview_label.config(image=photo, text='')
+                self.query_preview_photo = photo  # Keep reference
+
+                self.log_message(f"Query image preview updated: {os.path.basename(image_path)}")
+
+            except Exception as e:
+                self.log_message(f"Error updating query preview: {e}", "error")
+                self.query_preview_label.config(text="Error loading image", image='')
                 self.query_preview_photo = None
-                return
-
-            # Load and resize image for preview
-            image = Image.open(image_path)
-
-            # Calculate resize to fit in preview (max 250x250)
-            max_size = 250
-            image.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
-
-            # Convert to PhotoImage
-            photo = ImageTk.PhotoImage(image)
-
-            # Update label
-            self.query_preview_label.config(image=photo, text='')
-            self.query_preview_photo = photo  # Keep reference
-
-            self.log_message(f"Query image preview updated: {os.path.basename(image_path)}")
-
-        except Exception as e:
-            self.log_message(f"Error updating query preview: {e}", "error")
-            self.query_preview_label.config(text="Error loading image", image='')
+        elif text_query:
+            # Show text query in preview
+            # Show text query in preview - use a label with text
+            self.query_preview_label.config(text=f"Text Query:\n{text_query}", image='', 
+                                            font=('TkDefaultFont', 10, 'bold'), 
+                                            wraplength=200, justify='center')
             self.query_preview_photo = None
+            self.log_message(f"Text query preview updated: {text_query}")
+        else:
+            # Clear preview
+            self.query_preview_label.config(text="No query selected", image='')
+            self.query_preview_photo = None
+
+    def update_query_preview(self, image_path: str = None, text_query: str = None):
+        """Update the query image preview or show text query"""
+        if image_path:
+            # Show image preview
+            try:
+                if not os.path.exists(image_path):
+                    self.query_preview_label.config(text="Image not found", image='')
+                    self.query_preview_photo = None
+                    return
+
+                # Load and resize image for preview
+                image = Image.open(image_path)
+
+                # Calculate resize to fit in preview (max 250x250)
+                max_size = 250
+                image.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+
+                # Convert to PhotoImage
+                photo = ImageTk.PhotoImage(image)
+
+                # Update label
+                self.query_preview_label.config(image=photo, text='')
+                self.query_preview_photo = photo  # Keep reference
+
+                self.log_message(f"Query image preview updated: {os.path.basename(image_path)}")
+
+            except Exception as e:
+                self.log_message(f"Error updating query preview: {e}", "error")
+                self.query_preview_label.config(text="Error loading image", image='')
+                self.query_preview_photo = None
+        elif text_query:
+            # Show text query in preview
+            # Show text query in preview - use a label with text
+            self.query_preview_label.config(text=f"Text Query:\n{text_query}", image='', 
+                                            font=('TkDefaultFont', 10, 'bold'), 
+                                            wraplength=200, justify='center')
+            self.query_preview_photo = None
+            self.log_message(f"Text query preview updated: {text_query}")
+        else:
+            # Clear preview
+            self.query_preview_label.config(text="No query selected", image='')
+            self.query_preview_photo = None
+
+    def on_search_mode_changed(self):
+        """Handle search mode change - update UI state"""
+        current_mode = self.search_mode_var.get()
+        
+        # Update query preview based on current mode
+        if current_mode == "text":
+            text_query = self.search_text_var.get().strip()
+            if text_query:
+                self.update_query_preview(text_query=text_query)
+            else:
+                self.update_query_preview(text_query="Enter text to search...")
+        else:
+            # For image-based searches, show image preview if available
+            image_path = self.search_image_var.get()
+            if image_path and os.path.exists(image_path):
+                self.update_query_preview(image_path=image_path)
+            else:
+                self.update_query_preview()
+
+        self.log_message(f"Search mode changed to: {current_mode}")
 
     def test_pg_connection(self):
         """Test PostgreSQL connection"""
