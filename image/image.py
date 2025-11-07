@@ -131,7 +131,7 @@ class IntegratedImageGUI:
 
         # Set window size to specific dimensions
         window_width = 960
-        window_height = 720
+        window_height = 650
 
         # Center the window on screen
         screen_width = self.root.winfo_screenwidth()
@@ -162,7 +162,7 @@ class IntegratedImageGUI:
         main_log_frame.pack(fill="both", expand=False, padx=5, pady=(5, 0))
 
         # Create the main log text widget
-        self.main_log_text = scrolledtext.ScrolledText(main_log_frame, height=8)
+        self.main_log_text = scrolledtext.ScrolledText(main_log_frame, height=6)
         self.main_log_text.pack(fill="both", expand=False)
 
 
@@ -258,7 +258,7 @@ class IntegratedImageGUI:
         stats_frame.grid(row=1, column=0, columnspan=2, sticky="ew", padx=5, pady=5)
 
         # Statistics text widget
-        self.stats_text = scrolledtext.ScrolledText(stats_frame, height=8, width=70)
+        self.stats_text = scrolledtext.ScrolledText(stats_frame, height=6, width=70)
         self.stats_text.pack(fill="both", expand=True)
 
 
@@ -353,7 +353,7 @@ class IntegratedImageGUI:
         preview_frame.rowconfigure(0, weight=1)
 
         # Create canvas with both horizontal and vertical scrollbars
-        self.download_canvas = tk.Canvas(preview_frame, height=80)
+        self.download_canvas = tk.Canvas(preview_frame, height=60)
         download_h_scrollbar = ttk.Scrollbar(preview_frame, orient="horizontal", command=self.download_canvas.xview)
         download_v_scrollbar = ttk.Scrollbar(preview_frame, orient="vertical", command=self.download_canvas.yview)
         self.download_thumbnails_frame = ttk.Frame(self.download_canvas)
@@ -454,7 +454,7 @@ class IntegratedImageGUI:
         process_preview_frame.rowconfigure(0, weight=1)
 
         # Create canvas with both horizontal and vertical scrollbars
-        self.process_canvas = tk.Canvas(process_preview_frame, height=80)
+        self.process_canvas = tk.Canvas(process_preview_frame, height=60)
         process_h_scrollbar = ttk.Scrollbar(process_preview_frame, orient="horizontal", command=self.process_canvas.xview)
         process_v_scrollbar = ttk.Scrollbar(process_preview_frame, orient="vertical", command=self.process_canvas.yview)
         self.process_thumbnails_frame = ttk.Frame(self.process_canvas)
@@ -589,7 +589,7 @@ class IntegratedImageGUI:
         self.results_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
 
         # Results display
-        self.results_canvas = tk.Canvas(self.results_frame, height=80)
+        self.results_canvas = tk.Canvas(self.results_frame, height=60)
         self.results_scrollbar = ttk.Scrollbar(self.results_frame, orient="vertical", command=self.results_canvas.yview)
         self.results_frame_inner = ttk.Frame(self.results_canvas)
 
@@ -2059,7 +2059,7 @@ class IntegratedImageGUI:
         return metadata_filter
 
     def display_search_results(self, results: List[Dict[str, Any]]):
-        """Display search results"""
+        """Display search results - images only"""
         # Clear previous results
         for widget in self.results_frame_inner.winfo_children():
             widget.destroy()
@@ -2072,43 +2072,83 @@ class IntegratedImageGUI:
             self.comparison_info_label.config(text="")
             return
 
-        # Display results
+        # Create a container frame for grid layout
+        container = ttk.Frame(self.results_frame_inner)
+        container.pack(fill="both", expand=True, padx=5, pady=5)
+
+        # Display results as image thumbnails only
         for i, result in enumerate(results):
-            result_frame = ttk.Frame(self.results_frame_inner, relief="solid", borderwidth=1)
-            result_frame.pack(fill="x", padx=5, pady=5)
-
-            # Result info
-            distance = result.get('distance', 0.0)
-            distance_str = "N/A" if distance == 0.0 else f"{distance:.3f}"
-            info_text = f"Result {i+1}: Distance: {distance_str}\nPath: {result.get('file_path', 'Unknown')}"
-            ttk.Label(result_frame, text=info_text).pack(side="left", padx=5)
-
-            # Try to display image thumbnail
             try:
                 image_path = result.get('file_path')
                 if image_path and os.path.exists(image_path):
                     image = Image.open(image_path)
-                    image.thumbnail((64, 64), Image.Resampling.LANCZOS)
+                    image.thumbnail((80, 80), Image.Resampling.LANCZOS)
                     photo = ImageTk.PhotoImage(image)
 
-                    # Create clickable button-like label
-                    image_label = tk.Label(result_frame, image=photo, cursor="hand2",
-                                          relief="raised", borderwidth=2)
+                    # Create clickable image label
+                    image_label = tk.Label(container, image=photo, cursor="hand2",
+                                          relief="raised", borderwidth=2, bg="white")
                     image_label.image = photo  # Keep a reference
-                    image_label.pack(side="right", padx=5, pady=5)
 
-                    # Bind click event
-                    image_label.bind("<Button-1>", lambda e, r=result, idx=i+1: self.show_comparison(r, idx))
+                    # Grid layout - 5 images per row
+                    row = i // 5
+                    col = i % 5
+                    image_label.grid(row=row, column=col, padx=3, pady=3)
 
-                    # Show first result by default
+                    # Bind click event to show popup with info
+                    image_label.bind("<Button-1>", lambda e, r=result, idx=i+1: self.show_result_popup(r, idx))
+
+                    # Show first result in comparison by default
                     if i == 0:
                         self.show_comparison(result, 1)
-            except Exception:
+            except Exception as e:
+                print(f"Error displaying result {i}: {e}")
                 pass  # Skip image display if error
 
         # Update scroll region
         self.results_frame_inner.update_idletasks()
         self.results_canvas.configure(scrollregion=self.results_canvas.bbox("all"))
+
+    def show_result_popup(self, result: Dict[str, Any], result_number: int):
+        """Show popup with result information when image is clicked"""
+        # Also update the comparison preview
+        self.show_comparison(result, result_number)
+
+        # Create popup window
+        popup = tk.Toplevel(self.root)
+        popup.title(f"Result #{result_number} Details")
+        popup.geometry("400x300")
+
+        # Center the popup
+        popup.transient(self.root)
+        popup.grab_set()
+
+        # Result information
+        info_frame = ttk.Frame(popup, padding=10)
+        info_frame.pack(fill="both", expand=True)
+
+        distance = result.get('distance', 0.0)
+        distance_str = "N/A" if distance == 0.0 else f"{distance:.4f}"
+        image_path = result.get('file_path', 'Unknown')
+        metadata = result.get('metadata', {})
+
+        # Display info
+        ttk.Label(info_frame, text=f"Result #{result_number}", font=('TkDefaultFont', 12, 'bold')).pack(anchor="w", pady=5)
+        ttk.Label(info_frame, text=f"Distance: {distance_str}").pack(anchor="w", pady=2)
+        ttk.Label(info_frame, text=f"File: {os.path.basename(image_path)}").pack(anchor="w", pady=2)
+        ttk.Label(info_frame, text=f"Path: {image_path}", wraplength=350).pack(anchor="w", pady=2)
+
+        # Show metadata if available
+        if metadata:
+            ttk.Separator(info_frame, orient='horizontal').pack(fill='x', pady=10)
+            ttk.Label(info_frame, text="Metadata:", font=('TkDefaultFont', 10, 'bold')).pack(anchor="w", pady=5)
+
+            for key, value in metadata.items():
+                if key not in ['embedding', 'md5_hash']:  # Skip large/technical fields
+                    ttk.Label(info_frame, text=f"{key}: {value}").pack(anchor="w", pady=1)
+
+        # Close button
+        ttk.Button(info_frame, text="Close", command=popup.destroy).pack(pady=10)
 
     def show_comparison(self, result: Dict[str, Any], result_number: int):
         """Show selected result in comparison preview under query image"""
