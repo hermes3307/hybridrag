@@ -353,7 +353,7 @@ class IntegratedImageGUI:
         preview_frame.rowconfigure(0, weight=1)
 
         # Create canvas with both horizontal and vertical scrollbars
-        self.download_canvas = tk.Canvas(preview_frame, height=30)
+        self.download_canvas = tk.Canvas(preview_frame, height=90)
         download_h_scrollbar = ttk.Scrollbar(preview_frame, orient="horizontal", command=self.download_canvas.xview)
         download_v_scrollbar = ttk.Scrollbar(preview_frame, orient="vertical", command=self.download_canvas.yview)
         self.download_thumbnails_frame = ttk.Frame(self.download_canvas)
@@ -454,7 +454,7 @@ class IntegratedImageGUI:
         process_preview_frame.rowconfigure(0, weight=1)
 
         # Create canvas with both horizontal and vertical scrollbars
-        self.process_canvas = tk.Canvas(process_preview_frame, height=30)
+        self.process_canvas = tk.Canvas(process_preview_frame, height=90)
         process_h_scrollbar = ttk.Scrollbar(process_preview_frame, orient="horizontal", command=self.process_canvas.xview)
         process_v_scrollbar = ttk.Scrollbar(process_preview_frame, orient="vertical", command=self.process_canvas.yview)
         self.process_thumbnails_frame = ttk.Frame(self.process_canvas)
@@ -589,7 +589,7 @@ class IntegratedImageGUI:
         self.results_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
 
         # Results display
-        self.results_canvas = tk.Canvas(self.results_frame, height=30)
+        self.results_canvas = tk.Canvas(self.results_frame, height=90)
         self.results_scrollbar = ttk.Scrollbar(self.results_frame, orient="vertical", command=self.results_canvas.yview)
         self.results_frame_inner = ttk.Frame(self.results_canvas)
 
