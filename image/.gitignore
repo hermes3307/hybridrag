@@ -1,6 +1,6 @@
 .env
 image/
-images/
+images/*
 *face_database.FaceDatabase*
 chroma_db/
 indexer.log
@@ -24,6 +24,7 @@ vector_single/
 case_studies/
 case_study_output.txt
 vector_db/
+*.jpg
 *.log
 collected_news/
 *.json
