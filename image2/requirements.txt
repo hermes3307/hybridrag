@@ -1,0 +1,10 @@
+requests
+numpy
+Pillow
+opencv-python
+psycopg2-binary
+torch
+torchvision
+transformers
+ultralytics
+python-dotenv
