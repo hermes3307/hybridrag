@@ -128,7 +128,18 @@ class IntegratedImageGUI:
         # Create main window
         self.root = tk.Tk()
         self.root.title("Image Processing System")
-        self.root.geometry("1200x800")
+
+        # Set window size to specific dimensions
+        window_width = 960
+        window_height = 720
+
+        # Center the window on screen
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        x_position = int((screen_width - window_width) / 2)
+        y_position = int((screen_height - window_height) / 2)
+
+        self.root.geometry(f"{window_width}x{window_height}+{x_position}+{y_position}")
 
         # Core system components
         self.system = None  # IntegratedImageSystem instance
@@ -140,13 +151,9 @@ class IntegratedImageGUI:
         self.is_processing = False
         self.last_stats_update = 0
 
-        # Create main container with scrollbar
-        self.main_container = ttk.Frame(self.root)
-        self.main_container.pack(fill="both", expand=True)
-
-        # Create canvas and scrollbar for entire window
-        self.main_canvas = tk.Canvas(self.main_container)
-        self.main_scrollbar = ttk.Scrollbar(self.main_container, orient="vertical", command=self.main_canvas.yview)
+        # Create main canvas and scrollable frame for the entire application
+        self.main_canvas = tk.Canvas(self.root)
+        self.main_scrollbar = ttk.Scrollbar(self.root, orient="vertical", command=self.main_canvas.yview)
         self.scrollable_frame = ttk.Frame(self.main_canvas)
 
         self.scrollable_frame.bind(
@@ -157,7 +164,6 @@ class IntegratedImageGUI:
         self.canvas_window = self.main_canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
         self.main_canvas.configure(yscrollcommand=self.main_scrollbar.set)
 
-        # Pack canvas and scrollbar
         self.main_canvas.pack(side="left", fill="both", expand=True)
         self.main_scrollbar.pack(side="right", fill="y")
 
@@ -168,13 +174,22 @@ class IntegratedImageGUI:
         self.main_canvas.bind("<Configure>", on_canvas_configure)
 
         # Bind mousewheel to main canvas
-        self._bind_main_mousewheel()
+        self._bind_mousewheel(self.main_canvas, self.scrollable_frame)
 
         # Create GUI widgets (tabs)
         self.create_widgets()
 
         # Pack the notebook immediately so tabs are visible
         self.notebook.pack(fill="both", expand=True, padx=5, pady=5)
+
+        # Create a centralized log frame
+        main_log_frame = ttk.LabelFrame(self.scrollable_frame, text="System Log", padding=5)
+        main_log_frame.pack(fill="both", expand=False, padx=5, pady=(5, 0))
+
+        # Create the main log text widget
+        self.main_log_text = scrolledtext.ScrolledText(main_log_frame, height=8)
+        self.main_log_text.pack(fill="both", expand=False)
+
 
         # Show a loading message
         self.log_message("Loading system components in background...")
@@ -271,13 +286,7 @@ class IntegratedImageGUI:
         self.stats_text = scrolledtext.ScrolledText(stats_frame, height=10, width=70)
         self.stats_text.pack(fill="both", expand=True)
 
-        # System Log frame
-        log_frame = ttk.LabelFrame(self.overview_frame, text="System Log", padding=10)
-        log_frame.grid(row=2, column=0, columnspan=2, sticky="ew", padx=5, pady=5)
 
-        # System log text widget
-        self.overview_log_text = scrolledtext.ScrolledText(log_frame, height=10, width=70)
-        self.overview_log_text.pack(fill="both", expand=True)
 
         # Control buttons
         control_frame = ttk.Frame(self.overview_frame)
@@ -287,14 +296,13 @@ class IntegratedImageGUI:
         ttk.Button(control_frame, text="Check PostgreSQL", command=self.check_postgresql_status).pack(side="left", padx=5)
         ttk.Button(control_frame, text="Reset Statistics", command=self.reset_statistics).pack(side="left", padx=5)
         ttk.Button(control_frame, text="Clear Log", command=self.clear_overview_log).pack(side="left", padx=5)
-        ttk.Button(control_frame, text="Save Configuration", command=self.save_configuration).pack(side="left", padx=5)
 
     def create_download_tab(self):
         """Create download images tab"""
 
         # Configure grid weights for proper resizing
         self.download_frame.columnconfigure(0, weight=1)
-        self.download_frame.rowconfigure(3, weight=1)  # Preview frame expands
+        self.download_frame.rowconfigure(3, weight=0)  # Preview frame expands
 
         # Download control frame
         control_frame = ttk.LabelFrame(self.download_frame, text="Download Controls", padding=10)
@@ -363,33 +371,14 @@ class IntegratedImageGUI:
             self.download_stats_labels[key] = ttk.Label(stats_grid, text="0", font=('TkDefaultFont', 9))
             self.download_stats_labels[key].grid(row=row, column=col+1, sticky="w", padx=(0, 15))
 
-        # Hash Loading Progress Frame
-        self.hash_progress_frame = ttk.LabelFrame(self.download_frame, text="Duplicate Detection Setup", padding=10)
-        self.hash_progress_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=5)
-
-        # Progress bar
-        self.hash_progress_bar = ttk.Progressbar(self.hash_progress_frame, mode='determinate', length=400)
-        self.hash_progress_bar.pack(fill="x", pady=(0, 5))
-
-        # Status label
-        self.hash_progress_label = ttk.Label(self.hash_progress_frame, text="Initializing...", font=('TkDefaultFont', 9))
-        self.hash_progress_label.pack()
-
-        # Download status
-        status_frame = ttk.LabelFrame(self.download_frame, text="Download Status", padding=10)
-        status_frame.grid(row=3, column=0, sticky="ew", padx=5, pady=5)
-
-        self.download_status_text = scrolledtext.ScrolledText(status_frame, height=6, width=70)
-        self.download_status_text.pack(fill="both", expand=True)
-
         # Download preview frame - thumbnails with scrolling
         preview_frame = ttk.LabelFrame(self.download_frame, text="Downloaded Images Preview", padding=10)
-        preview_frame.grid(row=4, column=0, sticky="nsew", padx=5, pady=5)
+        preview_frame.grid(row=2, column=0, sticky="nsew", padx=5, pady=5)
         preview_frame.columnconfigure(0, weight=1)
         preview_frame.rowconfigure(0, weight=1)
 
         # Create canvas with both horizontal and vertical scrollbars
-        self.download_canvas = tk.Canvas(preview_frame, height=200)
+        self.download_canvas = tk.Canvas(preview_frame, height=100)
         download_h_scrollbar = ttk.Scrollbar(preview_frame, orient="horizontal", command=self.download_canvas.xview)
         download_v_scrollbar = ttk.Scrollbar(preview_frame, orient="vertical", command=self.download_canvas.yview)
         self.download_thumbnails_frame = ttk.Frame(self.download_canvas)
@@ -418,7 +407,7 @@ class IntegratedImageGUI:
 
         # Configure grid weights for proper resizing
         self.process_frame.columnconfigure(0, weight=1)
-        self.process_frame.rowconfigure(3, weight=1)  # Preview frame expands
+        self.process_frame.rowconfigure(3, weight=0)  # Preview frame expands
 
         # Processing control frame
         control_frame = ttk.LabelFrame(self.process_frame, text="Processing Controls", padding=10)
@@ -427,29 +416,34 @@ class IntegratedImageGUI:
         # Processing settings
         ttk.Label(control_frame, text="Embedding Models:").grid(row=0, column=0, sticky="w")
         self.process_embedding_model_label = ttk.Label(control_frame, text="Loading...")
-        self.process_embedding_model_label.grid(row=0, column=1, sticky="w", padx=(5, 0))
+        self.process_embedding_model_label.grid(row=0, column=1, columnspan=5, sticky="w", padx=(5, 0))
 
+        # Batch Size and Max Workers in one row
         ttk.Label(control_frame, text="Batch Size:").grid(row=1, column=0, sticky="w")
         self.batch_size_var = tk.IntVar(value=50)
         batch_spin = ttk.Spinbox(control_frame, from_=1, to=200, increment=1,
                                 textvariable=self.batch_size_var, width=10)
-        batch_spin.grid(row=1, column=1, sticky="w", padx=(5, 0))
+        batch_spin.grid(row=1, column=1, sticky="w", padx=(5, 10))
 
-        ttk.Label(control_frame, text="Max Workers:").grid(row=2, column=0, sticky="w")
+        ttk.Label(control_frame, text="Max Workers:").grid(row=1, column=2, sticky="w", padx=(10, 0))
         self.max_workers_var = tk.IntVar(value=4)
         workers_spin = ttk.Spinbox(control_frame, from_=1, to=8, increment=1,
                                   textvariable=self.max_workers_var, width=10)
-        workers_spin.grid(row=2, column=1, sticky="w", padx=(5, 0))
+        workers_spin.grid(row=1, column=3, sticky="w", padx=(5, 10))
 
-        # Processing buttons
+        # Process All Images button on the right side of the same row
+        self.process_button = ttk.Button(control_frame, text="Process All Images", command=self.start_processing)
+        self.process_button.grid(row=1, column=4, sticky="w", padx=(10, 0))
+
+        # Stop Processing button (conditionally shown)
+        self.stop_button = ttk.Button(control_frame, text="Stop Processing", command=self.stop_processing)
+        # Initially hidden
+
+        # Processing buttons frame for other buttons
         button_frame = ttk.Frame(control_frame)
-        button_frame.grid(row=3, column=0, columnspan=3, pady=10)
-
-        self.process_button = ttk.Button(button_frame, text="Process All Images", command=self.start_processing)
-        self.process_button.pack(side="left", padx=5)
+        button_frame.grid(row=2, column=0, columnspan=5, pady=10)
 
         ttk.Button(button_frame, text="Process New Only", command=self.process_new_images).pack(side="left", padx=5)
-        ttk.Button(button_frame, text="Stop Processing", command=self.stop_processing).pack(side="left", padx=5)
 
         # Embedding Statistics Frame
         embed_stats_frame = ttk.LabelFrame(self.process_frame, text="Embedding Statistics", padding=10)
@@ -478,29 +472,14 @@ class IntegratedImageGUI:
             self.embed_stats_labels[key] = ttk.Label(embed_stats_grid, text="0", font=('TkDefaultFont', 9))
             self.embed_stats_labels[key].grid(row=row, column=col+1, sticky="w", padx=(0, 15))
 
-        # Progress frame
-        progress_frame = ttk.LabelFrame(self.process_frame, text="Processing Progress", padding=10)
-        progress_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=5)
-
-        # Progress bar (determinate - shows actual progress)
-        self.process_progress = ttk.Progressbar(progress_frame, mode='determinate', length=400)
-        self.process_progress.pack(fill="x", pady=(0, 5))
-
-        # Progress label showing X/Y files and percentage
-        self.process_progress_label = ttk.Label(progress_frame, text="Ready to process", font=('TkDefaultFont', 9))
-        self.process_progress_label.pack(pady=(0, 10))
-
-        self.process_status_text = scrolledtext.ScrolledText(progress_frame, height=6, width=70)
-        self.process_status_text.pack(fill="both", expand=True)
-
         # Processing preview frame - thumbnails with scrolling
         process_preview_frame = ttk.LabelFrame(self.process_frame, text="Embedding Images Preview", padding=10)
-        process_preview_frame.grid(row=3, column=0, sticky="nsew", padx=5, pady=5)
+        process_preview_frame.grid(row=2, column=0, sticky="nsew", padx=5, pady=5)
         process_preview_frame.columnconfigure(0, weight=1)
         process_preview_frame.rowconfigure(0, weight=1)
 
         # Create canvas with both horizontal and vertical scrollbars
-        self.process_canvas = tk.Canvas(process_preview_frame, height=200)
+        self.process_canvas = tk.Canvas(process_preview_frame, height=100)
         process_h_scrollbar = ttk.Scrollbar(process_preview_frame, orient="horizontal", command=self.process_canvas.xview)
         process_v_scrollbar = ttk.Scrollbar(process_preview_frame, orient="vertical", command=self.process_canvas.yview)
         self.process_thumbnails_frame = ttk.Frame(self.process_canvas)
@@ -531,7 +510,7 @@ class IntegratedImageGUI:
         self.search_frame.columnconfigure(0, weight=2)  # Results/controls column
         self.search_frame.columnconfigure(1, weight=1)  # Preview column
         self.search_frame.rowconfigure(0, weight=0)      # Controls don't expand
-        self.search_frame.rowconfigure(1, weight=1)      # Results expand vertically
+        self.search_frame.rowconfigure(1, weight=0)      # Results expand vertically
 
         # Search control frame (left side)
         control_frame = ttk.LabelFrame(self.search_frame, text="Search Controls", padding=10)
@@ -540,9 +519,8 @@ class IntegratedImageGUI:
         # Search by image
         ttk.Label(control_frame, text="Search by Image:").grid(row=0, column=0, sticky="w")
         self.search_image_var = tk.StringVar()
-        ttk.Entry(control_frame, textvariable=self.search_image_var, width=30).grid(row=0, column=1, sticky="w", padx=(5, 0))
-        ttk.Button(control_frame, text="Browse", command=self.browse_search_image).grid(row=0, column=2, padx=5)
-        ttk.Button(control_frame, text="Take a Picture", command=self.take_picture_search).grid(row=0, column=3, padx=5)
+        ttk.Entry(control_frame, textvariable=self.search_image_var, width=20).grid(row=0, column=1, sticky="w", padx=(5, 5))
+        ttk.Button(control_frame, text="Browse", command=self.browse_search_image).grid(row=0, column=2, sticky="w", padx=(0, 5))
 
         # Embedding model for search
         ttk.Label(control_frame, text="Search Model:").grid(row=1, column=0, sticky="w")
@@ -636,7 +614,7 @@ class IntegratedImageGUI:
         self.results_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
 
         # Results display
-        self.results_canvas = tk.Canvas(self.results_frame)
+        self.results_canvas = tk.Canvas(self.results_frame, height=100)
         self.results_scrollbar = ttk.Scrollbar(self.results_frame, orient="vertical", command=self.results_canvas.yview)
         self.results_frame_inner = ttk.Frame(self.results_canvas)
 
@@ -690,7 +668,7 @@ class IntegratedImageGUI:
         embedding_combo.grid(row=0, column=1, sticky="w", padx=(5, 10))
 
         ttk.Button(embedding_frame, text="Check Model Availability",
-                  command=self.check_embedding_models).grid(row=0, column=2, padx=5)
+                  command=self.gui_check_embedding_models).grid(row=0, column=2, padx=5)
 
         # Bind model change event
         self.embedding_model_var.trace('w', self.on_embedding_model_changed)
@@ -699,57 +677,20 @@ class IntegratedImageGUI:
         self.model_warning_label = ttk.Label(embedding_frame, text="", foreground="red", font=('TkDefaultFont', 9, 'bold'))
         self.model_warning_label.grid(row=1, column=0, columnspan=3, sticky="w", pady=(5, 0))
 
-        # Model description
-        model_desc_frame = ttk.Frame(embedding_frame)
-        model_desc_frame.grid(row=2, column=0, columnspan=3, sticky="ew", pady=(10, 0))
 
-        self.model_info_text = scrolledtext.ScrolledText(model_desc_frame, height=8, width=70, wrap=tk.WORD)
-        self.model_info_text.pack(fill="both", expand=True)
-
-        # Insert model descriptions
-        model_descriptions = """
-Embedding Models:
-
-• Statistical (Default): Simple statistical features. Always available. Fast but lower accuracy.
-  Size: 512 dimensions
-
-• CLIP: Deep learning model for image and text similarity.
-  Install: pip install torch torchvision transformers
-  Size: 512 dimensions
-
-• YOLO: Object detection model. Creates a bag-of-objects embedding.
-  Install: pip install torch torchvision ultralytics
-  Size: 80 dimensions
-
-• ResNet: For deep visual features
-  Install: pip install torch torchvision
-  Size: 2048 dimensions
-"""
-        self.model_info_text.insert('1.0', model_descriptions)
-        self.model_info_text.config(state='disabled')
 
         # System config frame
         system_frame = ttk.LabelFrame(self.config_frame, text="System Configuration", padding=10)
         system_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=5)
 
-        # Dependencies status
-        deps_frame = ttk.LabelFrame(self.config_frame, text="Dependencies Status", padding=10)
-        deps_frame.grid(row=3, column=0, sticky="ew", padx=5, pady=5)
 
-        self.deps_text = scrolledtext.ScrolledText(deps_frame, height=10, width=70)
-        self.deps_text.pack(fill="both", expand=True)
 
         # Config buttons
         button_frame = ttk.Frame(self.config_frame)
         button_frame.grid(row=4, column=0, pady=10)
 
         ttk.Button(button_frame, text="Initialize Vector Database", command=self.initialize_vector_database).pack(side="left", padx=5)
-        ttk.Button(button_frame, text="Initialize Download Directory", command=self.initialize_download_directory).pack(side="left", padx=5)
-        ttk.Button(button_frame, text="Re-embed All Data", command=self.reembed_all_data).pack(side="left", padx=5)
-        ttk.Button(button_frame, text="Optimize Database", command=self.optimize_database).pack(side="left", padx=5)
         ttk.Button(button_frame, text="Check Dependencies", command=self.check_dependencies).pack(side="left", padx=5)
-        ttk.Button(button_frame, text="Load Configuration", command=self.load_configuration).pack(side="left", padx=5)
-        ttk.Button(button_frame, text="Save Configuration", command=self.save_configuration).pack(side="left", padx=5)
 
     def setup_layout(self):
         """Setup the main layout"""
@@ -801,8 +742,7 @@ Embedding Models:
         total_issues = len(missing_json) + len(invalid_json)
 
         if total_issues == 0:
-            self.log_message("Metadata validation complete. All files are well-defined.")
-            messagebox.showinfo("Validation Complete", "All metadata files are present and well-formed.")
+            self.log_message("✓ Metadata validation complete. All files are well-defined.", "success")
             return
 
         report = f"Metadata validation found {total_issues} issues:\n\n"
@@ -901,8 +841,7 @@ Embedding Models:
 
     def _show_fix_results(self, fixed_count, error_count):
         """Display the results of the metadata fix operation."""
-        self.log_message(f"Metadata fix complete. Fixed: {fixed_count}, Errors: {error_count}")
-        messagebox.showinfo("Fix Complete", f"Successfully fixed {fixed_count} metadata files.\nEncountered {error_count} errors.")
+        self.log_message(f"✓ Metadata fix complete. Fixed: {fixed_count} files, Errors: {error_count}", "success" if error_count == 0 else "warning")
 
     def _json_numpy_fallback(self, obj):
         """Fallback for JSON serialization of numpy types"""
@@ -989,8 +928,7 @@ Embedding Models:
         total_issues = len(missing_json) + len(invalid_json)
 
         if total_issues == 0:
-            self.log_message("Metadata validation complete. All files are well-defined.")
-            messagebox.showinfo("Validation Complete", "All metadata files are present and well-formed.")
+            self.log_message("✓ Metadata validation complete. All files are well-defined.", "success")
             return
 
         report = f"Metadata validation found {total_issues} issues:\n\n"
@@ -1089,8 +1027,7 @@ Embedding Models:
 
     def _show_fix_results(self, fixed_count, error_count):
         """Display the results of the metadata fix operation."""
-        self.log_message(f"Metadata fix complete. Fixed: {fixed_count}, Errors: {error_count}")
-        messagebox.showinfo("Fix Complete", f"Successfully fixed {fixed_count} metadata files.\nEncountered {error_count} errors.")
+        self.log_message(f"✓ Metadata fix complete. Fixed: {fixed_count} files, Errors: {error_count}", "success" if error_count == 0 else "warning")
 
     def _json_numpy_fallback(self, obj):
         """Fallback for JSON serialization of numpy types"""
@@ -1108,51 +1045,31 @@ Embedding Models:
         self.root.grid_rowconfigure(0, weight=1)
 
     def _processing_progress(self, current, total, message):
-        """Callback for embedding/processing progress - updates GUI progress bar"""
+        """Callback for embedding/processing progress - logs to panel"""
         def update_gui():
             try:
                 if total > 0:
                     percentage = int((current / total) * 100)
-                    self.process_progress['value'] = percentage
-                    self.process_progress_label['text'] = f"Processing: {current:,}/{total:,} files ({percentage}%)"
+                    status_msg = f"Processing: {current:,}/{total:,} files ({percentage}%)"
+                    if message:
+                        status_msg += f" - {message}"
+                    self.log_message(status_msg, "info")
             except Exception as e:
                 print(f"Error updating processing progress: {e}")
 
         self.root.after(0, update_gui)
 
     def _hash_loading_progress(self, count, total, message):
-        """Callback for hash loading progress - updates GUI progress bar"""
-        def update_gui():
-            try:
-                if total > 0:
-                    percentage = int((count / total) * 100)
-                    self.hash_progress_bar['value'] = percentage
-                    self.hash_progress_label['text'] = f"Loading: {count:,}/{total:,} images ({percentage}%)"
-            except Exception as e:
-                print(f"Error updating hash progress: {e}")
-
-        self.root.after(0, update_gui)
+        """Callback for hash loading progress - logs to panel only"""
+        # No GUI update, progress is logged in _hash_loading_complete
+        pass
 
     def _hash_loading_complete(self, count, elapsed):
-        """Callback when hash loading completes - hide progress bar and show notification"""
+        """Callback when hash loading completes - logs to panel only"""
         def update_gui():
             try:
-                # Update progress to 100%
-                self.hash_progress_bar['value'] = 100
-                self.hash_progress_label['text'] = f"✓ Ready - {count:,} images loaded in {elapsed:.1f}s"
-
-                # Hide progress frame after 3 seconds
-                self.root.after(3000, lambda: self.hash_progress_frame.grid_remove())
-
-                # Log completion
-                self.log_message(f"✓ Duplicate detection ready ({count:,} image hashes loaded)")
-
-                # Show notification popup
-                messagebox.showinfo(
-                    "Duplicate Detection Ready",
-                    f"Successfully loaded {count:,} image hashes in {elapsed:.1f}s\n\n"
-                    f"Duplicate detection is now active for downloads."
-                )
+                # Log completion only
+                self.log_message(f"✓ Duplicate detection ready ({count:,} image hashes loaded in {elapsed:.1f}s)", "success")
             except Exception as e:
                 print(f"Error in hash loading complete: {e}")
 
@@ -1299,42 +1216,20 @@ Embedding Models:
         timestamp = datetime.now().strftime("%H:%M:%S")
         formatted_message = f"[{timestamp}] {message}\n"
 
-        # Log to overview log (always show system messages)
-        if hasattr(self, 'overview_log_text'):
-            self.overview_log_text.insert(tk.END, formatted_message)
-            self.overview_log_text.see(tk.END)
+        # Log to the main log text widget
+        if hasattr(self, 'main_log_text'):
+            self.main_log_text.insert(tk.END, formatted_message)
+            self.main_log_text.see(tk.END)
 
     def log_message(self, message: str, level: str = "info"):
         """Log message to appropriate text widget"""
         timestamp = datetime.now().strftime("%H:%M:%S")
         formatted_message = f"[{timestamp}] {message}\n"
 
-        # Log to overview log (always show system messages)
-        if hasattr(self, 'overview_log_text'):
-            self.overview_log_text.insert(tk.END, formatted_message)
-            self.overview_log_text.see(tk.END)
-
-        # Log to download status if downloading
-        if hasattr(self, 'download_status_text'):
-            self.download_status_text.insert(tk.END, formatted_message)
-            self.download_status_text.see(tk.END)
-
-        # Log to process status if processing
-        if hasattr(self, 'process_status_text'):
-            self.process_status_text.insert(tk.END, formatted_message)
-            self.process_status_text.see(tk.END)
-
-        # DON'T call logger.info() here to avoid infinite loop
-        # The external modules will log directly via their own loggers
-
-    def _bind_main_mousewheel(self):
-        """Bind mousewheel scrolling to main canvas"""
-        def on_mousewheel(event):
-            # Scroll vertically
-            self.main_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-
-        # Bind mousewheel to main canvas
-        self.main_canvas.bind_all("<MouseWheel>", on_mousewheel)
+        # Log to the main log text widget
+        if hasattr(self, 'main_log_text'):
+            self.main_log_text.insert(tk.END, formatted_message)
+            self.main_log_text.see(tk.END)
 
     def _bind_mousewheel(self, canvas, frame):
         """Bind mousewheel scrolling to canvas"""
@@ -1451,43 +1346,7 @@ Embedding Models:
             self.log_message(f"✗ Error reinitializing vector database: {e}", "error")
             messagebox.showerror("Error", f"Error reinitializing vector database:\n\n{e}")
 
-    def initialize_download_directory(self):
-        """Initialize download directory"""
-        try:
-            # Get directory path from GUI
-            download_dir = self.images_dir_var.get()
 
-            # Create directory if it doesn't exist
-            os.makedirs(download_dir, exist_ok=True)
-
-            # Update system config if system exists
-            if self.system:
-                self.system.config.images_dir = download_dir
-                self.system.downloader.config.images_dir = download_dir
-
-            # Count existing files
-            existing_files = []
-            for ext in ['*.jpg', '*.jpeg', '*.png']:
-                existing_files.extend(Path(download_dir).rglob(ext))
-
-            file_count = len(existing_files)
-
-            # Calculate directory size
-            total_size = sum(f.stat().st_size for f in existing_files if f.is_file())
-            size_mb = total_size / (1024 * 1024)
-
-            self.log_message(f"Download directory initialized: {download_dir}")
-            self.log_message(f"Existing files: {file_count} ({size_mb:.2f} MB)")
-
-            messagebox.showinfo("Success",
-                f"Download directory initialized successfully!\n\n"
-                f"Path: {download_dir}\n"
-                f"Existing files: {file_count}\n"
-                f"Total size: {size_mb:.2f} MB")
-
-        except Exception as e:
-            self.log_message(f"Error initializing download directory: {e}", "error")
-            messagebox.showerror("Error", f"Error initializing download directory: {e}")
 
     def update_display(self):
         """Update display elements"""
@@ -1894,23 +1753,22 @@ Embedding Models:
             self.log_message(f"Error checking files: {e}", "error")
     
         self.is_processing = True
-        self.process_button.config(state="disabled")
-        self.process_progress['value'] = 0
-    
+        self.process_button.grid_remove()
+        self.stop_button.grid(row=1, column=4, sticky="w", padx=(10, 0))
+
         def process_worker():
             try:
                 self.system.processor.process_all_images(
                     callback=self.on_image_processed,
                     progress_callback=self._processing_progress
                 )
-                self.log_message("Processing completed")
-                self.root.after(0, lambda: self.process_progress_label.config(text="✓ Processing completed"))
+                self.log_message("✓ Processing completed", "success")
             except Exception as e:
-                self.log_message(f"Processing error: {e}", "error")
-                self.root.after(0, lambda e=e: self.process_progress_label.config(text=f"✗ Error: {e}"))
+                self.log_message(f"✗ Processing error: {e}", "error")
             finally:
                 self.is_processing = False
-                self.root.after(0, lambda: self.process_button.config(state="normal"))
+                self.root.after(0, lambda: self.stop_button.grid_remove())
+                self.root.after(0, lambda: self.process_button.grid(row=1, column=4, sticky="w", padx=(10, 0)))
     
         self.processing_thread = threading.Thread(target=process_worker, daemon=True)
         self.processing_thread.start()
@@ -1951,9 +1809,9 @@ Embedding Models:
                 return
     
             self.is_processing = True
-            self.process_button.config(state="disabled")
-            self.process_progress['value'] = 0
-    
+            self.process_button.grid_remove()
+            self.stop_button.grid(row=1, column=4, sticky="w", padx=(10, 0))
+
             def process_worker():
                 try:
                     self.log_message(f"Processing {len(new_files)} new files only...")
@@ -1961,15 +1819,13 @@ Embedding Models:
                         callback=self.on_image_processed,
                         progress_callback=self._processing_progress
                     )
-                    self.log_message(f"New files processing completed: {result_stats['processed']} processed, {result_stats['errors']} errors")
-                    self.root.after(0, lambda: self.process_progress_label.config(
-                        text=f"✓ Completed: {result_stats['processed']} processed, {result_stats['errors']} errors"))
+                    self.log_message(f"✓ New files processing completed: {result_stats['processed']} processed, {result_stats['errors']} errors", "success")
                 except Exception as e:
-                    self.log_message(f"Processing error: {e}", "error")
-                    self.root.after(0, lambda e=e: self.process_progress_label.config(text=f"✗ Error: {e}"))
+                    self.log_message(f"✗ Processing error: {e}", "error")
                 finally:
                     self.is_processing = False
-                    self.root.after(0, lambda: self.process_button.config(state="normal"))
+                    self.root.after(0, lambda: self.stop_button.grid_remove())
+                    self.root.after(0, lambda: self.process_button.grid(row=1, column=4, sticky="w", padx=(10, 0)))
     
             self.processing_thread = threading.Thread(target=process_worker, daemon=True)
             self.processing_thread.start()
@@ -1981,9 +1837,9 @@ Embedding Models:
     def stop_processing(self):
         """Stop processing"""
         self.is_processing = False
-        self.process_button.config(state="normal")
-        self.process_progress.stop()
-        self.log_message("Processing stopped")
+        self.stop_button.grid_remove()
+        self.process_button.grid(row=1, column=4, sticky="w", padx=(10, 0))
+        self.log_message("Processing stopped by user", "warning")
     
     def on_image_processed(self, image_data):
         """Callback when an image is processed"""
@@ -2494,156 +2350,82 @@ Embedding Models:
             self.log_message("Statistics reset")
 
     def clear_overview_log(self):
-        """Clear the overview system log"""
-        if hasattr(self, 'overview_log_text'):
-            self.overview_log_text.delete(1.0, tk.END)
+        """Clear the system log"""
+        if hasattr(self, 'main_log_text'):
+            self.main_log_text.delete(1.0, tk.END)
             self.log_message("Log cleared")
 
-    def save_configuration(self):
-        """Save current configuration"""
+
+
+
+
+    def gui_check_embedding_models(self):
+        """Check availability of embedding models and show in messagebox"""
         try:
-            if self.system:
-                # Update system configuration from GUI
-                self.system.config.images_dir = self.images_dir_var.get()
-
-                # Save PostgreSQL settings
-                self.system.config.db_host = self.pg_host_var.get()
-                self.system.config.db_port = int(self.pg_port_var.get())
-                self.system.config.db_name = self.pg_db_var.get()
-                self.system.config.db_user = self.pg_user_var.get()
-                self.system.config.db_password = self.pg_password_var.get()
-
-                self.system.config.download_delay = self.download_delay_var.get()
-                self.system.config.batch_size = self.batch_size_var.get()
-                self.system.config.max_workers = self.max_workers_var.get()
-                # Convert display name to internal model name
-                display_model = self.embedding_model_var.get()
-                internal_model = self.MODEL_DISPLAY_TO_INTERNAL.get(display_model, "clip")
-                self.system.config.embedding_model = internal_model
-                self.system.config.download_source = self.download_source_var.get()
-
-                # Save to file
-                config_file = self.system.config.config_file
-                self.system.config.save_to_file()
-
-                # Show detailed save result
-                db_info = f"PostgreSQL: {self.system.config.db_host}:{self.system.config.db_port}/{self.system.config.db_name}"
-
-                save_summary = (
-                    f"Configuration saved to: {config_file}\n\n"
-                    f"Faces Directory: {self.system.config.images_dir}\n"
-                    f"Database: {db_info}\n"
-                    f"Embedding Model: {self.system.config.embedding_model}\n"
-                    f"Download Source: {self.system.config.download_source}\n"
-                    f"Download Delay: {self.system.config.download_delay}s\n"
-                    f"Batch Size: {self.system.config.batch_size}\n"
-                    f"Max Workers: {self.system.config.max_workers}"
-                )
-
-                self.log_message(f"Configuration saved to {config_file}")
-                messagebox.showinfo("Configuration Saved", save_summary)
-            else:
+            if not self.system:
                 messagebox.showerror("Error", "System not initialized")
-        except Exception as e:
-            self.log_message(f"Error saving configuration: {e}", "error")
-            messagebox.showerror("Error", f"Failed to save configuration: {e}")
-
-    def load_configuration(self):
-        """Load configuration from file"""
-        try:
-            config_file = "system_config.json"
-
-            # Check if config file exists
-            if not os.path.exists(config_file):
-                messagebox.showwarning("Warning", f"Configuration file '{config_file}' not found. Using default settings.")
                 return
 
-            # Load configuration
-            config = SystemConfig.from_file(config_file)
+            # Check model availability
+            model_status = check_embedding_models()
 
-            if self.system:
-                self.system.config = config
-                self.update_configuration_from_system()
+            # Build report string
+            report = """
+Embedding Model Availability:
 
-            # Show detailed load result
-            db_info = f"PostgreSQL: {getattr(config, 'db_host', 'localhost')}:{getattr(config, 'db_port', 5432)}/{getattr(config, 'db_name', 'vector_images')}"
+"""
+            for model, available in model_status.items():
+                report += f"• {self.MODEL_INTERNAL_TO_DISPLAY.get(model, model)}: {'Available' if available else 'Not Available'}\n"
 
-            load_summary = (
-                f"Configuration loaded from: {config_file}\n\n"
-                f"Faces Directory: {config.faces_dir}\n"
-                f"Database: {db_info}\n"
-                f"Embedding Model: {config.embedding_model}\n"
-                f"Download Source: {config.download_source}\n"
-                f"Download Delay: {config.download_delay}s\n"
-                f"Batch Size: {config.batch_size}\n"
-                f"Max Workers: {config.max_workers}"
-            )
+            report += """
 
-            self.log_message(f"Configuration loaded from {config_file}")
-            messagebox.showinfo("Configuration Loaded", load_summary)
+Model Descriptions:
+
+• Statistical (Default): Simple statistical features. Always available. Fast but lower accuracy.
+  Size: 512 dimensions
+
+• CLIP: Deep learning model for image and text similarity.
+  Install: pip install torch torchvision transformers
+  Size: 512 dimensions
+
+• YOLO: Object detection model. Creates a bag-of-objects embedding.
+  Install: pip install torch torchvision ultralytics
+  Size: 80 dimensions
+
+• ResNet: For deep visual features
+  Install: pip install torch torchvision
+  Size: 2048 dimensions
+"""
+
+            # Show in messagebox
+            messagebox.showinfo("Embedding Model Status", report)
 
         except Exception as e:
-            self.log_message(f"Error loading configuration: {e}", "error")
-            messagebox.showerror("Error", f"Failed to load configuration: {e}")
-
-    def check_embedding_models(self):
-        """Check embedding model availability"""
-        models_status = check_embedding_models()
-
-        status_lines = ["Embedding Model Availability:\n"]
-
-        install_commands = {
-            'facenet': 'pip install facenet-pytorch torch torchvision',
-            'arcface': 'pip install insightface onnxruntime',
-            'deepface': 'pip install deepface',
-            'vggface2': 'pip install deepface',
-            'openface': 'pip install deepface'
-        }
-
-        for model, available in models_status.items():
-            if available:
-                status_lines.append(f"✓ {model.upper()}: Available")
-            else:
-                status_lines.append(f"✗ {model.upper()}: Not installed")
-                if model in install_commands:
-                    status_lines.append(f"  Install: {install_commands[model]}")
-
-        # Update deps text
-        self.deps_text.delete(1.0, tk.END)
-        self.deps_text.insert(1.0, "\n".join(status_lines))
+            messagebox.showerror("Error", f"Error checking models: {e}")
 
     def check_dependencies(self):
-        """Check system dependencies"""
-        deps_status = []
-
-        # PostgreSQL/pgvector is always required
-        deps_status.append("✓ PostgreSQL + pgvector: Required (see install.sh)")
-
-        # Check OpenCV
+        """Check for required dependencies and show in messagebox"""
         try:
-            import cv2
-            deps_status.append("✓ OpenCV: Available")
-        except ImportError:
-            deps_status.append("✗ OpenCV: Missing (pip install opencv-python)")
+            if not self.system:
+                messagebox.showerror("Error", "System not initialized")
+                return
 
-        # Check PIL
-        try:
-            from PIL import Image
-            deps_status.append("✓ PIL/Pillow: Available")
-        except ImportError:
-            deps_status.append("✗ PIL/Pillow: Missing (pip install Pillow)")
+            # Get dependency status from system
+            deps_status = self.system.check_dependencies()
 
-        # Check other dependencies
-        for module in ['numpy', 'requests']:
-            try:
-                __import__(module)
-                deps_status.append(f"✓ {module}: Available")
-            except ImportError:
-                deps_status.append(f"✗ {module}: Missing (pip install {module})")
+            # Build report string
+            report = """
+Dependency Status:
 
-        # Update deps text
-        self.deps_text.delete(1.0, tk.END)
-        self.deps_text.insert(1.0, "\n".join(deps_status))
+"""
+            for dep, status in deps_status.items():
+                report += f"• {dep}: {'Installed' if status else 'Not Installed'}\n"
+
+            # Show in messagebox
+            messagebox.showinfo("Dependency Status", report)
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Error checking dependencies: {e}")
 
     def check_model_mismatch_on_startup(self):
         """Check for embedding model mismatches on startup"""
@@ -2727,112 +2509,9 @@ Embedding Models:
             else:
                 self.model_warning_label.config(text="")
 
-    def reembed_all_data(self):
-        """Re-embed all data with the current embedding model"""
-        if not self.system:
-            messagebox.showerror("Error", "System not initialized")
-            return
 
-        try:
-            # Get current database info
-            db_info = self.system.db_manager.get_collection_info()
-            count = db_info.get('count', 0)
 
-            # Get display name for current model
-            internal_model = self.system.config.embedding_model
-            display_model = self.MODEL_INTERNAL_TO_DISPLAY.get(internal_model, internal_model.upper())
 
-            if count == 0:
-                messagebox.showinfo("Info", "No data in database to re-embed.")
-                return
-
-            # Confirm with user
-            confirm_msg = (
-                f"RE-EMBED ALL DATA\n\n"
-                f"This will:\n"
-                f"1. Delete all {count} existing image records from database\n"
-                f"2. Re-process all images in {self.system.config.images_dir}\n"
-                f"3. Create new embeddings using: {display_model}\n\n"
-                f"This operation cannot be undone and may take several minutes.\n\n"
-                f"Continue?"
-            )
-
-            response = messagebox.askokcancel("Confirm Re-embedding", confirm_msg, icon='warning')
-
-            if not response:
-                return
-
-            self.log_message("="*70)
-            self.log_message(f"Starting re-embedding with model: {display_model}")
-            self.log_message("="*70)
-
-            # Reinitialize the database schema (clears all data)
-            self.log_message(f"Clearing {count} existing records from database...")
-            if not self.system.db_manager.reinitialize_schema():
-                messagebox.showerror("Error", "Failed to clear database")
-                return
-
-            # Re-establish connection after schema reset
-            if not self.system.db_manager.initialize():
-                messagebox.showerror("Error", "Failed to reconnect to database")
-                return
-
-            self.log_message(f"✓ Cleared all existing data")
-
-            # Clear processed files tracking
-            self.system.processor.processed_files.clear()
-
-            # Start processing all images
-            self.log_message("Re-embedding all images with all available models...")
-            self.start_processing()
-
-            # Clear warning
-            if hasattr(self, 'model_warning_label'):
-                self.model_warning_label.config(text="")
-
-        except Exception as e:
-            messagebox.showerror("Error", f"Re-embedding failed: {e}")
-            self.log_message(f"Re-embedding error: {e}", "error")
-
-    def optimize_database(self):
-        """Optimize database performance by creating indexes and analyzing statistics"""
-        if not self.system:
-            messagebox.showerror("Error", "System not initialized")
-            return
-
-        try:
-            self.log_message("Optimizing database performance...")
-
-            # Create/rebuild indexes
-            if self.system.db_manager.create_performance_indexes():
-                self.log_message("✓ Performance indexes created")
-            else:
-                self.log_message("✗ Failed to create some indexes", "error")
-
-            # Analyze table statistics
-            stats = self.system.db_manager.analyze_table_stats()
-            if 'error' not in stats:
-                self.log_message(f"✓ Table analyzed - Size: {stats.get('table_size', 'unknown')}")
-                self.log_message(f"✓ Found {len(stats.get('indexes', []))} indexes")
-
-                # Show index details
-                for idx in stats.get('indexes', []):
-                    self.log_message(f"  - {idx['name']}")
-
-                messagebox.showinfo(
-                    "Optimization Complete",
-                    f"Database optimized successfully!\n\n"
-                    f"Table size: {stats.get('table_size', 'unknown')}\n"
-                    f"Indexes created: {len(stats.get('indexes', []))}\n\n"
-                    f"Search queries should be much faster now.\n"
-                    f"Check the log for details."
-                )
-            else:
-                messagebox.showwarning("Partial Success", "Indexes created but analysis failed")
-
-        except Exception as e:
-            messagebox.showerror("Error", f"Database optimization failed: {e}")
-            self.log_message(f"Optimization error: {e}", "error")
 
 
     def run(self):
