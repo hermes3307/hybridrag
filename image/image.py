@@ -151,31 +151,6 @@ class IntegratedImageGUI:
         self.is_processing = False
         self.last_stats_update = 0
 
-        # Create main canvas and scrollable frame for the entire application
-        self.main_canvas = tk.Canvas(self.root)
-        self.main_scrollbar = ttk.Scrollbar(self.root, orient="vertical", command=self.main_canvas.yview)
-        self.scrollable_frame = ttk.Frame(self.main_canvas)
-
-        self.scrollable_frame.bind(
-            "<Configure>",
-            lambda e: self.main_canvas.configure(scrollregion=self.main_canvas.bbox("all"))
-        )
-
-        self.canvas_window = self.main_canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
-        self.main_canvas.configure(yscrollcommand=self.main_scrollbar.set)
-
-        self.main_canvas.pack(side="left", fill="both", expand=True)
-        self.main_scrollbar.pack(side="right", fill="y")
-
-        # Bind canvas resize to expand scrollable frame width
-        def on_canvas_configure(event):
-            self.main_canvas.itemconfig(self.canvas_window, width=event.width)
-
-        self.main_canvas.bind("<Configure>", on_canvas_configure)
-
-        # Bind mousewheel to main canvas
-        self._bind_mousewheel(self.main_canvas, self.scrollable_frame)
-
         # Create GUI widgets (tabs)
         self.create_widgets()
 
@@ -183,7 +158,7 @@ class IntegratedImageGUI:
         self.notebook.pack(fill="both", expand=True, padx=5, pady=5)
 
         # Create a centralized log frame
-        main_log_frame = ttk.LabelFrame(self.scrollable_frame, text="System Log", padding=5)
+        main_log_frame = ttk.LabelFrame(self.root, text="System Log", padding=5)
         main_log_frame.pack(fill="both", expand=False, padx=5, pady=(5, 0))
 
         # Create the main log text widget
@@ -220,7 +195,7 @@ class IntegratedImageGUI:
         - Configuration: System settings
         """
         # Main notebook for tabs
-        self.notebook = ttk.Notebook(self.scrollable_frame)
+        self.notebook = ttk.Notebook(self.root)
 
         # Create the system menu
         self.create_system_menu()
@@ -283,7 +258,7 @@ class IntegratedImageGUI:
         stats_frame.grid(row=1, column=0, columnspan=2, sticky="ew", padx=5, pady=5)
 
         # Statistics text widget
-        self.stats_text = scrolledtext.ScrolledText(stats_frame, height=10, width=70)
+        self.stats_text = scrolledtext.ScrolledText(stats_frame, height=8, width=70)
         self.stats_text.pack(fill="both", expand=True)
 
 
@@ -378,7 +353,7 @@ class IntegratedImageGUI:
         preview_frame.rowconfigure(0, weight=1)
 
         # Create canvas with both horizontal and vertical scrollbars
-        self.download_canvas = tk.Canvas(preview_frame, height=100)
+        self.download_canvas = tk.Canvas(preview_frame, height=80)
         download_h_scrollbar = ttk.Scrollbar(preview_frame, orient="horizontal", command=self.download_canvas.xview)
         download_v_scrollbar = ttk.Scrollbar(preview_frame, orient="vertical", command=self.download_canvas.yview)
         self.download_thumbnails_frame = ttk.Frame(self.download_canvas)
@@ -479,7 +454,7 @@ class IntegratedImageGUI:
         process_preview_frame.rowconfigure(0, weight=1)
 
         # Create canvas with both horizontal and vertical scrollbars
-        self.process_canvas = tk.Canvas(process_preview_frame, height=100)
+        self.process_canvas = tk.Canvas(process_preview_frame, height=80)
         process_h_scrollbar = ttk.Scrollbar(process_preview_frame, orient="horizontal", command=self.process_canvas.xview)
         process_v_scrollbar = ttk.Scrollbar(process_preview_frame, orient="vertical", command=self.process_canvas.yview)
         self.process_thumbnails_frame = ttk.Frame(self.process_canvas)
@@ -614,7 +589,7 @@ class IntegratedImageGUI:
         self.results_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
 
         # Results display
-        self.results_canvas = tk.Canvas(self.results_frame, height=100)
+        self.results_canvas = tk.Canvas(self.results_frame, height=80)
         self.results_scrollbar = ttk.Scrollbar(self.results_frame, orient="vertical", command=self.results_canvas.yview)
         self.results_frame_inner = ttk.Frame(self.results_canvas)
 
