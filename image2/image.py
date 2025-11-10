@@ -150,6 +150,7 @@ class IntegratedImageGUI:
         self.is_downloading = False
         self.is_processing = False
         self.last_stats_update = 0
+        self.current_result_popup = None  # Track currently open result popup
 
         # Create GUI widgets (tabs)
         self.create_widgets()
@@ -2173,14 +2174,24 @@ class IntegratedImageGUI:
         # Also update the comparison preview
         self.show_comparison(result, result_number)
 
+        # Close any existing popup window
+        if self.current_result_popup is not None:
+            try:
+                self.current_result_popup.destroy()
+            except:
+                pass  # Window might already be closed
+            self.current_result_popup = None
+
         # Create popup window
         popup = tk.Toplevel(self.root)
         popup.title(f"Result #{result_number} Details")
-        popup.geometry("400x500")  # Increased height to accommodate more content
+        popup.geometry("450x550")  # Increased width to show scrollbar, height for content
 
         # Center the popup
         popup.transient(self.root)
-        popup.grab_set()
+
+        # Store reference to current popup
+        self.current_result_popup = popup
 
         # Create main frame with scrollbar
         main_frame = ttk.Frame(popup)
@@ -2199,6 +2210,25 @@ class IntegratedImageGUI:
         canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
 
+        # Enable mouse wheel scrolling
+        def on_mousewheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+
+        # Bind mouse wheel to canvas and all child widgets
+        canvas.bind_all("<MouseWheel>", on_mousewheel)
+
+        # Clean up binding when popup is destroyed
+        def cleanup():
+            canvas.unbind_all("<MouseWheel>")
+            popup.destroy()
+
+        popup.protocol("WM_DELETE_WINDOW", cleanup)
+
+        # Close button at the top (defined after cleanup function)
+        top_frame = ttk.Frame(popup)
+        top_frame.pack(side="top", fill="x", padx=10, pady=(10, 0), before=main_frame)
+        ttk.Button(top_frame, text="Close", command=cleanup).pack(side="right")
+
         # Result information
         info_frame = scrollable_frame  # Use scrollable frame as the container
 
@@ -2216,7 +2246,34 @@ class IntegratedImageGUI:
         ttk.Label(info_frame, text=f"Result #{result_number}", font=('TkDefaultFont', 12, 'bold')).pack(anchor="w", pady=5)
         ttk.Label(info_frame, text=f"Distance: {distance_str}").pack(anchor="w", pady=2)
         ttk.Label(info_frame, text=f"File: {os.path.basename(image_path)}").pack(anchor="w", pady=2)
-        ttk.Label(info_frame, text=f"Path: {image_path}", wraplength=350).pack(anchor="w", pady=2)
+        ttk.Label(info_frame, text=f"Path: {image_path}", wraplength=400).pack(anchor="w", pady=2)
+
+        # Add separator before image
+        ttk.Separator(info_frame, orient='horizontal').pack(fill='x', pady=10)
+
+        # Display the image (centered)
+        try:
+            if image_path and os.path.exists(image_path):
+                image = Image.open(image_path)
+                # Resize image to fit in popup (max 380x380 to fit new window width)
+                max_size = 380
+                image.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+
+                # Convert to PhotoImage
+                photo = ImageTk.PhotoImage(image)
+
+                # Create frame to center the image
+                image_frame = ttk.Frame(info_frame)
+                image_frame.pack(fill='x', pady=10)
+
+                # Create label for image (centered)
+                image_label = ttk.Label(image_frame, image=photo)
+                image_label.image = photo  # Keep a reference to prevent garbage collection
+                image_label.pack(anchor='center')
+            else:
+                ttk.Label(info_frame, text="Image not found", foreground="red").pack(anchor='center', pady=10)
+        except Exception as e:
+            ttk.Label(info_frame, text=f"Error loading image: {e}", foreground="red").pack(anchor='center', pady=10)
 
         # Show metadata if available
         if metadata:
@@ -2240,17 +2297,13 @@ class IntegratedImageGUI:
                     else:
                         ttk.Label(info_frame, text=f"{key}: {value}").pack(anchor="w", pady=1)
 
-        # Add a separator before the close button
-        ttk.Separator(info_frame, orient='horizontal').pack(fill='x', pady=10)
-
-        # Close button
-        close_frame = ttk.Frame(info_frame)
-        close_frame.pack(fill="x", pady=10)
-        ttk.Button(close_frame, text="Close", command=popup.destroy).pack(side="bottom")
-
         # Pack canvas and scrollbar
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
+
+        # Wait for window to be fully rendered before grabbing focus
+        popup.update_idletasks()
+        popup.grab_set()
 
     def show_comparison(self, result: Dict[str, Any], result_number: int):
         """Show selected result in comparison preview under query image"""
