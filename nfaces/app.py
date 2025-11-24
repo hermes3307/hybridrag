@@ -25,6 +25,7 @@ from datetime import datetime
 from core import (
     IntegratedFaceSystem,
     SystemConfig,
+    SystemStats,
     FaceDownloader,
     FaceProcessor,
     FaceEmbedder
@@ -42,6 +43,7 @@ class UnifiedFaceApp:
         self.db = None
         self.search_engine = None
         self.is_running = False
+        self.system_stats = SystemStats()  # Use the core SystemStats class
         self.stats = {
             'downloads': {'total': 0, 'success': 0, 'errors': 0},
             'embeddings': {'total': 0, 'success': 0, 'errors': 0},
@@ -106,13 +108,26 @@ class UnifiedFaceApp:
             'searches': self.stats['searches']['total']
         }
 
-        if self.db:
+        # Initialize database if not already done
+        if not self.db:
+            try:
+                self.db = PgVectorDatabaseManager(self.config)
+                if self.db.initialize():
+                    stats['database'] = 'Connected ✅'
+                else:
+                    stats['database'] = 'Connection failed ❌'
+            except Exception as e:
+                stats['database'] = f'Error: {str(e)[:30]}... ❌'
+                return stats
+
+        # Get database statistics
+        if self.db and self.db.initialized:
             try:
                 db_stats = self.db.get_statistics()
                 stats['database'] = 'Connected ✅'
                 stats['total_faces'] = db_stats.get('total_faces', 0)
-            except:
-                stats['database'] = 'Error ❌'
+            except Exception as e:
+                stats['database'] = f'Error: {str(e)[:30]}... ❌'
 
         return stats
 
@@ -123,40 +138,57 @@ class UnifiedFaceApp:
         self.initialize_system()
 
         try:
-            downloader = FaceDownloader(
-                faces_dir=self.config.faces_dir,
-                download_delay=delay
-            )
+            # FaceDownloader expects SystemConfig and SystemStats objects
+            downloader = FaceDownloader(self.config, self.system_stats)
 
             results = []
+            error_messages = []
+
             for i in range(count):
                 if self.stop_flag.is_set():
                     break
 
-                progress((i + 1) / count, desc=f"Downloading face {i+1}/{count}")
+                progress((i + 1) / count, desc=f"Downloading face {i+1}/{count}...")
 
                 try:
                     face_data = downloader.download_face(source=source.lower())
                     if face_data:
                         results.append(face_data)
                         self.stats['downloads']['success'] += 1
+                        print(f"✓ Downloaded face {i+1}/{count}: {face_data.file_path}")
                     else:
                         self.stats['downloads']['errors'] += 1
+                        error_messages.append(f"Face {i+1}: No data returned")
+                        print(f"✗ Failed to download face {i+1}/{count}")
                     self.stats['downloads']['total'] += 1
                 except Exception as e:
                     self.stats['downloads']['errors'] += 1
-                    results.append(f"Error: {str(e)}")
+                    error_msg = f"Face {i+1}: {str(e)}"
+                    error_messages.append(error_msg)
+                    results.append(error_msg)
+                    print(f"✗ Error downloading face {i+1}/{count}: {str(e)}")
 
                 time.sleep(delay)
 
             success_count = len([r for r in results if not isinstance(r, str)])
             message = f"✅ Downloaded {success_count}/{count} faces successfully"
+
+            if error_messages:
+                message += f"\n\n⚠️ Errors ({len(error_messages)}):\n"
+                message += "\n".join(error_messages[:5])  # Show first 5 errors
+                if len(error_messages) > 5:
+                    message += f"\n... and {len(error_messages) - 5} more errors"
+
             stats_text = self.format_stats()
 
             return message, stats_text
 
         except Exception as e:
-            return f"❌ Error during download: {str(e)}", self.format_stats()
+            error_detail = f"❌ Error during download: {str(e)}\n\nDetails: {type(e).__name__}"
+            print(f"Download error: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return error_detail, self.format_stats()
 
     def process_and_embed(self, batch_size: int, workers: int,
                          process_new_only: bool, progress=gr.Progress()) -> Tuple[str, str]:
@@ -167,10 +199,11 @@ class UnifiedFaceApp:
         try:
             faces_dir = Path(self.config.faces_dir)
             if not faces_dir.exists():
-                return "❌ Faces directory does not exist", self.format_stats()
+                return f"❌ Faces directory does not exist: {faces_dir}", self.format_stats()
 
             # Get list of image files
             image_files = list(faces_dir.glob("*.jpg")) + list(faces_dir.glob("*.png"))
+            print(f"Found {len(image_files)} image files in {faces_dir}")
 
             if process_new_only:
                 # Filter out already processed files
@@ -184,49 +217,65 @@ class UnifiedFaceApp:
                     except:
                         pass
                 image_files = [f for f in image_files if f.name not in processed]
+                print(f"After filtering, {len(image_files)} files need processing")
 
             total_files = len(image_files)
             if total_files == 0:
                 return "ℹ️ No files to process", self.format_stats()
 
+            # FaceProcessor expects SystemConfig, SystemStats, and db_manager
             processor = FaceProcessor(
                 config=self.config,
-                db_manager=self.db,
-                batch_size=batch_size,
-                max_workers=workers
+                stats=self.system_stats,
+                db_manager=self.db
             )
 
             success_count = 0
             error_count = 0
+            error_messages = []
 
             for i, file_path in enumerate(image_files):
                 if self.stop_flag.is_set():
+                    print(f"Processing stopped by user at {i}/{total_files}")
                     break
 
                 progress((i + 1) / total_files,
-                        desc=f"Processing {i+1}/{total_files}")
+                        desc=f"Processing {i+1}/{total_files}: {file_path.name}")
 
                 try:
                     result = processor.process_face_file(str(file_path))
                     if result:
                         success_count += 1
                         self.stats['embeddings']['success'] += 1
+                        print(f"✓ Processed {i+1}/{total_files}: {file_path.name}")
                     else:
                         error_count += 1
                         self.stats['embeddings']['errors'] += 1
+                        error_messages.append(f"{file_path.name}: Processing returned None")
+                        print(f"✗ Failed to process {file_path.name}")
                     self.stats['embeddings']['total'] += 1
                 except Exception as e:
                     error_count += 1
                     self.stats['embeddings']['errors'] += 1
+                    error_messages.append(f"{file_path.name}: {str(e)}")
+                    print(f"✗ Error processing {file_path.name}: {str(e)}")
 
             message = f"✅ Processed {success_count}/{total_files} faces successfully"
             if error_count > 0:
-                message += f"\n⚠️ {error_count} errors occurred"
+                message += f"\n\n⚠️ {error_count} errors occurred"
+                if error_messages:
+                    message += ":\n" + "\n".join(error_messages[:5])
+                    if len(error_messages) > 5:
+                        message += f"\n... and {len(error_messages) - 5} more errors"
 
             return message, self.format_stats()
 
         except Exception as e:
-            return f"❌ Error during processing: {str(e)}", self.format_stats()
+            error_detail = f"❌ Error during processing: {str(e)}\n\nDetails: {type(e).__name__}"
+            print(f"Processing error: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return error_detail, self.format_stats()
 
     def search_faces(self, query_image, top_k: int, search_mode: str,
                     sex_filter: str, age_filter: str, skin_tone_filter: str,

@@ -769,6 +769,15 @@ class PgVectorDatabaseManager:
             if conn:
                 self.return_connection(conn)
 
+    def get_statistics(self) -> Dict[str, Any]:
+        """
+        Get database statistics (alias for get_stats for compatibility)
+
+        Returns:
+            Dictionary containing database statistics
+        """
+        return self.get_stats()
+
     def get_collection_info(self) -> Dict[str, Any]:
         """
         Get information about the database (compatibility with ChromaDB interface)
