@@ -1,0 +1,23 @@
+# System Dependencies (install via apt-get):
+# - python3-tk (for legacy GUI support - optional if using Gradio)
+# - python3-pil.imagetk (for PIL/Tkinter image integration - optional)
+# - python3-pip (for package management)
+#
+# Install system dependencies:
+#   sudo apt-get install -y python3-tk python3-pil.imagetk python3-pip
+
+# Python Package Dependencies
+numpy>=1.21.0
+Pillow>=9.0.0
+requests>=2.25.0
+opencv-python>=4.5.0
+
+# PostgreSQL and pgvector support
+psycopg2-binary>=2.9.0
+python-dotenv>=0.19.0
+
+# Modern Web-based GUI (Gradio)
+gradio>=4.0.0
+
+# Note: If you get "externally-managed-environment" error, use:
+# pip3 install --break-system-packages -r requirements.txt
