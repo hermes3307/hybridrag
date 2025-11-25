@@ -1013,8 +1013,9 @@ class FaceDownloader:
         self.running = False
         self.downloaded_hashes = set()
 
-        # Create faces directory
-        os.makedirs(self.config.faces_dir, exist_ok=True)
+        # Create faces directory (handle both regular dirs and symlinks)
+        if not os.path.exists(self.config.faces_dir):
+            os.makedirs(self.config.faces_dir, exist_ok=True)
 
         # Load existing hashes
         self._load_existing_hashes()

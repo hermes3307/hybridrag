@@ -50,6 +50,27 @@ class UnifiedFaceApp:
             'searches': {'total': 0}
         }
         self.stop_flag = threading.Event()
+        # Shared log for real-time updates
+        self.download_log = []
+        self.log_lock = threading.Lock()
+        self.download_active = False
+
+    def add_log(self, message: str):
+        """Add a message to the download log (thread-safe)"""
+        with self.log_lock:
+            self.download_log.append(message)
+        # Also print to stdout for terminal visibility
+        print(f"[DOWNLOAD] {message}", flush=True)
+
+    def get_logs(self) -> str:
+        """Get all log messages as a single string (thread-safe)"""
+        with self.log_lock:
+            return "\n".join(self.download_log)
+
+    def clear_logs(self):
+        """Clear all log messages (thread-safe)"""
+        with self.log_lock:
+            self.download_log = []
 
     def load_config(self) -> SystemConfig:
         """Load configuration from system_config.json"""
@@ -131,64 +152,128 @@ class UnifiedFaceApp:
 
         return stats
 
-    def download_faces(self, source: str, count: int, delay: float,
-                      progress=gr.Progress()) -> Tuple[str, str]:
-        """Download faces from specified source"""
-        self.stop_flag.clear()
-        self.initialize_system()
-
+    def _download_worker(self, source: str, count: int, delay: float):
+        """Background worker thread for downloading faces"""
+        print(f"[DEBUG] Worker thread started: source={source}, count={count}, delay={delay}", flush=True)
         try:
-            # FaceDownloader expects SystemConfig and SystemStats objects
+            # Set the download source in config (temporarily)
+            original_source = self.config.download_source
+            self.config.download_source = source.lower()
+            print(f"[DEBUG] Config source set to: {self.config.download_source}", flush=True)
+
+            # FaceDownloader only needs config and stats - no database required for downloading!
+            print(f"[DEBUG] Creating FaceDownloader...", flush=True)
             downloader = FaceDownloader(self.config, self.system_stats)
+            print(f"[DEBUG] FaceDownloader created successfully", flush=True)
 
             results = []
             error_messages = []
 
+            self.add_log(f"🚀 Starting download from {source}")
+            self.add_log(f"📊 Target: {count} faces with {delay}s delay\n")
+
             for i in range(count):
+                # Check stop flag at start of loop
                 if self.stop_flag.is_set():
+                    self.add_log(f"\n⏹️ Download stopped by user at {i}/{count}")
                     break
 
-                progress((i + 1) / count, desc=f"Downloading face {i+1}/{count}...")
-
                 try:
-                    face_data = downloader.download_face(source=source.lower())
-                    if face_data:
-                        results.append(face_data)
+                    self.add_log(f"⬇️  [{i+1}/{count}] Downloading face...")
+
+                    # Check stop flag before actual download
+                    if self.stop_flag.is_set():
+                        self.add_log(f"\n⏹️ Download stopped by user at {i}/{count}")
+                        break
+
+                    file_path = downloader.download_face()
+                    if file_path:
+                        results.append(file_path)
                         self.stats['downloads']['success'] += 1
-                        print(f"✓ Downloaded face {i+1}/{count}: {face_data.file_path}")
+                        self.add_log(f"   ✓ SUCCESS: Saved to {file_path}")
+                        print(f"✓ Downloaded face {i+1}/{count}: {file_path}")
                     else:
                         self.stats['downloads']['errors'] += 1
                         error_messages.append(f"Face {i+1}: No data returned")
+                        self.add_log(f"   ✗ FAILED: No data returned")
                         print(f"✗ Failed to download face {i+1}/{count}")
                     self.stats['downloads']['total'] += 1
+
                 except Exception as e:
                     self.stats['downloads']['errors'] += 1
                     error_msg = f"Face {i+1}: {str(e)}"
                     error_messages.append(error_msg)
                     results.append(error_msg)
+                    self.add_log(f"   ✗ ERROR: {str(e)}")
                     print(f"✗ Error downloading face {i+1}/{count}: {str(e)}")
 
-                time.sleep(delay)
+                # Only delay between downloads (not after the last one)
+                if i < count - 1 and delay > 0:
+                    # Check stop flag before delay
+                    if self.stop_flag.is_set():
+                        self.add_log(f"\n⏹️ Download stopped by user at {i+1}/{count}")
+                        break
+                    time.sleep(delay)
 
             success_count = len([r for r in results if not isinstance(r, str)])
-            message = f"✅ Downloaded {success_count}/{count} faces successfully"
+            self.add_log(f"\n{'='*60}")
+            self.add_log(f"📈 SUMMARY: {success_count}/{count} faces downloaded successfully")
+            self.add_log(f"✅ Success: {success_count}")
+            self.add_log(f"❌ Errors: {len(error_messages)}")
 
             if error_messages:
-                message += f"\n\n⚠️ Errors ({len(error_messages)}):\n"
-                message += "\n".join(error_messages[:5])  # Show first 5 errors
+                self.add_log(f"\n⚠️ Errors ({len(error_messages)}):")
+                for err in error_messages[:5]:
+                    self.add_log(f"  • {err}")
                 if len(error_messages) > 5:
-                    message += f"\n... and {len(error_messages) - 5} more errors"
-
-            stats_text = self.format_stats()
-
-            return message, stats_text
+                    self.add_log(f"  ... and {len(error_messages) - 5} more errors")
 
         except Exception as e:
-            error_detail = f"❌ Error during download: {str(e)}\n\nDetails: {type(e).__name__}"
-            print(f"Download error: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return error_detail, self.format_stats()
+            self.add_log(f"\n❌ CRITICAL ERROR: {str(e)}")
+            print(f"❌ Critical error in download worker: {str(e)}")
+        finally:
+            # Restore original source
+            self.config.download_source = original_source
+            self.download_active = False
+
+    def download_faces(self, source: str, count: int, delay: float):
+        """Start downloading faces in background thread"""
+        print(f"🔍 DEBUG: download_faces called with source={source}, count={count}, delay={delay}")
+
+        if self.download_active:
+            return "⚠️ Download already in progress", self.format_stats(), self.get_logs()
+
+        print(f"[DEBUG] Clearing stop flag and logs...", flush=True)
+        self.stop_flag.clear()
+        self.clear_logs()
+        self.download_active = True
+
+        # Start download in background thread (don't initialize_system here as it blocks!)
+        print(f"[DEBUG] Creating background thread...", flush=True)
+        download_thread = threading.Thread(
+            target=self._download_worker,
+            args=(source, count, delay),
+            daemon=True
+        )
+        print(f"[DEBUG] Starting thread...", flush=True)
+        download_thread.start()
+        print(f"[DEBUG] Thread started, returning...", flush=True)
+
+        return "⏳ Download started...", self.format_stats(), self.get_logs()
+
+    def get_download_status(self):
+        """Poll function to get current download status and logs"""
+        if self.download_active:
+            status = "⏳ Downloading..."
+        else:
+            status = "✅ Ready"
+
+        return status, self.format_stats(), self.get_logs()
+
+    def stop_download_wrapper(self):
+        """Wrapper for stop button that also returns current status"""
+        self.stop_flag.set()
+        return "⏹️ Stopping...", self.format_stats(), self.get_logs()
 
     def process_and_embed(self, batch_size: int, workers: int,
                          process_new_only: bool, progress=gr.Progress()) -> Tuple[str, str]:
@@ -430,13 +515,17 @@ def create_app():
                             label="Source"
                         )
                         download_count = gr.Slider(1, 100, value=10, step=1, label="Number of faces")
-                        download_delay = gr.Slider(0.5, 5.0, value=1.0, step=0.5, label="Delay (seconds)")
+                        download_delay = gr.Slider(0.0, 2.0, value=0.1, step=0.1, label="Delay between downloads (seconds)")
 
                         with gr.Row():
                             download_btn = gr.Button("⬇️ Start Download", variant="primary")
                             stop_download_btn = gr.Button("⏹️ Stop", variant="stop")
 
                         download_status = gr.Textbox(label="Download Status", lines=2)
+                        download_logs = gr.Textbox(label="📝 Detailed Download Logs", lines=15, max_lines=20, autoscroll=True)
+
+                        # Timer for polling download status
+                        download_timer = gr.Timer(0.5)
 
                     # Process section
                     with gr.Column(scale=1):
@@ -566,16 +655,28 @@ def create_app():
 
         # Event handlers
 
-        # Download handlers
+        # Download handlers with polling for real-time updates
         download_btn.click(
             fn=app.download_faces,
             inputs=[download_source, download_count, download_delay],
-            outputs=[download_status, stats_display]
+            outputs=[download_status, stats_display, download_logs]
+        ).then(
+            fn=lambda: gr.Timer(active=True),
+            outputs=[download_timer]
+        )
+
+        # Timer ticks - update status every 0.5 seconds
+        download_timer.tick(
+            fn=app.get_download_status,
+            outputs=[download_status, stats_display, download_logs]
         )
 
         stop_download_btn.click(
-            fn=app.stop_operation,
-            outputs=[download_status]
+            fn=app.stop_download_wrapper,
+            outputs=[download_status, stats_display, download_logs]
+        ).then(
+            fn=lambda: gr.Timer(active=False),
+            outputs=[download_timer]
         )
 
         # Process handlers
@@ -591,18 +692,28 @@ def create_app():
         )
 
         # Pipeline handler (sequential download then process)
-        def run_pipeline(source, count, delay, batch_size, workers, new_only, progress=gr.Progress()):
-            # Download first
-            download_msg, stats1 = app.download_faces(source, count, delay, progress)
+        def run_pipeline(source, count, delay, batch_size, workers, new_only):
+            # Start download
+            app.download_faces(source, count, delay)
+
+            # Wait for download to complete
+            import time
+            while app.download_active:
+                time.sleep(1)
+
+            download_msg = "✅ Download complete"
+            download_log = app.get_logs()
+            stats1 = app.format_stats()
+
             # Then process
-            process_msg, stats2 = app.process_and_embed(batch_size, workers, new_only, progress)
-            return download_msg, process_msg, stats2
+            process_msg, stats2 = app.process_and_embed(batch_size, workers, new_only)
+            return download_msg, process_msg, stats2, download_log
 
         pipeline_btn.click(
             fn=run_pipeline,
             inputs=[download_source, download_count, download_delay,
                    process_batch_size, process_workers, process_new_only],
-            outputs=[download_status, process_status, stats_display]
+            outputs=[download_status, process_status, stats_display, download_logs]
         )
 
         # Search handlers
