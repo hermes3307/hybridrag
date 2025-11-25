@@ -55,12 +55,20 @@ class UnifiedFaceApp:
         self.log_lock = threading.Lock()
         self.download_active = False
 
+    def safe_print(self, message: str):
+        """Safely print to stdout, ignoring BrokenPipeError"""
+        try:
+            print(message, flush=True)
+        except BrokenPipeError:
+            # Client disconnected, simply stop trying to print
+            pass
+
     def add_log(self, message: str):
         """Add a message to the download log (thread-safe)"""
         with self.log_lock:
             self.download_log.append(message)
         # Also print to stdout for terminal visibility
-        print(f"[DOWNLOAD] {message}", flush=True)
+        self.safe_print(f"[DOWNLOAD] {message}")
 
     def get_logs(self) -> str:
         """Get all log messages as a single string (thread-safe)"""
@@ -154,17 +162,34 @@ class UnifiedFaceApp:
 
     def _download_worker(self, source: str, count: int, delay: float):
         """Background worker thread for downloading faces"""
-        print(f"[DEBUG] Worker thread started: source={source}, count={count}, delay={delay}", flush=True)
+        worker_start = time.time()
+        try:
+            print(f"[DEBUG] Worker thread started: source={source}, count={count}, delay={delay}", flush=True)
+        except BrokenPipeError:
+            pass
         try:
             # Set the download source in config (temporarily)
             original_source = self.config.download_source
             self.config.download_source = source.lower()
-            print(f"[DEBUG] Config source set to: {self.config.download_source}", flush=True)
+            try:
+                print(f"[DEBUG] Config source set to: {self.config.download_source}", flush=True)
+            except BrokenPipeError:
+                pass
 
             # FaceDownloader only needs config and stats - no database required for downloading!
-            print(f"[DEBUG] Creating FaceDownloader...", flush=True)
+            init_start = time.time()
+            try:
+                print(f"[DEBUG] Creating FaceDownloader...", flush=True)
+            except BrokenPipeError:
+                pass
+            self.add_log("⚙️ Initializing downloader (loading existing face hashes)...")
             downloader = FaceDownloader(self.config, self.system_stats)
-            print(f"[DEBUG] FaceDownloader created successfully", flush=True)
+            init_time = time.time() - init_start
+            try:
+                print(f"[DEBUG] FaceDownloader created successfully in {init_time:.2f}s", flush=True)
+            except BrokenPipeError:
+                pass
+            self.add_log(f"✓ Downloader ready (init took {init_time:.2f}s)")
 
             results = []
             error_messages = []
@@ -191,12 +216,18 @@ class UnifiedFaceApp:
                         results.append(file_path)
                         self.stats['downloads']['success'] += 1
                         self.add_log(f"   ✓ SUCCESS: Saved to {file_path}")
-                        print(f"✓ Downloaded face {i+1}/{count}: {file_path}")
+                        try:
+                            print(f"✓ Downloaded face {i+1}/{count}: {file_path}")
+                        except BrokenPipeError:
+                            pass
                     else:
                         self.stats['downloads']['errors'] += 1
                         error_messages.append(f"Face {i+1}: No data returned")
                         self.add_log(f"   ✗ FAILED: No data returned")
-                        print(f"✗ Failed to download face {i+1}/{count}")
+                        try:
+                            print(f"✗ Failed to download face {i+1}/{count}")
+                        except BrokenPipeError:
+                            pass
                     self.stats['downloads']['total'] += 1
 
                 except Exception as e:
@@ -205,7 +236,10 @@ class UnifiedFaceApp:
                     error_messages.append(error_msg)
                     results.append(error_msg)
                     self.add_log(f"   ✗ ERROR: {str(e)}")
-                    print(f"✗ Error downloading face {i+1}/{count}: {str(e)}")
+                    try:
+                        print(f"✗ Error downloading face {i+1}/{count}: {str(e)}")
+                    except BrokenPipeError:
+                        pass
 
                 # Only delay between downloads (not after the last one)
                 if i < count - 1 and delay > 0:
@@ -215,7 +249,8 @@ class UnifiedFaceApp:
                         break
                     time.sleep(delay)
 
-            success_count = len([r for r in results if not isinstance(r, str)])
+            # Count successes - results contains file paths (strings) for success, so count valid paths
+            success_count = len([r for r in results if r and os.path.exists(r)])
             self.add_log(f"\n{'='*60}")
             self.add_log(f"📈 SUMMARY: {success_count}/{count} faces downloaded successfully")
             self.add_log(f"✅ Success: {success_count}")
@@ -230,7 +265,10 @@ class UnifiedFaceApp:
 
         except Exception as e:
             self.add_log(f"\n❌ CRITICAL ERROR: {str(e)}")
-            print(f"❌ Critical error in download worker: {str(e)}")
+            try:
+                print(f"❌ Critical error in download worker: {str(e)}")
+            except BrokenPipeError:
+                pass
         finally:
             # Restore original source
             self.config.download_source = original_source
@@ -238,26 +276,41 @@ class UnifiedFaceApp:
 
     def download_faces(self, source: str, count: int, delay: float):
         """Start downloading faces in background thread"""
-        print(f"🔍 DEBUG: download_faces called with source={source}, count={count}, delay={delay}")
+        try:
+            print(f"🔍 DEBUG: download_faces called with source={source}, count={count}, delay={delay}")
+        except BrokenPipeError:
+            pass
 
         if self.download_active:
             return "⚠️ Download already in progress", self.format_stats(), self.get_logs()
 
-        print(f"[DEBUG] Clearing stop flag and logs...", flush=True)
+        try:
+            print(f"[DEBUG] Clearing stop flag and logs...", flush=True)
+        except BrokenPipeError:
+            pass
         self.stop_flag.clear()
         self.clear_logs()
         self.download_active = True
 
         # Start download in background thread (don't initialize_system here as it blocks!)
-        print(f"[DEBUG] Creating background thread...", flush=True)
+        try:
+            print(f"[DEBUG] Creating background thread...", flush=True)
+        except BrokenPipeError:
+            pass
         download_thread = threading.Thread(
             target=self._download_worker,
             args=(source, count, delay),
             daemon=True
         )
-        print(f"[DEBUG] Starting thread...", flush=True)
+        try:
+            print(f"[DEBUG] Starting thread...", flush=True)
+        except BrokenPipeError:
+            pass
         download_thread.start()
-        print(f"[DEBUG] Thread started, returning...", flush=True)
+        try:
+            print(f"[DEBUG] Thread started, returning...", flush=True)
+        except BrokenPipeError:
+            pass
 
         return "⏳ Download started...", self.format_stats(), self.get_logs()
 
@@ -288,7 +341,10 @@ class UnifiedFaceApp:
 
             # Get list of image files
             image_files = list(faces_dir.glob("*.jpg")) + list(faces_dir.glob("*.png"))
-            print(f"Found {len(image_files)} image files in {faces_dir}")
+            try:
+                print(f"Found {len(image_files)} image files in {faces_dir}")
+            except BrokenPipeError:
+                pass
 
             if process_new_only:
                 # Filter out already processed files
@@ -302,7 +358,10 @@ class UnifiedFaceApp:
                     except:
                         pass
                 image_files = [f for f in image_files if f.name not in processed]
-                print(f"After filtering, {len(image_files)} files need processing")
+                try:
+                    print(f"After filtering, {len(image_files)} files need processing")
+                except BrokenPipeError:
+                    pass
 
             total_files = len(image_files)
             if total_files == 0:
@@ -321,7 +380,10 @@ class UnifiedFaceApp:
 
             for i, file_path in enumerate(image_files):
                 if self.stop_flag.is_set():
-                    print(f"Processing stopped by user at {i}/{total_files}")
+                    try:
+                        print(f"Processing stopped by user at {i}/{total_files}")
+                    except BrokenPipeError:
+                        pass
                     break
 
                 progress((i + 1) / total_files,
@@ -332,18 +394,27 @@ class UnifiedFaceApp:
                     if result:
                         success_count += 1
                         self.stats['embeddings']['success'] += 1
-                        print(f"✓ Processed {i+1}/{total_files}: {file_path.name}")
+                        try:
+                            print(f"✓ Processed {i+1}/{total_files}: {file_path.name}")
+                        except BrokenPipeError:
+                            pass
                     else:
                         error_count += 1
                         self.stats['embeddings']['errors'] += 1
                         error_messages.append(f"{file_path.name}: Processing returned None")
-                        print(f"✗ Failed to process {file_path.name}")
+                        try:
+                            print(f"✗ Failed to process {file_path.name}")
+                        except BrokenPipeError:
+                            pass
                     self.stats['embeddings']['total'] += 1
                 except Exception as e:
                     error_count += 1
                     self.stats['embeddings']['errors'] += 1
                     error_messages.append(f"{file_path.name}: {str(e)}")
-                    print(f"✗ Error processing {file_path.name}: {str(e)}")
+                    try:
+                        print(f"✗ Error processing {file_path.name}: {str(e)}")
+                    except BrokenPipeError:
+                        pass
 
             message = f"✅ Processed {success_count}/{total_files} faces successfully"
             if error_count > 0:
@@ -357,9 +428,15 @@ class UnifiedFaceApp:
 
         except Exception as e:
             error_detail = f"❌ Error during processing: {str(e)}\n\nDetails: {type(e).__name__}"
-            print(f"Processing error: {str(e)}")
+            try:
+                print(f"Processing error: {str(e)}")
+            except BrokenPipeError:
+                pass
             import traceback
-            traceback.print_exc()
+            try:
+                traceback.print_exc()
+            except BrokenPipeError:
+                pass
             return error_detail, self.format_stats()
 
     def search_faces(self, query_image, top_k: int, search_mode: str,

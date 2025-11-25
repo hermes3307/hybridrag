@@ -1022,14 +1022,20 @@ class FaceDownloader:
 
     def _load_existing_hashes(self):
         """Load hashes of existing images"""
+        load_start = time.time()
+        count = 0
         for file_path in Path(self.config.faces_dir).rglob("*.jpg"):
             if file_path.is_file():
                 try:
                     file_hash = self._get_file_hash(str(file_path))
                     if file_hash:
                         self.downloaded_hashes.add(file_hash)
+                        count += 1
                 except Exception:
                     pass
+        load_time = time.time() - load_start
+        if count > 0:
+            logger.info(f"Loaded {count} existing face hashes in {load_time:.2f}s")
 
     def _get_file_hash(self, file_path: str) -> str:
         """Calculate hash of file"""
