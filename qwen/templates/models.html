@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Qwen3 Chatbot - Model Selection</title>
+    <link rel="stylesheet" href="{{ url_for('send_static', path='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🤖 Qwen3 Chatbot</h1>
+        </header>
+        
+        <nav>
+            <ul>
+                <li><a href="/">Chat</a></li>
+                <li><a href="/models" class="active">Model Selection</a></li>
+                <li><a href="/test">Model Test</a></li>
+            </ul>
+        </nav>
+        
+        <div class="main-content">
+            <div class="config-panel">
+                <div class="config-section">
+                    <h3>⚙️ Configuration</h3>
+                    <label for="max-length">Max Response Length:</label>
+                    <input type="number" id="max-length" value="512" min="100" max="2048">
+                    
+                    <label for="temperature">Temperature:</label>
+                    <input type="number" id="temperature" value="0.7" min="0.1" max="2.0" step="0.1">
+                    
+                    <label for="cache-dir">Cache Directory:</label>
+                    <input type="text" id="cache-dir" value="">
+                    
+                    <button id="save-config">Save Configuration</button>
+                </div>
+                
+                <div class="config-section">
+                    <button id="clear-history" class="clear-btn">Clear Chat History</button>
+                </div>
+            </div>
+            
+            <div class="chat-container">
+                <div class="config-section">
+                    <h3>🤖 Available Models</h3>
+                    <div class="model-list-container" id="model-list">
+                        <!-- Model list will be populated by JavaScript -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Current configuration
+        let config = {};
+        
+        // DOM Elements
+        const modelList = document.getElementById('model-list');
+        const maxLengthInput = document.getElementById('max-length');
+        const temperatureInput = document.getElementById('temperature');
+        const cacheDirInput = document.getElementById('cache-dir');
+        const saveConfigButton = document.getElementById('save-config');
+        const clearHistoryButton = document.getElementById('clear-history');
+        
+        // Load models from API
+        async function loadModels() {
+            try {
+                const response = await fetch('/api/models');
+                const models = await response.json();
+                
+                modelList.innerHTML = '';
+                models.forEach(model => {
+                    const modelDiv = document.createElement('div');
+                    modelDiv.className = 'model-item';
+                    if (model.name === config.model_name) {
+                        modelDiv.classList.add('selected');
+                    }
+                    
+                    modelDiv.innerHTML = `
+                        <div class="model-name">${model.name}</div>
+                        <div class="model-info">Size: ${model.size} | Type: ${model.type}</div>
+                    `;
+                    
+                    modelDiv.addEventListener('click', () => {
+                        // Remove selection from other items
+                        document.querySelectorAll('.model-item').forEach(item => {
+                            item.classList.remove('selected');
+                        });
+                        
+                        // Select this item
+                        modelDiv.classList.add('selected');
+                        
+                        // Update config
+                        config.model_name = model.name;
+                    });
+                    
+                    modelList.appendChild(modelDiv);
+                });
+            } catch (error) {
+                console.error('Error loading models:', error);
+            }
+        }
+        
+        // Load current configuration
+        async function loadConfig() {
+            try {
+                const response = await fetch('/api/config');
+                config = await response.json();
+                
+                maxLengthInput.value = config.max_length || 512;
+                temperatureInput.value = config.temperature || 0.7;
+                cacheDirInput.value = config.cache_dir || '';
+                
+                // Reload models to show selection
+                loadModels();
+            } catch (error) {
+                console.error('Error loading config:', error);
+            }
+        }
+        
+        // Save configuration
+        async function saveConfig() {
+            config.max_length = parseInt(maxLengthInput.value);
+            config.temperature = parseFloat(temperatureInput.value);
+            config.cache_dir = cacheDirInput.value;
+            
+            try {
+                const response = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(config)
+                });
+                
+                if (response.ok) {
+                    alert('Configuration saved successfully!');
+                }
+            } catch (error) {
+                console.error('Error saving config:', error);
+                alert('Error saving configuration.');
+            }
+        }
+        
+        // Clear chat history
+        async function clearHistory() {
+            try {
+                await fetch('/api/history', {
+                    method: 'DELETE'
+                });
+                
+                alert('Chat history cleared!');
+            } catch (error) {
+                console.error('Error clearing history:', error);
+            }
+        }
+        
+        // Event Listeners
+        saveConfigButton.addEventListener('click', saveConfig);
+        clearHistoryButton.addEventListener('click', clearHistory);
+        
+        // Initialize the page
+        document.addEventListener('DOMContentLoaded', () => {
+            loadConfig();
+        });
+    </script>
+</body>
+</html>

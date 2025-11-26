@@ -1,0 +1,555 @@
+iSQL> --------------------------------------------------------------------------------
+iSQL> -- 1. 시스템 기본 정보
+iSQL> --------------------------------------------------------------------------------
+iSQL> SELECT '========================================' AS "SECTION" FROM DUAL;
+SECTION                                   
+--------------------------------------------
+========================================  
+1 row selected.
+iSQL> SELECT '1. 시스템 기본 정보' AS "SECTION" FROM DUAL;
+SECTION                     
+------------------------------
+1. ????????? ?????? ??????  
+1 row selected.
+iSQL> SELECT '========================================' AS "SECTION" FROM DUAL;
+SECTION                                   
+--------------------------------------------
+========================================  
+1 row selected.
+iSQL> -- 버전 정보
+iSQL> SELECT 
+    'ALTIBASE_VERSION' AS INFO_TYPE,
+    PRODUCT_VERSION AS VALUE
+FROM V$VERSION;
+INFO_TYPE         VALUE                                                                                                                             
+-------------------------------------------------------------------------------------------------------------------------------------------------------
+ALTIBASE_VERSION  7.3.0.0.7                                                                                                                         
+1 row selected.
+iSQL> -- 시스템 정보
+iSQL> SELECT 
+    'INSTANCE_NAME' AS INFO_TYPE,
+    DB_NAME AS VALUE
+FROM V$DATABASE;
+INFO_TYPE      VALUE                                                                                                                             
+----------------------------------------------------------------------------------------------------------------------------------------------------
+INSTANCE_NAME  mydb                                                                                                                              
+1 row selected.
+iSQL> SELECT 
+    'START_TIME' AS INFO_TYPE,
+    TO_CHAR(STARTUP_TIME, 'YYYY-MM-DD HH24:MI:SS') AS VALUE
+FROM V$INSTANCE;
+[ERR-31058 : Column not found 
+0003 :     TO_CHAR(STARTUP_TIME, 'YYYY-MM-DD HH24:MI:SS') AS VALUE
+                  ^           ^
+]
+iSQL> --------------------------------------------------------------------------------
+iSQL> -- 2. 테이블스페이스 현황 (메모리 vs 디스크)
+iSQL> --------------------------------------------------------------------------------
+iSQL> SELECT '========================================' AS "SECTION" FROM DUAL;
+SECTION                                   
+--------------------------------------------
+========================================  
+1 row selected.
+iSQL> SELECT '2. 테이블스페이스 현황' AS "SECTION" FROM DUAL;
+SECTION                          
+-----------------------------------
+2. ????????????????????? ??????  
+1 row selected.
+iSQL> SELECT '========================================' AS "SECTION" FROM DUAL;
+SECTION                                   
+--------------------------------------------
+========================================  
+1 row selected.
+iSQL> SELECT 
+    SPACE_NAME,
+    CASE SPACE_TYPE 
+        WHEN 0 THEN 'MEMORY'
+        WHEN 1 THEN 'DISK'
+        ELSE 'VOLATILE'
+    END AS SPACE_TYPE,
+    STATE,
+    ROUND(TOTAL_PAGE_COUNT * PAGE_SIZE / 1024 / 1024 / 1024, 2) AS TOTAL_SIZE_GB,
+    ROUND(ALLOCATED_PAGE_COUNT * PAGE_SIZE / 1024 / 1024 / 1024, 2) AS ALLOCATED_SIZE_GB,
+    ROUND((ALLOCATED_PAGE_COUNT * PAGE_SIZE / 1024 / 1024 / 1024) / 
+          NULLIF(TOTAL_PAGE_COUNT * PAGE_SIZE / 1024 / 1024 / 1024, 0) * 100, 2) AS USED_PERCENT,
+    AUTOEXTEND_MODE
+FROM V$TABLESPACES
+ORDER BY SPACE_TYPE, SPACE_NAME;
+[ERR-31058 : Column not found 
+0002 :     SPACE_NAME,
+          ^         ^
+]
+iSQL> --------------------------------------------------------------------------------
+iSQL> -- 3. 디스크 DB vs 메모리 DB 사이즈 비교
+iSQL> --------------------------------------------------------------------------------
+iSQL> SELECT '========================================' AS "SECTION" FROM DUAL;
+SECTION                                   
+--------------------------------------------
+========================================  
+1 row selected.
+iSQL> SELECT '3. 디스크 vs 메모리 DB 사이즈 비교' AS "SECTION" FROM DUAL;
+SECTION                                        
+-------------------------------------------------
+3. ????????? vs ????????? DB ????????? ??????  
+1 row selected.
+iSQL> SELECT '========================================' AS "SECTION" FROM DUAL;
+SECTION                                   
+--------------------------------------------
+========================================  
+1 row selected.
+iSQL> SELECT 
+    CASE SPACE_TYPE 
+        WHEN 0 THEN 'MEMORY'
+        WHEN 1 THEN 'DISK'
+        ELSE 'VOLATILE'
+    END AS DB_TYPE,
+    COUNT(*) AS TABLESPACE_COUNT,
+    ROUND(SUM(ALLOCATED_PAGE_COUNT * PAGE_SIZE) / 1024 / 1024 / 1024, 2) AS TOTAL_ALLOCATED_GB,
+    ROUND(SUM(TOTAL_PAGE_COUNT * PAGE_SIZE) / 1024 / 1024 / 1024, 2) AS TOTAL_SIZE_GB
+FROM V$TABLESPACES
+GROUP BY SPACE_TYPE
+ORDER BY SPACE_TYPE;
+[ERR-31058 : Column not found 
+0002 :     CASE SPACE_TYPE 
+               ^         ^
+]
+iSQL> --------------------------------------------------------------------------------
+iSQL> -- 4. 디스크 테이블 목록 및 사이즈
+iSQL> --------------------------------------------------------------------------------
+iSQL> SELECT '========================================' AS "SECTION" FROM DUAL;
+SECTION                                   
+--------------------------------------------
+========================================  
+1 row selected.
+iSQL> SELECT '4. 디스크 테이블 목록 (상위 20개)' AS "SECTION" FROM DUAL;
+SECTION                                       
+------------------------------------------------
+4. ????????? ????????? ?????? (?????? 20???)  
+1 row selected.
+iSQL> SELECT '========================================' AS "SECTION" FROM DUAL;
+SECTION                                   
+--------------------------------------------
+========================================  
+1 row selected.
+iSQL> SELECT 
+    T.USER_NAME,
+    T.TABLE_NAME,
+    T.TABLESPACE_NAME,
+    T.TABLE_TYPE,
+    ROUND(S.DISK_PAGE_CNT * 8 / 1024, 2) AS SIZE_MB,
+    T.COLUMN_COUNT,
+    S.READ_ROW_COUNT,
+    S.INSERT_ROW_COUNT,
+    S.UPDATE_ROW_COUNT,
+    S.DELETE_ROW_COUNT
+FROM SYSTEM_.SYS_TABLES_ T
+LEFT OUTER JOIN V$DISKTABLE_STAT S ON T.TABLE_OID = S.TABLE_OID
+WHERE T.TABLE_TYPE = 'T'
+  AND T.TABLESPACE_ID IN (
+      SELECT SPACE_ID FROM V$TABLESPACES WHERE SPACE_TYPE = 1
+  )
+ORDER BY S.DISK_PAGE_CNT DESC
+LIMIT 20;
+[ERR-31031 : Table or view was not found : 
+0013 : LEFT OUTER JOIN V$DISKTABLE_STAT S ON T.TABLE_OID = S.TABLE_OID
+                      ^               ^
+]
+iSQL> --------------------------------------------------------------------------------
+iSQL> -- 5. 사용자별 디스크 테이블 통계
+iSQL> --------------------------------------------------------------------------------
+iSQL> SELECT '========================================' AS "SECTION" FROM DUAL;
+SECTION                                   
+--------------------------------------------
+========================================  
+1 row selected.
+iSQL> SELECT '5. 사용자별 디스크 테이블 통계' AS "SECTION" FROM DUAL;
+SECTION                                     
+----------------------------------------------
+5. ???????????? ????????? ????????? ??????  
+1 row selected.
+iSQL> SELECT '========================================' AS "SECTION" FROM DUAL;
+SECTION                                   
+--------------------------------------------
+========================================  
+1 row selected.
+iSQL> SELECT 
+    T.USER_NAME,
+    COUNT(*) AS TABLE_COUNT,
+    ROUND(SUM(S.DISK_PAGE_CNT * 8) / 1024, 2) AS TOTAL_SIZE_MB,
+    SUM(S.READ_ROW_COUNT) AS TOTAL_READ_ROWS,
+    SUM(S.INSERT_ROW_COUNT) AS TOTAL_INSERT_ROWS,
+    SUM(S.UPDATE_ROW_COUNT) AS TOTAL_UPDATE_ROWS,
+    SUM(S.DELETE_ROW_COUNT) AS TOTAL_DELETE_ROWS
+FROM SYSTEM_.SYS_TABLES_ T
+LEFT OUTER JOIN V$DISKTABLE_STAT S ON T.TABLE_OID = S.TABLE_OID
+WHERE T.TABLE_TYPE = 'T'
+  AND T.TABLESPACE_ID IN (
+      SELECT SPACE_ID FROM V$TABLESPACES WHERE SPACE_TYPE = 1
+  )
+GROUP BY T.USER_NAME
+ORDER BY TOTAL_SIZE_MB DESC;
+[ERR-31031 : Table or view was not found : 
+0010 : LEFT OUTER JOIN V$DISKTABLE_STAT S ON T.TABLE_OID = S.TABLE_OID
+                      ^               ^
+]
+iSQL> --------------------------------------------------------------------------------
+iSQL> -- 6. 인덱스 현황 (디스크)
+iSQL> --------------------------------------------------------------------------------
+iSQL> SELECT '========================================' AS "SECTION" FROM DUAL;
+SECTION                                   
+--------------------------------------------
+========================================  
+1 row selected.
+iSQL> SELECT '6. 디스크 인덱스 현황 (상위 20개)' AS "SECTION" FROM DUAL;
+SECTION                                       
+------------------------------------------------
+6. ????????? ????????? ?????? (?????? 20???)  
+1 row selected.
+iSQL> SELECT '========================================' AS "SECTION" FROM DUAL;
+SECTION                                   
+--------------------------------------------
+========================================  
+1 row selected.
+iSQL> SELECT 
+    I.USER_NAME,
+    I.TABLE_NAME,
+    I.INDEX_NAME,
+    I.INDEX_TYPE,
+    I.IS_UNIQUE,
+    ROUND(S.DISK_PAGE_CNT * 8 / 1024, 2) AS SIZE_MB,
+    S.READ_COUNT,
+    S.INSERT_COUNT,
+    S.DELETE_COUNT
+FROM SYSTEM_.SYS_INDICES_ I
+LEFT OUTER JOIN V$DISKINDEX_STAT S ON I.INDEX_ID = S.INDEX_ID
+WHERE I.TABLE_ID IN (
+    SELECT TABLE_ID FROM SYSTEM_.SYS_TABLES_ 
+    WHERE TABLESPACE_ID IN (SELECT SPACE_ID FROM V$TABLESPACES WHERE SPACE_TYPE = 1)
+)
+ORDER BY S.DISK_PAGE_CNT DESC
+LIMIT 20;
+[ERR-31031 : Table or view was not found : 
+0012 : LEFT OUTER JOIN V$DISKINDEX_STAT S ON I.INDEX_ID = S.INDEX_ID
+                      ^               ^
+]
+iSQL> --------------------------------------------------------------------------------
+iSQL> -- 7. 트랜잭션 통계
+iSQL> --------------------------------------------------------------------------------
+iSQL> SELECT '========================================' AS "SECTION" FROM DUAL;
+SECTION                                   
+--------------------------------------------
+========================================  
+1 row selected.
+iSQL> SELECT '7. 트랜잭션 통계' AS "SECTION" FROM DUAL;
+SECTION                 
+--------------------------
+7. ???????????? ??????  
+1 row selected.
+iSQL> SELECT '========================================' AS "SECTION" FROM DUAL;
+SECTION                                   
+--------------------------------------------
+========================================  
+1 row selected.
+iSQL> SELECT 
+    'DISK_INSERT_COUNT' AS METRIC,
+    SUM(INSERT_ROW_COUNT) AS VALUE
+FROM V$DISKTABLE_STAT
+UNION ALL
+SELECT 
+    'DISK_UPDATE_COUNT' AS METRIC,
+    SUM(UPDATE_ROW_COUNT) AS VALUE
+FROM V$DISKTABLE_STAT
+UNION ALL
+SELECT 
+    'DISK_DELETE_COUNT' AS METRIC,
+    SUM(DELETE_ROW_COUNT) AS VALUE
+FROM V$DISKTABLE_STAT
+UNION ALL
+SELECT 
+    'DISK_READ_COUNT' AS METRIC,
+    SUM(READ_ROW_COUNT) AS VALUE
+FROM V$DISKTABLE_STAT;
+[ERR-31031 : Table or view was not found : 
+0004 : FROM V$DISKTABLE_STAT
+           ^               ^
+]
+iSQL> --------------------------------------------------------------------------------
+iSQL> -- 8. 디스크 I/O 통계
+iSQL> --------------------------------------------------------------------------------
+iSQL> SELECT '========================================' AS "SECTION" FROM DUAL;
+SECTION                                   
+--------------------------------------------
+========================================  
+1 row selected.
+iSQL> SELECT '8. 디스크 I/O 통계' AS "SECTION" FROM DUAL;
+SECTION                  
+---------------------------
+8. ????????? I/O ??????  
+1 row selected.
+iSQL> SELECT '========================================' AS "SECTION" FROM DUAL;
+SECTION                                   
+--------------------------------------------
+========================================  
+1 row selected.
+iSQL> SELECT 
+    NAME,
+    VALUE
+FROM V$SYSSTAT
+WHERE NAME LIKE '%DISK%'
+   OR NAME LIKE '%disk%'
+   OR NAME LIKE '%PAGE%'
+ORDER BY NAME;
+NAME                                                                                                                              VALUE                
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+disk table cursor GRID scan count                                                                                                 0                    
+disk table cursor full scan count                                                                                                 0                    
+disk table cursor index scan count                                                                                                0                    
+elapsed time: allocate data slot in DML(disk)                                                                                     0                    
+elapsed time: allocate tss in dml(disk)                                                                                           0                    
+elapsed time: allocate undopage in dml(disk)                                                                                      0                    
+elapsed time: analyze values in DML(disk)                                                                                         0                    
+elapsed time: create page(disk)                                                                                                   0                    
+elapsed time: fix page(disk)                                                                                                      0                    
+elapsed time: get page(disk)                                                                                                      0                    
+elapsed time: index operation in dml(disk)                                                                                        0                    
+elapsed time: logical aging by tx in dml(disk)                                                                                    0                    
+elapsed time: phyical aging by tx in dml(disk)                                                                                    0                    
+elapsed time: record lock validation in DML(disk)                                                                                 0                    
+elapsed time: write undo record in DML(disk)                                                                                      0                    
+15 rows selected.
+iSQL> --------------------------------------------------------------------------------
+iSQL> -- 9. 세션 및 트랜잭션 정보
+iSQL> --------------------------------------------------------------------------------
+iSQL> SELECT '========================================' AS "SECTION" FROM DUAL;
+SECTION                                   
+--------------------------------------------
+========================================  
+1 row selected.
+iSQL> SELECT '9. 현재 세션 정보' AS "SECTION" FROM DUAL;
+SECTION                  
+---------------------------
+9. ?????? ?????? ??????  
+1 row selected.
+iSQL> SELECT '========================================' AS "SECTION" FROM DUAL;
+SECTION                                   
+--------------------------------------------
+========================================  
+1 row selected.
+iSQL> SELECT 
+    ID AS SESSION_ID,
+    TRANS_ID,
+    DB_USERNAME,
+    TASK_STATE,
+    QUERY_TIME_LIMIT,
+    ACTIVE_FLAG,
+    OPENED_STMT_COUNT,
+    CLIENT_TYPE,
+    CLIENT_APP_INFO
+FROM V$SESSION
+WHERE TASK_STATE != 'WAITING'
+ORDER BY SESSION_ID;
+SESSION_ID           TRANS_ID             DB_USERNAME                                                                                                                       TASK_STATE   
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+QUERY_TIME_LIMIT     ACTIVE_FLAG OPENED_STMT_COUNT CLIENT_TYPE                               
+--------------------------------------------------------------------------------------------------
+CLIENT_APP_INFO                                                                                                                   
+------------------------------------------------------------------------------------------------------------------------------------
+1                    12420                SYS                                                                                                                               EXECUTING    
+600                  0           0           CLI-64LE                                  
+isql                                                                                                                              
+1 row selected.
+iSQL> --------------------------------------------------------------------------------
+iSQL> -- 10. 파티션 테이블 정보 (디스크)
+iSQL> --------------------------------------------------------------------------------
+iSQL> SELECT '========================================' AS "SECTION" FROM DUAL;
+SECTION                                   
+--------------------------------------------
+========================================  
+1 row selected.
+iSQL> SELECT '10. 디스크 파티션 테이블 정보' AS "SECTION" FROM DUAL;
+SECTION                                   
+--------------------------------------------
+10. ????????? ????????? ????????? ??????  
+1 row selected.
+iSQL> SELECT '========================================' AS "SECTION" FROM DUAL;
+SECTION                                   
+--------------------------------------------
+========================================  
+1 row selected.
+iSQL> SELECT 
+    P.USER_NAME,
+    P.TABLE_NAME,
+    P.PARTITION_NAME,
+    P.PARTITION_METHOD,
+    P.TABLESPACE_NAME,
+    ROUND(S.DISK_PAGE_CNT * 8 / 1024, 2) AS SIZE_MB
+FROM SYSTEM_.SYS_TABLE_PARTITIONS_ P
+LEFT OUTER JOIN V$DISKTABLE_STAT S ON P.PARTITION_OID = S.TABLE_OID
+WHERE P.TABLESPACE_ID IN (
+    SELECT SPACE_ID FROM V$TABLESPACES WHERE SPACE_TYPE = 1
+)
+ORDER BY SIZE_MB DESC
+LIMIT 30;
+[ERR-31031 : Table or view was not found : 
+0009 : LEFT OUTER JOIN V$DISKTABLE_STAT S ON P.PARTITION_OID = S.TABLE_OID
+                      ^               ^
+]
+iSQL> --------------------------------------------------------------------------------
+iSQL> -- 11. 데이터파일 정보
+iSQL> --------------------------------------------------------------------------------
+iSQL> SELECT '========================================' AS "SECTION" FROM DUAL;
+SECTION                                   
+--------------------------------------------
+========================================  
+1 row selected.
+iSQL> SELECT '11. 데이터파일 정보' AS "SECTION" FROM DUAL;
+SECTION                     
+------------------------------
+11. ??????????????? ??????  
+1 row selected.
+iSQL> SELECT '========================================' AS "SECTION" FROM DUAL;
+SECTION                                   
+--------------------------------------------
+========================================  
+1 row selected.
+iSQL> SELECT 
+    SPACEID,
+    ID AS FILE_ID,
+    NAME AS FILE_NAME,
+    STATE,
+    ROUND(CURRSIZE / 1024 / 1024, 2) AS CURRENT_SIZE_MB,
+    ROUND(MAXSIZE / 1024 / 1024, 2) AS MAX_SIZE_MB,
+    AUTOEXTEND
+FROM V$DATAFILES
+ORDER BY SPACEID, FILE_ID;
+SPACEID     FILE_ID     
+---------------------------
+FILE_NAME                                                                                                                                                                                                                                                         
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+STATE       CURRENT_SIZE_MB MAX_SIZE_MB AUTOEXTEND  
+---------------------------------------------------------
+2           0           
+/home/pi/altibase-server-7.3.0/dbs/system001.dbf                                                                                                                                                                                                                  
+2           0.01        0.25        1           
+3           0           
+/home/pi/altibase-server-7.3.0/dbs/undo001.dbf                                                                                                                                                                                                                    
+2           0.02        0.25        1           
+4           0           
+/home/pi/altibase-server-7.3.0/dbs/temp001.dbf                                                                                                                                                                                                                    
+2           0.01        0.25        1           
+3 rows selected.
+iSQL> --------------------------------------------------------------------------------
+iSQL> -- 12. 디스크 DB 사용률 요약
+iSQL> --------------------------------------------------------------------------------
+iSQL> SELECT '========================================' AS "SECTION" FROM DUAL;
+SECTION                                   
+--------------------------------------------
+========================================  
+1 row selected.
+iSQL> SELECT '12. 디스크 DB 사용률 요약' AS "SECTION" FROM DUAL;
+SECTION                            
+-------------------------------------
+12. ????????? DB ????????? ??????  
+1 row selected.
+iSQL> SELECT '========================================' AS "SECTION" FROM DUAL;
+SECTION                                   
+--------------------------------------------
+========================================  
+1 row selected.
+iSQL> SELECT 
+    'DISK_DB_RATIO' AS METRIC,
+    ROUND(
+        (SELECT SUM(ALLOCATED_PAGE_COUNT * PAGE_SIZE) FROM V$TABLESPACES WHERE SPACE_TYPE = 1) /
+        NULLIF((SELECT SUM(ALLOCATED_PAGE_COUNT * PAGE_SIZE) FROM V$TABLESPACES), 0) * 100, 2
+    ) AS PERCENTAGE
+FROM DUAL
+UNION ALL
+SELECT 
+    'MEMORY_DB_RATIO' AS METRIC,
+    ROUND(
+        (SELECT SUM(ALLOCATED_PAGE_COUNT * PAGE_SIZE) FROM V$TABLESPACES WHERE SPACE_TYPE = 0) /
+        NULLIF((SELECT SUM(ALLOCATED_PAGE_COUNT * PAGE_SIZE) FROM V$TABLESPACES), 0) * 100, 2
+    ) AS PERCENTAGE
+FROM DUAL;
+[ERR-31058 : Column not found 
+0004 :         (SELECT SUM(ALLOCATED_PAGE_COUNT * PAGE_SIZE) FROM V$TABLESPACES WHERE SPACE_TYPE = 1) /
+                                                                                     ^         ^
+]
+iSQL> --------------------------------------------------------------------------------
+iSQL> -- 13. 백업 정보 (있는 경우)
+iSQL> --------------------------------------------------------------------------------
+iSQL> SELECT '========================================' AS "SECTION" FROM DUAL;
+SECTION                                   
+--------------------------------------------
+========================================  
+1 row selected.
+iSQL> SELECT '13. 백업 정보' AS "SECTION" FROM DUAL;
+SECTION            
+---------------------
+13. ?????? ??????  
+1 row selected.
+iSQL> SELECT '========================================' AS "SECTION" FROM DUAL;
+SECTION                                   
+--------------------------------------------
+========================================  
+1 row selected.
+iSQL> -- 백업 레벨 정보
+iSQL> SELECT 
+    NAME,
+    VALUE
+FROM V$PROPERTY
+WHERE NAME LIKE '%BACKUP%'
+   OR NAME LIKE '%ARCHIVE%'
+ORDER BY NAME;
+[ERR-31058 : Column not found 
+0003 :     VALUE
+          ^    ^
+]
+iSQL> --------------------------------------------------------------------------------
+iSQL> -- 14. 성능 관련 파라미터
+iSQL> --------------------------------------------------------------------------------
+iSQL> SELECT '========================================' AS "SECTION" FROM DUAL;
+SECTION                                   
+--------------------------------------------
+========================================  
+1 row selected.
+iSQL> SELECT '14. 디스크 DB 관련 주요 파라미터' AS "SECTION" FROM DUAL;
+SECTION                                      
+-----------------------------------------------
+14. ????????? DB ?????? ?????? ????????????  
+1 row selected.
+iSQL> SELECT '========================================' AS "SECTION" FROM DUAL;
+SECTION                                   
+--------------------------------------------
+========================================  
+1 row selected.
+iSQL> SELECT 
+    NAME,
+    VALUE,
+    STOREDCOUNT
+FROM V$PROPERTY
+WHERE NAME LIKE '%BUFFER%'
+   OR NAME LIKE '%DISK%'
+   OR NAME LIKE '%FLUSH%'
+   OR NAME LIKE '%PAGE%'
+ORDER BY NAME;
+[ERR-31058 : Column not found 
+0003 :     VALUE,
+          ^    ^
+]
+iSQL> SELECT '========================================' AS "SECTION" FROM DUAL;
+SECTION                                   
+--------------------------------------------
+========================================  
+1 row selected.
+iSQL> SELECT '헬스체크 완료' AS "SECTION" FROM DUAL;
+SECTION              
+-----------------------
+???????????? ??????  
+1 row selected.
+iSQL> SELECT '========================================' AS "SECTION" FROM DUAL;
+SECTION                                   
+--------------------------------------------
+========================================  
+1 row selected.
+iSQL> SPOOL OFF;

@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Qwen3 Chatbot - Model Test</title>
+    <link rel="stylesheet" href="{{ url_for('send_static', path='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🤖 Qwen3 Chatbot</h1>
+        </header>
+        
+        <nav>
+            <ul>
+                <li><a href="/">Chat</a></li>
+                <li><a href="/models">Model Selection</a></li>
+                <li><a href="/test" class="active">Model Test</a></li>
+            </ul>
+        </nav>
+        
+        <div class="main-content">
+            <div class="config-panel">
+                <div class="config-section">
+                    <h3>🤖 Select Model to Test</h3>
+                    <select id="test-model-select">
+                        <!-- Options will be populated by JavaScript -->
+                    </select>
+                </div>
+                
+                <div class="config-section">
+                    <h3>💬 Test Prompt</h3>
+                    <textarea id="test-prompt" rows="4" placeholder="Enter a test prompt...">Hello, can you introduce yourself?</textarea>
+                    <button id="test-model-btn" class="test-btn">Test Model</button>
+                </div>
+            </div>
+            
+            <div class="chat-container">
+                <div class="config-section">
+                    <h3>📊 Test Results</h3>
+                    <div id="test-result" class="result-box">
+                        <p>Click "Test Model" to check if the selected model works properly.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // DOM Elements
+        const testModelSelect = document.getElementById('test-model-select');
+        const testPromptInput = document.getElementById('test-prompt');
+        const testModelBtn = document.getElementById('test-model-btn');
+        const testResult = document.getElementById('test-result');
+        
+        // Load models for the selection dropdown
+        async function loadModels() {
+            try {
+                const response = await fetch('/api/models');
+                const models = await response.json();
+                
+                testModelSelect.innerHTML = '';
+                models.forEach(model => {
+                    const option = document.createElement('option');
+                    option.value = model.name;
+                    option.textContent = `${model.name} (${model.size})`;
+                    if (model.name === 'Qwen/Qwen2-1.5B-Instruct') {
+                        option.selected = true;
+                    }
+                    testModelSelect.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error loading models:', error);
+            }
+        }
+        
+        // Test the selected model
+        async function testModel() {
+            const model_name = testModelSelect.value;
+            const prompt = testPromptInput.value.trim();
+            
+            if (!prompt) {
+                testResult.innerHTML = '<p class="error">Please enter a test prompt.</p>';
+                return;
+            }
+            
+            // Show loading state
+            testResult.innerHTML = '<p>Testing model, please wait...</p>';
+            testModelBtn.disabled = true;
+            testModelBtn.textContent = 'Testing...';
+            
+            try {
+                const response = await fetch('/api/test-model', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ 
+                        model_name: model_name,
+                        prompt: prompt
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    testResult.innerHTML = `
+                        <p class="success">${data.message}</p>
+                        <p><strong>Response:</strong> ${data.response || 'No response generated'}</p>
+                    `;
+                } else {
+                    testResult.innerHTML = `<p class="error">${data.message}</p>`;
+                }
+            } catch (error) {
+                testResult.innerHTML = `<p class="error">Error testing model: ${error.message}</p>`;
+                console.error('Error testing model:', error);
+            } finally {
+                testModelBtn.disabled = false;
+                testModelBtn.textContent = 'Test Model';
+            }
+        }
+        
+        // Event Listeners
+        testModelBtn.addEventListener('click', testModel);
+        
+        // Initialize the page
+        document.addEventListener('DOMContentLoaded', () => {
+            loadModels();
+        });
+    </script>
+</body>
+</html>
