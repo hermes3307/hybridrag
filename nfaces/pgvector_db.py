@@ -214,18 +214,27 @@ class PgVectorDatabaseManager:
             features_serializable = self._convert_to_json_serializable(features)
             metadata_json = json.dumps(features_serializable)
 
-            # Insert face data
-            query = """
+            # Determine the embedding column based on model
+            embedding_column = f"embedding_{embedding_model.lower()}"
+
+            # Insert face data - using the model-specific embedding column
+            query = f"""
                 INSERT INTO faces (
-                    face_id, file_path, timestamp, image_hash, embedding_model,
-                    embedding, age_estimate, gender, brightness, contrast, sharpness,
+                    face_id, file_path, timestamp, image_hash,
+                    {embedding_column}, models_processed,
+                    age_estimate, gender, brightness, contrast, sharpness,
                     metadata
                 )
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (face_id) DO UPDATE SET
                     file_path = EXCLUDED.file_path,
                     timestamp = EXCLUDED.timestamp,
-                    embedding = EXCLUDED.embedding,
+                    {embedding_column} = EXCLUDED.{embedding_column},
+                    models_processed = CASE
+                        WHEN faces.models_processed IS NULL THEN ARRAY[%s]::text[]
+                        WHEN NOT (%s = ANY(faces.models_processed)) THEN array_append(faces.models_processed, %s)
+                        ELSE faces.models_processed
+                    END,
                     metadata = EXCLUDED.metadata,
                     updated_at = NOW()
             """
@@ -235,14 +244,17 @@ class PgVectorDatabaseManager:
                 face_data.file_path,
                 face_data.timestamp,
                 face_data.image_hash,
-                embedding_model,
                 embedding,
+                [embedding_model],  # models_processed array
                 features.get('age_estimate'),
                 features.get('gender'),
                 features.get('brightness'),
                 features.get('contrast'),
                 features.get('sharpness'),
-                metadata_json
+                metadata_json,
+                embedding_model,  # For the CASE WHEN in ON CONFLICT
+                embedding_model,
+                embedding_model
             ))
 
             conn.commit()
@@ -275,70 +287,86 @@ class PgVectorDatabaseManager:
             logger.warning("Database not initialized")
             return 0
 
-        conn = None
+        # Since different models have different columns, we need to group by model
+        # and process each model separately
         added_count = 0
 
-        try:
-            conn = self.get_connection()
-            cursor = conn.cursor()
+        # Group faces by embedding model
+        faces_by_model = {}
+        for face_data, embedding_model in face_data_list:
+            if embedding_model not in faces_by_model:
+                faces_by_model[embedding_model] = []
+            faces_by_model[embedding_model].append(face_data)
 
-            query = """
-                INSERT INTO faces (
-                    face_id, file_path, timestamp, image_hash, embedding_model,
-                    embedding, age_estimate, gender, brightness, contrast, sharpness,
-                    metadata
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (face_id) DO NOTHING
-            """
+        # Process each model group
+        for embedding_model, face_list in faces_by_model.items():
+            conn = None
+            try:
+                conn = self.get_connection()
+                cursor = conn.cursor()
 
-            # Prepare data for batch insert
-            batch_data = []
-            for face_data, embedding_model in face_data_list:
-                embedding = None
-                if face_data.embedding:
-                    embedding = self._pad_embedding(face_data.embedding)
+                # Determine the embedding column based on model
+                embedding_column = f"embedding_{embedding_model.lower()}"
 
-                features = face_data.features
-                features_serializable = self._convert_to_json_serializable(features)
+                query = f"""
+                    INSERT INTO faces (
+                        face_id, file_path, timestamp, image_hash,
+                        {embedding_column}, models_processed,
+                        age_estimate, gender, brightness, contrast, sharpness,
+                        metadata
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (face_id) DO NOTHING
+                """
 
-                batch_data.append((
-                    face_data.face_id,
-                    face_data.file_path,
-                    face_data.timestamp,
-                    face_data.image_hash,
-                    embedding_model,
-                    embedding,
-                    features_serializable.get('age_estimate'),
-                    features_serializable.get('gender'),
-                    features_serializable.get('brightness'),
-                    features_serializable.get('contrast'),
-                    features_serializable.get('sharpness'),
-                    json.dumps(features_serializable)
-                ))
+                # Prepare data for batch insert
+                batch_data = []
+                for face_data in face_list:
+                    embedding = None
+                    if face_data.embedding:
+                        embedding = self._pad_embedding(face_data.embedding)
 
-            # Execute batch insert
-            execute_batch(cursor, query, batch_data, page_size=batch_size)
-            added_count = len(batch_data)
+                    features = face_data.features
+                    features_serializable = self._convert_to_json_serializable(features)
 
-            conn.commit()
-            cursor.close()
-            logger.info(f"Added {added_count} faces in batch")
-            return added_count
+                    batch_data.append((
+                        face_data.face_id,
+                        face_data.file_path,
+                        face_data.timestamp,
+                        face_data.image_hash,
+                        embedding,
+                        [embedding_model],  # models_processed array
+                        features_serializable.get('age_estimate'),
+                        features_serializable.get('gender'),
+                        features_serializable.get('brightness'),
+                        features_serializable.get('contrast'),
+                        features_serializable.get('sharpness'),
+                        json.dumps(features_serializable)
+                    ))
 
-        except Exception as e:
-            logger.error(f"Error in batch insert: {e}")
-            if conn:
-                conn.rollback()
-            return 0
+                # Execute batch insert
+                execute_batch(cursor, query, batch_data, page_size=batch_size)
+                added_count += len(batch_data)
 
-        finally:
-            if conn:
-                self.return_connection(conn)
+                conn.commit()
+                cursor.close()
+                logger.info(f"Added {len(batch_data)} faces for model {embedding_model} in batch")
+
+            except Exception as e:
+                logger.error(f"Error in batch insert for model {embedding_model}: {e}")
+                if conn:
+                    conn.rollback()
+
+            finally:
+                if conn:
+                    self.return_connection(conn)
+
+        return added_count
 
     def search_faces(self, query_embedding: List[float], n_results: int = 10,
                     metadata_filter: Optional[Dict[str, Any]] = None,
-                    distance_metric: str = 'cosine') -> List[Dict[str, Any]]:
+                    distance_metric: str = 'cosine',
+                    embedding_model: str = None) -> List[Dict[str, Any]]:
         """
         Search for similar faces using vector similarity
 
@@ -347,6 +375,7 @@ class PgVectorDatabaseManager:
             n_results: Number of results to return
             metadata_filter: Optional metadata filters (e.g., {'gender': 'female'})
             distance_metric: Distance metric ('cosine', 'l2', 'inner_product')
+            embedding_model: Which embedding model to use for search (default: from config or 'facenet')
 
         Returns:
             List of dictionaries containing face information and distances
@@ -358,6 +387,14 @@ class PgVectorDatabaseManager:
         try:
             conn = self.get_connection()
             cursor = conn.cursor()
+
+            # Determine which embedding column to use
+            if embedding_model is None:
+                # Try to get from environment or config
+                import os
+                embedding_model = os.getenv('EMBEDDING_MODEL', 'facenet')
+
+            embedding_column = f"embedding_{embedding_model.lower()}"
 
             # Pad query embedding
             query_embedding = self._pad_embedding(query_embedding)
@@ -376,11 +413,11 @@ class PgVectorDatabaseManager:
             query = f"""
                 SELECT
                     face_id, file_path, timestamp, image_hash,
-                    embedding_model, age_estimate, gender, brightness,
-                    contrast, sharpness, metadata,
-                    embedding {distance_op} %s::vector AS distance
+                    age_estimate, gender, brightness,
+                    contrast, sharpness, metadata, models_processed,
+                    {embedding_column} {distance_op} %s::vector AS distance
                 FROM faces
-                WHERE embedding IS NOT NULL
+                WHERE {embedding_column} IS NOT NULL
             """
 
             params = [query_embedding]
@@ -416,19 +453,20 @@ class PgVectorDatabaseManager:
             for row in results:
                 # Merge dedicated columns with JSONB metadata
                 # JSONB metadata takes precedence, but fall back to dedicated columns
-                jsonb_metadata = row[10] if row[10] else {}
+                jsonb_metadata = row[9] if row[9] else {}
 
                 metadata = {
                     'face_id': row[0],
                     'file_path': row[1],
                     'timestamp': row[2],
                     'image_hash': row[3],
-                    'embedding_model': row[4],
-                    'age_estimate': row[5],
-                    'gender': row[6],
-                    'brightness': row[7],
-                    'contrast': row[8],
-                    'sharpness': row[9],
+                    'age_estimate': row[4],
+                    'gender': row[5],
+                    'brightness': row[6],
+                    'contrast': row[7],
+                    'sharpness': row[8],
+                    'models_processed': row[10] if row[10] else [],
+                    'embedding_model': embedding_model,  # Use the model we searched with
                 }
 
                 # Merge JSONB metadata
@@ -460,7 +498,7 @@ class PgVectorDatabaseManager:
                 self.return_connection(conn)
 
     def hybrid_search(self, query_embedding: List[float], metadata_filter: Dict[str, Any],
-                     n_results: int = 10) -> List[Dict[str, Any]]:
+                     n_results: int = 10, embedding_model: str = None) -> List[Dict[str, Any]]:
         """
         Hybrid search combining vector similarity and metadata filtering
         (Compatibility method - just calls search_faces with metadata_filter)
@@ -469,11 +507,12 @@ class PgVectorDatabaseManager:
             query_embedding: Query embedding vector
             metadata_filter: Metadata filters
             n_results: Number of results to return
+            embedding_model: Which embedding model to use for search
 
         Returns:
             List of matching faces with distances
         """
-        return self.search_faces(query_embedding, n_results, metadata_filter)
+        return self.search_faces(query_embedding, n_results, metadata_filter, embedding_model=embedding_model)
 
     def search_by_metadata(self, metadata_filter: Dict[str, Any],
                           n_results: int = 10) -> List[Dict[str, Any]]:
@@ -498,7 +537,7 @@ class PgVectorDatabaseManager:
             query = """
                 SELECT
                     face_id, file_path, timestamp, image_hash,
-                    embedding_model, age_estimate, gender, brightness,
+                    models_processed, age_estimate, gender, brightness,
                     contrast, sharpness, metadata
                 FROM faces
                 WHERE 1=1
@@ -541,7 +580,7 @@ class PgVectorDatabaseManager:
                     'file_path': row[1],
                     'timestamp': row[2],
                     'image_hash': row[3],
-                    'embedding_model': row[4],
+                    'models_processed': row[4],
                     'age_estimate': row[5],
                     'gender': row[6],
                     'brightness': row[7],
@@ -646,25 +685,37 @@ class PgVectorDatabaseManager:
             conn = self.get_connection()
             cursor = conn.cursor()
 
-            # Get count of each embedding model
-            cursor.execute("""
-                SELECT embedding_model, COUNT(*) as count
+            # Get count of faces with each embedding model
+            # Since models_processed is an array, we need to check which embedding columns have data
+            cursor.execute(f"""
+                SELECT
+                    COUNT(*) FILTER (WHERE embedding_facenet IS NOT NULL) as facenet_count,
+                    COUNT(*) FILTER (WHERE embedding_arcface IS NOT NULL) as arcface_count,
+                    COUNT(*) FILTER (WHERE embedding_vggface2 IS NOT NULL) as vggface2_count,
+                    COUNT(*) FILTER (WHERE embedding_insightface IS NOT NULL) as insightface_count,
+                    COUNT(*) FILTER (WHERE embedding_statistical IS NOT NULL) as statistical_count,
+                    COUNT(*) as total_count
                 FROM faces
-                WHERE embedding_model IS NOT NULL
-                GROUP BY embedding_model
             """)
 
-            results = cursor.fetchall()
+            result = cursor.fetchone()
             cursor.close()
 
             # Build model counts dictionary
             model_counts = {}
-            total = 0
-            for row in results:
-                model_name = row[0]
-                count = row[1]
-                model_counts[model_name] = count
-                total += count
+            total = result[5] if result else 0
+
+            if result:
+                if result[0] > 0:
+                    model_counts['facenet'] = result[0]
+                if result[1] > 0:
+                    model_counts['arcface'] = result[1]
+                if result[2] > 0:
+                    model_counts['vggface2'] = result[2]
+                if result[3] > 0:
+                    model_counts['insightface'] = result[3]
+                if result[4] > 0:
+                    model_counts['statistical'] = result[4]
 
             # Check for mismatch
             has_mismatch = False

@@ -28,7 +28,8 @@ from core import (
     SystemStats,
     FaceDownloader,
     FaceProcessor,
-    FaceEmbedder
+    FaceEmbedder,
+    FaceAnalyzer
 )
 from pgvector_db import PgVectorDatabaseManager
 from advanced_search import AdvancedSearchEngine, SearchQuery
@@ -108,6 +109,16 @@ class UnifiedFaceApp:
         if not self.search_engine:
             self.search_engine = AdvancedSearchEngine(self.db)
 
+    def initialize_for_search(self):
+        """Lightweight initialization for search operations only (no downloader)"""
+        if not self.db:
+            # Only initialize database connection, skip downloader
+            self.db = PgVectorDatabaseManager(self.config)
+            if not self.db.initialized:
+                self.db.initialize()
+        if not self.search_engine:
+            self.search_engine = AdvancedSearchEngine(self.db)
+
     def test_database_connection(self, host: str, port: int, db_name: str,
                                 user: str, password: str) -> str:
         """Test database connection"""
@@ -121,9 +132,62 @@ class UnifiedFaceApp:
                 db_password=password
             )
             test_db = PgVectorDatabaseManager(temp_config)
+
+            # Initialize the database connection
+            if not test_db.initialize():
+                return "❌ Connection failed: Could not initialize database"
+
+            # Get statistics
             stats = test_db.get_statistics()
+
+            # Get count for each embedding model
+            conn = test_db.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT
+                    COUNT(*) FILTER (WHERE embedding_facenet IS NOT NULL) as facenet_count,
+                    COUNT(*) FILTER (WHERE embedding_arcface IS NOT NULL) as arcface_count,
+                    COUNT(*) FILTER (WHERE embedding_vggface2 IS NOT NULL) as vggface2_count,
+                    COUNT(*) FILTER (WHERE embedding_insightface IS NOT NULL) as insightface_count,
+                    COUNT(*) FILTER (WHERE embedding_statistical IS NOT NULL) as statistical_count
+                FROM faces
+            """)
+            model_counts = cursor.fetchone()
+            cursor.close()
+            test_db.return_connection(conn)
             test_db.close()
-            return f"✅ Connection successful!\nFaces in database: {stats.get('total_faces', 0)}"
+
+            # Format detailed response
+            total_faces = stats.get('total_faces', 0)
+            faces_with_embeddings = stats.get('faces_with_embeddings', 0)
+            db_size = stats.get('database_size', 'Unknown')
+
+            result = f"✅ Connection successful!\n"
+            result += f"📊 Database: {db_name}\n"
+            result += f"👤 Total faces: {total_faces:,}\n"
+            result += f"🎯 Faces with embeddings: {faces_with_embeddings:,}\n"
+            result += f"💾 Database size: {db_size}\n"
+            result += f"\n🧠 Embeddings by Model:\n"
+
+            if model_counts:
+                if model_counts[0] > 0:
+                    result += f"   • FaceNet: {model_counts[0]:,}\n"
+                if model_counts[1] > 0:
+                    result += f"   • ArcFace: {model_counts[1]:,}\n"
+                if model_counts[2] > 0:
+                    result += f"   • VGGFace2: {model_counts[2]:,}\n"
+                if model_counts[3] > 0:
+                    result += f"   • InsightFace: {model_counts[3]:,}\n"
+                if model_counts[4] > 0:
+                    result += f"   • Statistical: {model_counts[4]:,}\n"
+
+                # Show if no embeddings at all
+                if sum(model_counts) == 0:
+                    result += f"   (No embeddings found)"
+            else:
+                result += f"   (Unable to retrieve model counts)"
+
+            return result
         except Exception as e:
             return f"❌ Connection failed: {str(e)}"
 
@@ -444,7 +508,8 @@ class UnifiedFaceApp:
                     hair_color_filter: str, brightness_filter: str,
                     quality_filter: str) -> Tuple[List, str]:
         """Search for similar faces"""
-        self.initialize_system()
+        # Use lightweight initialization for search (skips downloader initialization)
+        self.initialize_for_search()
 
         if not self.db or not self.search_engine:
             return [], "❌ Database not initialized"
@@ -452,17 +517,30 @@ class UnifiedFaceApp:
         if query_image is None:
             return [], "⚠️ Please provide a query image"
 
+        temp_file_path = None
         try:
             # Convert query image to embedding
             embedder = FaceEmbedder(model_name=self.config.embedding_model)
+            analyzer = FaceAnalyzer()
 
             # Handle different image input types
             if isinstance(query_image, str):
                 query_img = Image.open(query_image)
+                query_image_path = query_image
             else:
                 query_img = Image.fromarray(query_image)
+                # Save temporary image for analysis
+                import tempfile
+                with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp:
+                    query_img.save(tmp.name)
+                    query_image_path = tmp.name
+                    temp_file_path = tmp.name
 
-            query_embedding = embedder.create_embedding(np.array(query_img))
+            # Analyze the query image to extract features
+            features = analyzer.analyze_face(query_image_path)
+
+            # Create embedding with both image_path and features
+            query_embedding = embedder.create_embedding(query_image_path, features)
 
             # Build metadata filters
             metadata_filters = {}
@@ -483,39 +561,170 @@ class UnifiedFaceApp:
             if search_mode == "Vector Search Only":
                 results = self.db.search_faces(
                     query_embedding=query_embedding,
-                    top_k=top_k,
-                    distance_metric='cosine'
+                    n_results=top_k,
+                    distance_metric='cosine',
+                    embedding_model=self.config.embedding_model
                 )
             elif search_mode == "Metadata Filter Only":
-                search_query = SearchQuery(
-                    metadata_filters=metadata_filters,
-                    limit=top_k
+                # Metadata-only search - use db manager directly
+                results = self.db.search_by_metadata(
+                    metadata_filter=metadata_filters,
+                    n_results=top_k
                 )
-                results = self.search_engine.search(search_query)
             else:  # Hybrid
-                search_query = SearchQuery(
+                # Hybrid search - combine vector and metadata
+                results = self.db.hybrid_search(
                     query_embedding=query_embedding,
-                    metadata_filters=metadata_filters,
-                    limit=top_k,
-                    distance_metric='cosine'
+                    metadata_filter=metadata_filters,
+                    n_results=top_k,
+                    embedding_model=self.config.embedding_model
                 )
-                results = self.search_engine.search(search_query)
 
             self.stats['searches']['total'] += 1
 
             # Format results for Gradio gallery
             gallery_images = []
             for result in results:
-                img_path = result.get('file_path', '')
-                if os.path.exists(img_path):
+                # file_path can be at top level or inside metadata
+                img_path = result.get('file_path') or result.get('metadata', {}).get('file_path', '')
+                if img_path and os.path.exists(img_path):
                     distance = result.get('distance', 0)
                     gallery_images.append((img_path, f"Distance: {distance:.4f}"))
 
-            message = f"✅ Found {len(gallery_images)} matching faces"
+            message = f"✅ Found {len(gallery_images)} matching faces (searched {len(results)} results)"
             return gallery_images, message
 
         except Exception as e:
             return [], f"❌ Search error: {str(e)}"
+        finally:
+            # Clean up temporary file if created
+            if temp_file_path and os.path.exists(temp_file_path):
+                try:
+                    os.unlink(temp_file_path)
+                except:
+                    pass
+
+    def detect_and_search_faces(self, query_image, top_k_per_face: int) -> Tuple[List, str]:
+        """
+        Advanced multi-face search: Detect all faces in image and search for each one
+
+        Returns:
+            Tuple of (results_list, status_message)
+            results_list contains dicts with 'face_image', 'face_number', 'search_results'
+        """
+        self.initialize_for_search()
+
+        if not self.db:
+            return [], "❌ Database not initialized"
+
+        if query_image is None:
+            return [], "⚠️ Please provide a query image"
+
+        temp_file_path = None
+        detected_faces = []
+
+        try:
+            import cv2
+            import tempfile
+
+            # Convert query image to OpenCV format
+            if isinstance(query_image, str):
+                query_img = Image.open(query_image)
+                query_image_path = query_image
+            else:
+                query_img = Image.fromarray(query_image)
+                # Save temporary image
+                with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp:
+                    query_img.save(tmp.name)
+                    query_image_path = tmp.name
+                    temp_file_path = tmp.name
+
+            # Convert to OpenCV format
+            img_cv = cv2.imread(query_image_path)
+            if img_cv is None:
+                return [], "❌ Failed to load image"
+
+            # Detect faces using Haar Cascade
+            face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+            gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
+            faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+
+            if len(faces) == 0:
+                return [], "⚠️ No faces detected in the image"
+
+            # Process each detected face
+            analyzer = FaceAnalyzer()
+            embedder = FaceEmbedder(model_name=self.config.embedding_model)
+
+            all_results = []
+
+            for idx, (x, y, w, h) in enumerate(faces, 1):
+                # Extract face region with some padding
+                padding = int(max(w, h) * 0.2)
+                x1 = max(0, x - padding)
+                y1 = max(0, y - padding)
+                x2 = min(img_cv.shape[1], x + w + padding)
+                y2 = min(img_cv.shape[0], y + h + padding)
+
+                face_img = img_cv[y1:y2, x1:x2]
+
+                # Save extracted face to temp file
+                with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as face_tmp:
+                    cv2.imwrite(face_tmp.name, face_img)
+                    face_path = face_tmp.name
+                    detected_faces.append(face_path)
+
+                # Analyze and create embedding for this face
+                features = analyzer.analyze_face(face_path)
+                face_embedding = embedder.create_embedding(face_path, features)
+
+                # Search for similar faces
+                search_results = self.db.search_faces(
+                    query_embedding=face_embedding,
+                    n_results=top_k_per_face,
+                    distance_metric='cosine',
+                    embedding_model=self.config.embedding_model
+                )
+
+                # Format search results
+                gallery_images = []
+                for result in search_results:
+                    img_path = result.get('file_path') or result.get('metadata', {}).get('file_path', '')
+                    if img_path and os.path.exists(img_path):
+                        distance = result.get('distance', 0)
+                        gallery_images.append((img_path, f"Distance: {distance:.4f}"))
+
+                # Convert face image for display
+                face_img_rgb = cv2.cvtColor(face_img, cv2.COLOR_BGR2RGB)
+
+                all_results.append({
+                    'face_number': idx,
+                    'face_image': face_img_rgb,
+                    'face_bbox': (x, y, w, h),
+                    'search_results': gallery_images,
+                    'num_results': len(gallery_images)
+                })
+
+            message = f"✅ Detected {len(faces)} face(s) and searched for each"
+            return all_results, message
+
+        except Exception as e:
+            import traceback
+            error_detail = f"❌ Error: {str(e)}\n{traceback.format_exc()}"
+            return [], error_detail
+        finally:
+            # Clean up temporary files
+            if temp_file_path and os.path.exists(temp_file_path):
+                try:
+                    os.unlink(temp_file_path)
+                except:
+                    pass
+            for face_path in detected_faces:
+                try:
+                    if os.path.exists(face_path):
+                        os.unlink(face_path)
+                except:
+                    pass
 
     def format_stats(self) -> str:
         """Format statistics for display"""
@@ -634,6 +843,9 @@ def create_app():
                             capture_btn = gr.Button("📷 Use Webcam")
                             upload_btn = gr.UploadButton("📁 Upload Image", file_types=["image"])
 
+                        search_btn = gr.Button("🔍 Search", variant="primary", size="lg")
+                        search_status = gr.Textbox(label="Search Status", lines=2)
+
                         top_k = gr.Slider(1, 50, value=10, step=1, label="Number of results")
 
                         search_mode = gr.Radio(
@@ -680,9 +892,6 @@ def create_app():
                                 label="Quality"
                             )
 
-                        search_btn = gr.Button("🔍 Search", variant="primary", size="lg")
-                        search_status = gr.Textbox(label="Search Status", lines=2)
-
                     # Right column: Results
                     with gr.Column(scale=2):
                         gr.Markdown("#### Search Results")
@@ -694,7 +903,69 @@ def create_app():
                             object_fit="contain"
                         )
 
-            # Tab 3: Configuration
+            # Tab 3: Advanced Multi-Face Search
+            with gr.TabItem("🎯 Advanced Search"):
+                gr.Markdown("### Multi-Face Detection & Search")
+                gr.Markdown("Upload a photo with multiple people. The system will detect all faces and search for similar faces for each person.")
+
+                with gr.Row():
+                    # Left column: Input
+                    with gr.Column(scale=1):
+                        adv_query_image = gr.Image(label="Upload Photo with Multiple People", type="numpy")
+
+                        with gr.Row():
+                            adv_upload_btn = gr.UploadButton("📁 Upload Photo", file_types=["image"])
+
+                        adv_top_k = gr.Slider(1, 20, value=5, step=1, label="Results per face")
+
+                        adv_search_btn = gr.Button("🎯 Detect & Search All Faces", variant="primary", size="lg")
+                        adv_search_status = gr.Textbox(label="Status", lines=2)
+
+                    # Right column: Annotated image with detected faces
+                    with gr.Column(scale=1):
+                        gr.Markdown("#### Detected Faces Preview")
+                        adv_detected_info = gr.Markdown("Upload an image to detect faces")
+
+                # Results section - show each detected face and its matches
+                gr.Markdown("---")
+                gr.Markdown("### Search Results for Each Detected Face")
+
+                # Person 1
+                with gr.Row(visible=True) as adv_face1_row:
+                    with gr.Column(scale=1):
+                        adv_face1_image = gr.Image(label="👤 Person 1 - Detected Face", height=200, width=200, visible=False)
+                    with gr.Column(scale=3):
+                        adv_face1_results = gr.Gallery(label="Similar Faces", columns=5, rows=1, height=200, visible=False)
+
+                # Person 2
+                with gr.Row(visible=True) as adv_face2_row:
+                    with gr.Column(scale=1):
+                        adv_face2_image = gr.Image(label="👤 Person 2 - Detected Face", height=200, width=200, visible=False)
+                    with gr.Column(scale=3):
+                        adv_face2_results = gr.Gallery(label="Similar Faces", columns=5, rows=1, height=200, visible=False)
+
+                # Person 3
+                with gr.Row(visible=True) as adv_face3_row:
+                    with gr.Column(scale=1):
+                        adv_face3_image = gr.Image(label="👤 Person 3 - Detected Face", height=200, width=200, visible=False)
+                    with gr.Column(scale=3):
+                        adv_face3_results = gr.Gallery(label="Similar Faces", columns=5, rows=1, height=200, visible=False)
+
+                # Person 4
+                with gr.Row(visible=True) as adv_face4_row:
+                    with gr.Column(scale=1):
+                        adv_face4_image = gr.Image(label="👤 Person 4 - Detected Face", height=200, width=200, visible=False)
+                    with gr.Column(scale=3):
+                        adv_face4_results = gr.Gallery(label="Similar Faces", columns=5, rows=1, height=200, visible=False)
+
+                # Person 5
+                with gr.Row(visible=True) as adv_face5_row:
+                    with gr.Column(scale=1):
+                        adv_face5_image = gr.Image(label="👤 Person 5 - Detected Face", height=200, width=200, visible=False)
+                    with gr.Column(scale=3):
+                        adv_face5_results = gr.Gallery(label="Similar Faces", columns=5, rows=1, height=200, visible=False)
+
+            # Tab 4: Configuration
             with gr.TabItem("⚙️ Configuration"):
                 gr.Markdown("### System Configuration")
                 gr.Markdown("Configure database connection and system settings. Changes are saved automatically.")
@@ -811,6 +1082,68 @@ def create_app():
             outputs=[query_image]
         )
 
+        # Advanced search handlers
+        def process_advanced_search(image, top_k):
+            """Process multi-face detection and search"""
+            if image is None:
+                return (
+                    "⚠️ Please upload an image",
+                    gr.update(visible=False), gr.update(visible=False),
+                    gr.update(visible=False), gr.update(visible=False),
+                    gr.update(visible=False), gr.update(visible=False),
+                    gr.update(visible=False), gr.update(visible=False),
+                    gr.update(visible=False), gr.update(visible=False)
+                )
+
+            results, status = app.detect_and_search_faces(image, top_k)
+
+            if not results:
+                return (
+                    status,
+                    gr.update(visible=False), gr.update(visible=False),
+                    gr.update(visible=False), gr.update(visible=False),
+                    gr.update(visible=False), gr.update(visible=False),
+                    gr.update(visible=False), gr.update(visible=False),
+                    gr.update(visible=False), gr.update(visible=False)
+                )
+
+            # Prepare outputs for up to 5 faces
+            outputs = [status]
+
+            for i in range(5):
+                if i < len(results):
+                    face_data = results[i]
+                    outputs.extend([
+                        gr.update(value=face_data['face_image'], visible=True),  # face image
+                        gr.update(value=face_data['search_results'], visible=True)  # search results gallery
+                    ])
+                else:
+                    outputs.extend([
+                        gr.update(visible=False),  # face image
+                        gr.update(visible=False)   # search results gallery
+                    ])
+
+            return tuple(outputs)
+
+        adv_search_btn.click(
+            fn=process_advanced_search,
+            inputs=[adv_query_image, adv_top_k],
+            outputs=[
+                adv_search_status,
+                adv_face1_image, adv_face1_results,
+                adv_face2_image, adv_face2_results,
+                adv_face3_image, adv_face3_results,
+                adv_face4_image, adv_face4_results,
+                adv_face5_image, adv_face5_results
+            ]
+        )
+
+        adv_upload_btn.upload(
+            fn=lambda file: file,
+            inputs=[adv_upload_btn],
+            outputs=[adv_query_image]
+        )
+
         # Configuration handlers
         test_db_btn.click(
             fn=app.test_database_connection,
@@ -864,9 +1197,22 @@ if __name__ == "__main__":
     # Create and launch the app
     app = create_app()
 
+    # Get absolute path to faces directory
+    faces_dir = os.path.abspath("./faces")
+    allowed_paths = [faces_dir]
+
+    # Also include real path if it's a symlink
+    if os.path.islink("./faces"):
+        real_faces_dir = os.path.realpath("./faces")
+        if real_faces_dir not in allowed_paths:
+            allowed_paths.append(real_faces_dir)
+
+    print(f"Gradio allowed_paths: {allowed_paths}")
+
     # Launch with options
     app.launch(
         server_name="0.0.0.0",  # Allow external access
         server_port=7860,
-        share=False  # Set to True to create a public link
+        share=False,  # Set to True to create a public link
+        allowed_paths=allowed_paths  # Allow reading from faces directory
     )
