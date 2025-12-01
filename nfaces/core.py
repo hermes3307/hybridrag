@@ -142,6 +142,7 @@ class SystemConfig:
     batch_size: int = 50
     embedding_model: str = "statistical"  # Options: statistical, facenet, arcface, deepface, vggface2, openface
     download_source: str = "thispersondoesnotexist"  # Options: thispersondoesnotexist, fakeface, randomface
+    skip_duplicate_check: bool = False  # Skip duplicate checking during download
     config_file: str = "system_config.json"
 
     @classmethod

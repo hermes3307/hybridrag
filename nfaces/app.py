@@ -53,8 +53,10 @@ class UnifiedFaceApp:
         self.stop_flag = threading.Event()
         # Shared log for real-time updates
         self.download_log = []
+        self.embed_log = []
         self.log_lock = threading.Lock()
         self.download_active = False
+        self.embed_active = False
 
     def safe_print(self, message: str):
         """Safely print to stdout, ignoring BrokenPipeError"""
@@ -71,15 +73,32 @@ class UnifiedFaceApp:
         # Also print to stdout for terminal visibility
         self.safe_print(f"[DOWNLOAD] {message}")
 
+    def add_embed_log(self, message: str):
+        """Add a message to the embed log (thread-safe)"""
+        with self.log_lock:
+            self.embed_log.append(message)
+        # Also print to stdout for terminal visibility
+        self.safe_print(f"[EMBED] {message}")
+
     def get_logs(self) -> str:
         """Get all log messages as a single string (thread-safe)"""
         with self.log_lock:
             return "\n".join(self.download_log)
 
+    def get_embed_logs(self) -> str:
+        """Get all embed log messages as a single string (thread-safe)"""
+        with self.log_lock:
+            return "\n".join(self.embed_log)
+
     def clear_logs(self):
         """Clear all log messages (thread-safe)"""
         with self.log_lock:
             self.download_log = []
+
+    def clear_embed_logs(self):
+        """Clear all embed log messages (thread-safe)"""
+        with self.log_lock:
+            self.embed_log = []
 
     def load_config(self) -> SystemConfig:
         """Load configuration from system_config.json"""
@@ -392,116 +411,163 @@ class UnifiedFaceApp:
         self.stop_flag.set()
         return "⏹️ Stopping...", self.format_stats(), self.get_logs()
 
-    def process_and_embed(self, batch_size: int, workers: int,
-                         process_new_only: bool, progress=gr.Progress()) -> Tuple[str, str]:
-        """Process images and create embeddings"""
-        self.stop_flag.clear()
-        self.initialize_system()
+    def _embed_worker(self, batch_size: int, workers: int, process_new_only: bool):
+        """Background worker thread for embedding faces"""
+        worker_start = time.time()
+        try:
+            print(f"[DEBUG] Embed worker thread started: batch_size={batch_size}, workers={workers}, process_new_only={process_new_only}", flush=True)
+        except BrokenPipeError:
+            pass
 
         try:
             faces_dir = Path(self.config.faces_dir)
             if not faces_dir.exists():
-                return f"❌ Faces directory does not exist: {faces_dir}", self.format_stats()
+                self.add_embed_log(f"❌ Faces directory does not exist: {faces_dir}")
+                return
+
+            self.add_embed_log("⚙️ Initializing embedding system...")
+            init_start = time.time()
+            self.initialize_system()
+            init_time = time.time() - init_start
+            self.add_embed_log(f"✓ System initialized ({init_time:.2f}s)")
 
             # Get list of image files
+            self.add_embed_log(f"📁 Scanning directory: {faces_dir}")
             image_files = list(faces_dir.glob("*.jpg")) + list(faces_dir.glob("*.png"))
-            try:
-                print(f"Found {len(image_files)} image files in {faces_dir}")
-            except BrokenPipeError:
-                pass
+            self.add_embed_log(f"✓ Found {len(image_files)} image files")
 
             if process_new_only:
-                # Filter out already processed files
-                processed = set()
-                if self.db:
-                    # Get list of processed files from database
-                    try:
-                        stats = self.db.get_statistics()
-                        # This is simplified - you'd need to query actual file paths
-                        processed = set()
-                    except:
-                        pass
-                image_files = [f for f in image_files if f.name not in processed]
-                try:
-                    print(f"After filtering, {len(image_files)} files need processing")
-                except BrokenPipeError:
-                    pass
+                self.add_embed_log("🔍 Filtering to only new files (not in database)...")
+                # Use processor's method to get only new files
+                processor = FaceProcessor(
+                    config=self.config,
+                    stats=self.system_stats,
+                    db_manager=self.db
+                )
+                new_files = processor.get_new_files_only()
+                image_files = [Path(f) for f in new_files]
+                self.add_embed_log(f"✓ After filtering: {len(image_files)} files need processing")
 
             total_files = len(image_files)
             if total_files == 0:
-                return "ℹ️ No files to process", self.format_stats()
+                self.add_embed_log("ℹ️ No files to process")
+                return
 
             # FaceProcessor expects SystemConfig, SystemStats, and db_manager
-            processor = FaceProcessor(
-                config=self.config,
-                stats=self.system_stats,
-                db_manager=self.db
-            )
+            if not process_new_only:
+                processor = FaceProcessor(
+                    config=self.config,
+                    stats=self.system_stats,
+                    db_manager=self.db
+                )
 
             success_count = 0
             error_count = 0
+            duplicate_count = 0
             error_messages = []
 
+            self.add_embed_log(f"🚀 Starting embedding process")
+            self.add_embed_log(f"📊 Target: {total_files} faces\n")
+
             for i, file_path in enumerate(image_files):
+                # Check stop flag
                 if self.stop_flag.is_set():
-                    try:
-                        print(f"Processing stopped by user at {i}/{total_files}")
-                    except BrokenPipeError:
-                        pass
+                    self.add_embed_log(f"\n⏹️ Embedding stopped by user at {i}/{total_files}")
                     break
 
-                progress((i + 1) / total_files,
-                        desc=f"Processing {i+1}/{total_files}: {file_path.name}")
+                file_name = file_path.name
+                self.add_embed_log(f"🔢 [{i+1}/{total_files}] Processing: {file_name}")
 
                 try:
+                    # Track if this is a duplicate before processing
+                    file_hash = processor._get_file_hash(str(file_path))
+                    is_duplicate = processor.db_manager.hash_exists(file_hash)
+
                     result = processor.process_face_file(str(file_path))
+
                     if result:
-                        success_count += 1
-                        self.stats['embeddings']['success'] += 1
-                        try:
-                            print(f"✓ Processed {i+1}/{total_files}: {file_path.name}")
-                        except BrokenPipeError:
-                            pass
+                        if is_duplicate:
+                            duplicate_count += 1
+                            self.add_embed_log(f"   ⊘ DUPLICATE: Skipped (hash: {file_hash[:8]})")
+                        else:
+                            success_count += 1
+                            self.stats['embeddings']['success'] += 1
+                            self.add_embed_log(f"   ✓ SUCCESS: Embedded to database")
                     else:
                         error_count += 1
                         self.stats['embeddings']['errors'] += 1
-                        error_messages.append(f"{file_path.name}: Processing returned None")
-                        try:
-                            print(f"✗ Failed to process {file_path.name}")
-                        except BrokenPipeError:
-                            pass
+                        error_msg = f"{file_name}: Processing returned None"
+                        error_messages.append(error_msg)
+                        self.add_embed_log(f"   ✗ FAILED: Processing returned None")
+
                     self.stats['embeddings']['total'] += 1
+
                 except Exception as e:
                     error_count += 1
                     self.stats['embeddings']['errors'] += 1
-                    error_messages.append(f"{file_path.name}: {str(e)}")
-                    try:
-                        print(f"✗ Error processing {file_path.name}: {str(e)}")
-                    except BrokenPipeError:
-                        pass
+                    error_msg = f"{file_name}: {str(e)}"
+                    error_messages.append(error_msg)
+                    self.add_embed_log(f"   ✗ ERROR: {str(e)}")
 
-            message = f"✅ Processed {success_count}/{total_files} faces successfully"
-            if error_count > 0:
-                message += f"\n\n⚠️ {error_count} errors occurred"
-                if error_messages:
-                    message += ":\n" + "\n".join(error_messages[:5])
-                    if len(error_messages) > 5:
-                        message += f"\n... and {len(error_messages) - 5} more errors"
+            # Summary
+            self.add_embed_log(f"\n{'='*60}")
+            self.add_embed_log(f"📈 SUMMARY: {success_count}/{total_files} faces embedded successfully")
+            self.add_embed_log(f"✅ Success: {success_count}")
+            self.add_embed_log(f"⊘ Duplicates: {duplicate_count}")
+            self.add_embed_log(f"❌ Errors: {error_count}")
 
-            return message, self.format_stats()
+            if error_messages:
+                self.add_embed_log(f"\n⚠️ Errors ({len(error_messages)}):")
+                for err in error_messages[:5]:
+                    self.add_embed_log(f"  • {err}")
+                if len(error_messages) > 5:
+                    self.add_embed_log(f"  ... and {len(error_messages) - 5} more errors")
 
         except Exception as e:
-            error_detail = f"❌ Error during processing: {str(e)}\n\nDetails: {type(e).__name__}"
-            try:
-                print(f"Processing error: {str(e)}")
-            except BrokenPipeError:
-                pass
+            self.add_embed_log(f"\n❌ CRITICAL ERROR: {str(e)}")
             import traceback
+            self.add_embed_log(f"Traceback:\n{traceback.format_exc()}")
             try:
+                print(f"❌ Critical error in embed worker: {str(e)}")
                 traceback.print_exc()
             except BrokenPipeError:
                 pass
-            return error_detail, self.format_stats()
+        finally:
+            self.embed_active = False
+
+    def process_and_embed(self, batch_size: int, workers: int,
+                         process_new_only: bool) -> Tuple[str, str, str]:
+        """Start embedding process in background thread"""
+        if self.embed_active:
+            return "⚠️ Embedding already in progress", self.format_stats(), self.get_embed_logs()
+
+        self.stop_flag.clear()
+        self.clear_embed_logs()
+        self.embed_active = True
+
+        # Start embed in background thread
+        embed_thread = threading.Thread(
+            target=self._embed_worker,
+            args=(batch_size, workers, process_new_only),
+            daemon=True
+        )
+        embed_thread.start()
+
+        return "⏳ Embedding started...", self.format_stats(), self.get_embed_logs()
+
+    def get_embed_status(self):
+        """Poll function to get current embed status and logs"""
+        if self.embed_active:
+            status = "⏳ Embedding..."
+        else:
+            status = "✅ Ready"
+
+        return status, self.format_stats(), self.get_embed_logs()
+
+    def stop_embed_wrapper(self):
+        """Wrapper for stop button that also returns current status"""
+        self.stop_flag.set()
+        return "⏹️ Stopping...", self.format_stats(), self.get_embed_logs()
 
     def search_faces(self, query_image, top_k: int, search_mode: str,
                     sex_filter: str, age_filter: str, skin_tone_filter: str,
@@ -825,6 +891,10 @@ def create_app():
                             stop_process_btn = gr.Button("⏹️ Stop", variant="stop")
 
                         process_status = gr.Textbox(label="Processing Status", lines=2)
+                        embed_logs = gr.Textbox(label="📝 Detailed Embedding Logs", lines=15, max_lines=20, autoscroll=True)
+
+                        # Timer for polling embed status
+                        embed_timer = gr.Timer(0.5)
 
                 with gr.Row():
                     pipeline_btn = gr.Button("🚀 Run Complete Pipeline (Download + Process)",
@@ -1027,16 +1097,28 @@ def create_app():
             outputs=[download_timer]
         )
 
-        # Process handlers
+        # Process handlers with polling for real-time updates
         process_btn.click(
             fn=app.process_and_embed,
             inputs=[process_batch_size, process_workers, process_new_only],
-            outputs=[process_status, stats_display]
+            outputs=[process_status, stats_display, embed_logs]
+        ).then(
+            fn=lambda: gr.Timer(active=True),
+            outputs=[embed_timer]
+        )
+
+        # Timer ticks - update embed status every 0.5 seconds
+        embed_timer.tick(
+            fn=app.get_embed_status,
+            outputs=[process_status, stats_display, embed_logs]
         )
 
         stop_process_btn.click(
-            fn=app.stop_operation,
-            outputs=[process_status]
+            fn=app.stop_embed_wrapper,
+            outputs=[process_status, stats_display, embed_logs]
+        ).then(
+            fn=lambda: gr.Timer(active=False),
+            outputs=[embed_timer]
         )
 
         # Pipeline handler (sequential download then process)
@@ -1054,14 +1136,22 @@ def create_app():
             stats1 = app.format_stats()
 
             # Then process
-            process_msg, stats2 = app.process_and_embed(batch_size, workers, new_only)
-            return download_msg, process_msg, stats2, download_log
+            process_msg, stats2, embed_log = app.process_and_embed(batch_size, workers, new_only)
+
+            # Wait for embedding to complete
+            while app.embed_active:
+                time.sleep(1)
+
+            # Get final embed status
+            final_process_msg, final_stats, final_embed_log = app.get_embed_status()
+
+            return download_msg, final_process_msg, final_stats, download_log, final_embed_log
 
         pipeline_btn.click(
             fn=run_pipeline,
             inputs=[download_source, download_count, download_delay,
                    process_batch_size, process_workers, process_new_only],
-            outputs=[download_status, process_status, stats_display, download_logs]
+            outputs=[download_status, process_status, stats_display, download_logs, embed_logs]
         )
 
         # Search handlers
