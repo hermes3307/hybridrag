@@ -1,0 +1,27 @@
+# OCR Engines
+pytesseract==0.3.10
+easyocr==1.7.1
+paddleocr==2.7.3
+paddlepaddle==2.6.2
+
+# Image Processing
+opencv-python==4.6.0.66
+Pillow==10.2.0
+pdf2image==1.17.0
+numpy==1.26.4
+
+# LLM Integration
+transformers==4.37.2
+torch==2.2.0
+accelerate==0.27.2
+bitsandbytes==0.42.0
+
+# API Framework
+fastapi==0.109.2
+uvicorn==0.27.1
+python-multipart==0.0.9
+pydantic==2.6.1
+
+# Utilities
+python-magic==0.4.27
+aiofiles==23.2.1
